@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/rsa"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -16,12 +17,13 @@ import (
 
 	"github.com/MicahParks/keyfunc/v2"
 	"github.com/golang-jwt/jwt/v5"
-	//"github.com/lestrrat-go/jwx"
+	"github.com/lestrrat-go/jwx/jwk"
 )
 
 type Config struct {
 	RootUri   string    `json:"root_uri"`
 	Providers Providers `json:"providers"`
+	Jwks      jwk.Set   `json:"jwks"`
 }
 
 type Providers struct {
@@ -57,7 +59,9 @@ var fs embed.FS
 
 func main() {
 
-	config := &Config{}
+	config := &Config{
+		Jwks: jwk.NewSet(),
+	}
 
 	configJson, err := os.ReadFile("lastlogin_config.json")
 	if err != nil {
@@ -65,6 +69,12 @@ func main() {
 		os.Exit(1)
 	}
 	err = json.Unmarshal(configJson, config)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	publicJwks, err := jwk.PublicSetOf(config.Jwks)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -109,6 +119,12 @@ func main() {
 		}
 
 		json.NewEncoder(w).Encode(doc)
+	})
+
+	http.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		enc.Encode(publicJwks)
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -286,4 +302,35 @@ func genRandomKey() (string, error) {
 		id += string(chars[randIndex.Int64()])
 	}
 	return id, nil
+}
+
+func GenerateJwks() (jwk.Set, error) {
+	raw, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, err
+	}
+
+	key, err := jwk.New(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, ok := key.(jwk.RSAPrivateKey); !ok {
+		return nil, err
+	}
+
+	//key.Set(jwk.KeyIDKey, "lastlogin-key-1")
+
+	err = jwk.AssignKeyID(key)
+	if err != nil {
+		return nil, err
+	}
+
+	key.Set(jwk.KeyUsageKey, "sig")
+
+	keyset := jwk.NewSet()
+
+	keyset.Add(key)
+
+	return keyset, nil
 }
