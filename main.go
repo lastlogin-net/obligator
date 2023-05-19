@@ -15,9 +15,11 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/lestrrat-go/jwx/jwk"
 	"github.com/lestrrat-go/jwx/jwt"
+	"github.com/lestrrat-go/jwx/jwt/openid"
 )
 
 type Config struct {
@@ -196,7 +198,42 @@ func main() {
 				return
 			}
 
-			token, err := jwt.Parse([]byte(tokenRes.IdToken), jwt.WithKeySet(keyset))
+			googOauth2Token, err := jwt.Parse([]byte(tokenRes.IdToken), jwt.WithKeySet(keyset), jwt.WithToken(openid.New()))
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+
+			googToken, ok := googOauth2Token.(openid.Token)
+
+			if !ok {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+
+			printJson(googToken)
+
+			userId, err := genRandomKey()
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+
+			issuedAt := time.Now().UTC()
+			expiresAt := issuedAt.Add(10 * time.Minute)
+
+			token, err := openid.NewBuilder().
+				Subject(userId).
+				Audience([]string{request.ClientId}).
+				Issuer(rootUri).
+				Email(googToken.Email()).
+				EmailVerified(googToken.EmailVerified()).
+				IssuedAt(issuedAt).
+				Expiration(expiresAt).
+				Build()
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
