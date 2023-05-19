@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"embed"
@@ -15,9 +16,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/MicahParks/keyfunc/v2"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/lestrrat-go/jwx/jwk"
+	"github.com/lestrrat-go/jwx/jwt"
 )
 
 type Config struct {
@@ -94,7 +94,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	googJwks, err := keyfunc.Get(googConfig.JwksUri, keyfunc.Options{})
+
+	ctx := context.Background()
+	googJwksRefresher := jwk.NewAutoRefresh(ctx)
+	googJwksRefresher.Configure(googConfig.JwksUri)
+
+	_, err = googJwksRefresher.Refresh(ctx, googConfig.JwksUri)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -153,6 +158,7 @@ func main() {
 
 			r, err := http.NewRequest(http.MethodPost, googConfig.TokenEndpoint, strings.NewReader(body.Encode()))
 			if err != nil {
+				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, "Creating request failed")
 				return
 			}
@@ -161,11 +167,13 @@ func main() {
 
 			resp, err := httpClient.Do(r)
 			if err != nil {
+				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, "Doing request failed")
 				return
 			}
 
 			if resp.StatusCode != 200 {
+				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, "Request failed with invalid status")
 				b, _ := io.ReadAll(resp.Body)
 				fmt.Println(string(b))
@@ -176,13 +184,21 @@ func main() {
 
 			err = json.NewDecoder(resp.Body).Decode(&tokenRes)
 			if err != nil {
+				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
 				return
 			}
 
-			token, err := jwt.Parse(tokenRes.IdToken, googJwks.Keyfunc)
-
+			keyset, err := googJwksRefresher.Fetch(ctx, googConfig.JwksUri)
 			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+
+			token, err := jwt.Parse([]byte(tokenRes.IdToken), jwt.WithKeySet(keyset))
+			if err != nil {
+				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
 				return
 			}

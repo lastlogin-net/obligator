@@ -2,11 +2,7 @@ module github.com/anderspitman/lastlogin
 
 go 1.20
 
-require (
-	github.com/MicahParks/keyfunc/v2 v2.0.2
-	github.com/golang-jwt/jwt/v5 v5.0.0
-	github.com/lestrrat-go/jwx v1.2.25
-)
+require github.com/lestrrat-go/jwx v1.2.25
 
 require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.0-20210816181553-5444fa50b93d // indirect
