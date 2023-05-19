@@ -299,10 +299,22 @@ func main() {
 			return
 		}
 
+		redirectUri := clientId
+
+		state := r.Form.Get("state")
+
+		responseType := r.Form.Get("response_type")
+		if responseType == "" {
+			errUrl := fmt.Sprintf("%s?error=unsupported_response_type&state=%s",
+				redirectUri, state)
+			http.Redirect(w, r, errUrl, 302)
+			return
+		}
+
 		req := OAuth2AuthRequest{
 			ClientId:    clientId,
-			RedirectUri: r.Form.Get("redirect_uri"),
-			State:       r.Form.Get("state"),
+			RedirectUri: redirectUri,
+			State:       state,
 			Scope:       r.Form.Get("scope"),
 			Nonce:       r.Form.Get("nonce"),
 		}
