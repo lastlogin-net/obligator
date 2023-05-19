@@ -40,6 +40,7 @@ type GoogleProvider struct {
 }
 
 type OIDCDiscoveryDoc struct {
+	Issuer                string `json:"issuer"`
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
 	TokenEndpoint         string `json:"token_endpoint"`
 	UserinfoEndpoint      string `json:"userinfo_endpoint"`
@@ -52,6 +53,7 @@ type OAuth2AuthRequest struct {
 	State       string `json:"state"`
 	Scope       string `json:"scope"`
 	Provider    string `json:"provider"`
+	Nonce       string `json:"nonce"`
 }
 
 type Oauth2TokenResponse struct {
@@ -124,6 +126,7 @@ func main() {
 
 	http.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		doc := OIDCDiscoveryDoc{
+			Issuer:                rootUri,
 			AuthorizationEndpoint: fmt.Sprintf("%s/auth", rootUri),
 			TokenEndpoint:         fmt.Sprintf("%s/token", rootUri),
 			UserinfoEndpoint:      fmt.Sprintf("%s/userinfo", rootUri),
@@ -236,6 +239,7 @@ func main() {
 				EmailVerified(googToken.EmailVerified()).
 				IssuedAt(issuedAt).
 				Expiration(expiresAt).
+				Claim("nonce", request.Nonce).
 				Build()
 			if err != nil {
 				w.WriteHeader(500)
@@ -297,6 +301,7 @@ func main() {
 			RedirectUri: r.Form.Get("redirect_uri"),
 			State:       r.Form.Get("state"),
 			Scope:       r.Form.Get("scope"),
+			Nonce:       r.Form.Get("nonce"),
 		}
 
 		requestId, err := storage.AddRequest(req)
@@ -340,7 +345,7 @@ func main() {
 
 		tokenRes := Oauth2TokenResponse{
 			AccessToken: "inert-token",
-			ExpiresIn:   0,
+			ExpiresIn:   3600,
 			IdToken:     idToken,
 			TokenType:   "bearer",
 		}
