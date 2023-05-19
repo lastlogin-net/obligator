@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lestrrat-go/jwx/jwa"
 	"github.com/lestrrat-go/jwx/jwk"
 	"github.com/lestrrat-go/jwx/jwt"
 	"github.com/lestrrat-go/jwx/jwt/openid"
@@ -46,12 +47,16 @@ type OIDCDiscoveryDoc struct {
 }
 
 type OAuth2AuthRequest struct {
-	ClientId string `json:"client_id"`
-	Provider string `json:"provider"`
+	ClientId    string `json:"client_id"`
+	RedirectUri string `json:"redirect_uri"`
+	State       string `json:"state"`
+	Scope       string `json:"scope"`
+	Provider    string `json:"provider"`
 }
 
 type Oauth2TokenResponse struct {
 	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
 	ExpiresIn   int    `json:"expires_in"`
 	IdToken     string `json:"id_token"`
 }
@@ -149,10 +154,10 @@ func main() {
 		switch request.Provider {
 		case "google":
 
-			code := r.Form.Get("code")
+			googCode := r.Form.Get("code")
 
 			body := url.Values{}
-			body.Set("code", code)
+			body.Set("code", googCode)
 			body.Set("client_id", googClientId)
 			body.Set("client_secret", googClientSecret)
 			body.Set("redirect_uri", rootUri)
@@ -213,8 +218,6 @@ func main() {
 				return
 			}
 
-			printJson(googToken)
-
 			userId, err := genRandomKey()
 			if err != nil {
 				w.WriteHeader(500)
@@ -240,7 +243,36 @@ func main() {
 				return
 			}
 
-			printJson(token)
+			key, exists := config.Jwks.Get(0)
+			if !exists {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, "No keys available")
+				return
+			}
+
+			signed, err := jwt.Sign(token, jwa.RS256, key)
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+
+			code, err := storage.AddPendingToken(string(signed))
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+
+			url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&code=%s&state=%s&scope=%s",
+				request.ClientId,
+				request.ClientId,
+				request.RedirectUri,
+				code,
+				request.State,
+				request.Scope)
+
+			http.Redirect(w, r, url, 302)
 
 		default:
 			w.WriteHeader(500)
@@ -261,7 +293,10 @@ func main() {
 		}
 
 		req := OAuth2AuthRequest{
-			ClientId: clientId,
+			ClientId:    clientId,
+			RedirectUri: r.Form.Get("redirect_uri"),
+			State:       r.Form.Get("state"),
+			Scope:       r.Form.Get("scope"),
 		}
 
 		requestId, err := storage.AddRequest(req)
@@ -285,6 +320,34 @@ func main() {
 			io.WriteString(w, err.Error())
 			return
 		}
+	})
+
+	http.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+
+		r.ParseForm()
+
+		code := r.Form.Get("code")
+
+		idToken, err := storage.GetPendingToken(code)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
+		w.Header().Set("Cache-Control", "no-store")
+
+		tokenRes := Oauth2TokenResponse{
+			AccessToken: "inert-token",
+			ExpiresIn:   0,
+			IdToken:     idToken,
+			TokenType:   "bearer",
+		}
+
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		enc.Encode(tokenRes)
 	})
 
 	http.HandleFunc("/google", func(w http.ResponseWriter, r *http.Request) {
