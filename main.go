@@ -142,6 +142,9 @@ func main() {
 		enc.Encode(publicJwks)
 	})
 
+	http.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
+	})
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
