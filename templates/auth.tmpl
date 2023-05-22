@@ -1,0 +1,24 @@
+{{ template "header.tmpl" . }}
+
+    <p>
+      <strong>{{$.ClientId}}</strong> wants to log you in. To approve this
+      action, select an identity below.
+    </p>
+
+
+    <form class='tn-form' id='login-form' action="/approve" method="POST">
+      <input type="hidden" name="request_id" value="{{$.RequestId}}" required>
+      <select name='identity_id'>
+      {{range $.Identities}}
+        <option value='{{.Id}}'>{{.Email}}</option>
+      {{end}}
+      </select>
+      <button class='button' type="submit">Approve</button>
+    </form>
+
+    <form class='tn-form' id='login-form' action="/google" method="POST">
+      <input type="hidden" name="request_id" value="{{$.RequestId}}" required>
+      <button class='button' type="submit">Continue with Google</button>
+    </form>
+
+{{ template "footer.tmpl" . }}

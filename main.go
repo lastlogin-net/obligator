@@ -48,6 +48,8 @@ type OIDCDiscoveryDoc struct {
 }
 
 type OAuth2AuthRequest struct {
+	OwnerId     string `json:"owner_id"`
+	RawQuery    string `json:"raw_query"`
 	ClientId    string `json:"client_id"`
 	RedirectUri string `json:"redirect_uri"`
 	State       string `json:"state"`
@@ -115,7 +117,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	storage := NewFileStorage()
+	storage, err := NewFileStorage("oathgate_db.json")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 
 	tmpl, err := template.ParseFS(fs, "templates/*.tmpl")
 	if err != nil {
@@ -170,16 +176,16 @@ func main() {
 			body.Set("redirect_uri", callbackUri)
 			body.Set("grant_type", "authorization_code")
 
-			r, err := http.NewRequest(http.MethodPost, googConfig.TokenEndpoint, strings.NewReader(body.Encode()))
+			upstreamReq, err := http.NewRequest(http.MethodPost, googConfig.TokenEndpoint, strings.NewReader(body.Encode()))
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, "Creating request failed")
 				return
 			}
 
-			r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+			upstreamReq.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
-			resp, err := httpClient.Do(r)
+			resp, err := httpClient.Do(upstreamReq)
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, "Doing request failed")
@@ -218,69 +224,71 @@ func main() {
 			}
 
 			googToken, ok := googOauth2Token.(openid.Token)
-
 			if !ok {
 				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, err.Error())
+				fmt.Fprintf(os.Stderr, "Not a valid OpenId Connect token")
 				return
 			}
 
-			userId, err := genRandomKey()
+			var userId string
+			loggedIn := false
+
+			loginKeyCookie, err := r.Cookie("login_key")
+			if err == nil {
+				loginData, err := storage.GetLoginData(loginKeyCookie.Value)
+				if err == nil {
+					userId = loginData.OwnerId
+					loggedIn = true
+				}
+			}
+
+			// Login cookie didn't point to a user. See if the provider identity we just received
+			// is associated with an existing user
+			if !loggedIn {
+				allIdentities := storage.GetAllIdentities()
+				for _, ident := range allIdentities {
+					if ident.ProviderId == googToken.Subject() {
+						userId = ident.OwnerId
+						loggedIn = true
+						break
+					}
+				}
+			}
+
+			// Since no identities exist for the user, create a new user
+			if !loggedIn {
+				userId, err = storage.AddUser()
+				if err != nil {
+					w.WriteHeader(500)
+					fmt.Fprintf(os.Stderr, err.Error())
+					return
+				}
+			}
+
+			loginKey, err := storage.AddLoginData(userId)
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
 				return
 			}
 
-			issuedAt := time.Now().UTC()
-			expiresAt := issuedAt.Add(10 * time.Minute)
-
-			token, err := openid.NewBuilder().
-				Subject(userId).
-				Audience([]string{request.ClientId}).
-				Issuer(rootUri).
-				Email(googToken.Email()).
-				EmailVerified(googToken.EmailVerified()).
-				IssuedAt(issuedAt).
-				Expiration(expiresAt).
-				Claim("nonce", request.Nonce).
-				Build()
-			if err != nil {
-				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, err.Error())
-				return
+			cookie := &http.Cookie{
+				Name:     "login_key",
+				Value:    loginKey,
+				Secure:   true,
+				HttpOnly: true,
+				MaxAge:   86400 * 365,
+				Path:     "/",
+				SameSite: http.SameSiteLaxMode,
+				//SameSite: http.SameSiteStrictMode,
 			}
+			http.SetCookie(w, cookie)
 
-			key, exists := config.Jwks.Get(0)
-			if !exists {
-				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, "No keys available")
-				return
-			}
+			storage.AddIdentity(userId, googToken.Subject(), googToken.Email())
 
-			signed, err := jwt.Sign(token, jwa.RS256, key)
-			if err != nil {
-				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, err.Error())
-				return
-			}
+			redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
 
-			code, err := storage.AddPendingToken(string(signed))
-			if err != nil {
-				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, err.Error())
-				return
-			}
-
-			url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&code=%s&state=%s&scope=%s",
-				request.RedirectUri,
-				request.ClientId,
-				request.RedirectUri,
-				code,
-				request.State,
-				request.Scope)
-
-			http.Redirect(w, r, url, 302)
+			http.Redirect(w, r, redirUrl, 302)
 
 		default:
 			w.WriteHeader(500)
@@ -307,8 +315,6 @@ func main() {
 			return
 		}
 
-		printJson(clientIdUrl)
-
 		redirectUri := r.Form.Get("redirect_uri")
 		if redirectUri == "" {
 			w.WriteHeader(400)
@@ -332,7 +338,18 @@ func main() {
 			return
 		}
 
+		userId := ""
+		loginKeyCookie, err := r.Cookie("login_key")
+		if err == nil {
+			loginData, err := storage.GetLoginData(loginKeyCookie.Value)
+			if err == nil {
+				userId = loginData.OwnerId
+			}
+		}
+
 		req := OAuth2AuthRequest{
+			OwnerId:     userId,
+			RawQuery:    r.URL.RawQuery,
 			ClientId:    clientId,
 			RedirectUri: redirectUri,
 			State:       state,
@@ -347,20 +364,133 @@ func main() {
 			return
 		}
 
+		fmt.Println(userId)
+		identities := storage.GetIdentitiesByUser(userId)
+
+		printJson(identities)
+
 		data := struct {
-			ClientId  string
-			RequestId string
+			ClientId   string
+			RequestId  string
+			Identities []*Identity
 		}{
-			ClientId:  clientIdUrl.Host,
-			RequestId: requestId,
+			ClientId:   clientIdUrl.Host,
+			RequestId:  requestId,
+			Identities: identities,
 		}
 
-		err = tmpl.ExecuteTemplate(w, "login.tmpl", data)
+		err = tmpl.ExecuteTemplate(w, "auth.tmpl", data)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
+	})
+
+	http.HandleFunc("/approve", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+
+		if r.Method != http.MethodPost {
+			w.WriteHeader(405)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		loginKeyCookie, err := r.Cookie("login_key")
+		if err != nil {
+			w.WriteHeader(401)
+			io.WriteString(w, "Only logged-in users can access this endpoint")
+			return
+		}
+
+		loginData, err := storage.GetLoginData(loginKeyCookie.Value)
+		if err != nil {
+			w.WriteHeader(403)
+			io.WriteString(w, "Forbidden")
+			return
+		}
+
+		userId := loginData.OwnerId
+
+		requestId := r.Form.Get("request_id")
+
+		request, err := storage.GetRequest(requestId)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		if request.OwnerId != userId {
+			w.WriteHeader(403)
+			io.WriteString(w, "Not your request")
+			return
+		}
+
+		identId := r.Form.Get("identity_id")
+
+		identity, err := storage.GetIdentityById(identId)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		if identity.OwnerId != userId {
+			w.WriteHeader(403)
+			io.WriteString(w, "User doesn't own identity")
+			return
+		}
+
+		issuedAt := time.Now().UTC()
+		expiresAt := issuedAt.Add(10 * time.Minute)
+
+		token, err := openid.NewBuilder().
+			Subject(userId).
+			Audience([]string{request.ClientId}).
+			Issuer(rootUri).
+			Email(identity.Email).
+			EmailVerified(true).
+			IssuedAt(issuedAt).
+			Expiration(expiresAt).
+			Claim("nonce", request.Nonce).
+			Build()
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		key, exists := config.Jwks.Get(0)
+		if !exists {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "No keys available")
+			return
+		}
+
+		signed, err := jwt.Sign(token, jwa.RS256, key)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		code, err := storage.AddPendingToken(string(signed))
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&code=%s&state=%s&scope=%s",
+			request.RedirectUri,
+			request.ClientId,
+			request.RedirectUri,
+			code,
+			request.State,
+			request.Scope)
+
+		http.Redirect(w, r, url, 302)
 	})
 
 	http.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
