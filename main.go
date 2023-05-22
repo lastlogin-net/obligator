@@ -72,7 +72,7 @@ func main() {
 		Jwks: jwk.NewSet(),
 	}
 
-	configJson, err := os.ReadFile("lastlogin_config.json")
+	configJson, err := os.ReadFile("oathgate_config.json")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)

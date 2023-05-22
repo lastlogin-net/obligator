@@ -1,4 +1,4 @@
-module github.com/anderspitman/lastlogin
+module github.com/anderspitman/oathgate
 
 go 1.20
 
