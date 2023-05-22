@@ -5,20 +5,23 @@
       action, select an identity below.
     </p>
 
+    {{range $.Identities}}
+    <div>
+      <form class='' id='login-form' action="/approve" method="POST">
+        <input type="hidden" name="request_id" value="{{$.RequestId}}" required>
+        <input type='hidden' name='identity_id' value='{{.Id}}' required>
+        <button class='og-formbutton' type="submit">
+          {{.Email}}
+        </button>
+      </form>
+    </div>
+    {{end}}
 
-    <form class='tn-form' id='login-form' action="/approve" method="POST">
-      <input type="hidden" name="request_id" value="{{$.RequestId}}" required>
-      <select name='identity_id'>
-      {{range $.Identities}}
-        <option value='{{.Id}}'>{{.Email}}</option>
-      {{end}}
-      </select>
-      <button class='button' type="submit">Approve</button>
-    </form>
-
-    <form class='tn-form' id='login-form' action="/google" method="POST">
-      <input type="hidden" name="request_id" value="{{$.RequestId}}" required>
-      <button class='button' type="submit">Continue with Google</button>
-    </form>
+    <div>
+      <form class='tn-form' id='login-form' action="/google" method="POST">
+        <input type="hidden" name="request_id" value="{{$.RequestId}}" required>
+        <button class='button' type="submit">Continue with Google</button>
+      </form>
+    </div>
 
 {{ template "footer.tmpl" . }}
