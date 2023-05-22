@@ -131,7 +131,9 @@ func main() {
 
 	httpClient := &http.Client{}
 
-	http.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		doc := OIDCDiscoveryDoc{
 			Issuer:                rootUri,
 			AuthorizationEndpoint: fmt.Sprintf("%s/auth", rootUri),
@@ -143,16 +145,16 @@ func main() {
 		json.NewEncoder(w).Encode(doc)
 	})
 
-	http.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		enc.Encode(publicJwks)
 	})
 
-	http.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
 	})
 
-	http.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
 
@@ -297,7 +299,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
 
@@ -364,10 +366,7 @@ func main() {
 			return
 		}
 
-		fmt.Println(userId)
 		identities := storage.GetIdentitiesByUser(userId)
-
-		printJson(identities)
 
 		data := struct {
 			ClientId   string
@@ -387,7 +386,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/approve", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/approve", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 
 		if r.Method != http.MethodPost {
@@ -493,7 +492,7 @@ func main() {
 		http.Redirect(w, r, url, 302)
 	})
 
-	http.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
 
@@ -521,7 +520,7 @@ func main() {
 		enc.Encode(tokenRes)
 	})
 
-	http.HandleFunc("/google", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/google", func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
 
@@ -543,7 +542,12 @@ func main() {
 		http.Redirect(w, r, googUrl, 302)
 	})
 
-	err = http.ListenAndServe(":9002", nil)
+	server := http.Server{
+		Addr:    ":9002",
+		Handler: mux,
+	}
+
+	err = server.ListenAndServe()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, err.Error())
 		os.Exit(1)
