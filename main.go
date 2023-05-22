@@ -7,6 +7,7 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"html/template"
 	"io"
@@ -69,6 +70,9 @@ type Oauth2TokenResponse struct {
 var fs embed.FS
 
 func main() {
+
+	port := flag.Int("port", 9002, "Port")
+	flag.Parse()
 
 	config := &Config{
 		Jwks: jwk.NewSet(),
@@ -543,7 +547,7 @@ func main() {
 	})
 
 	server := http.Server{
-		Addr:    ":9002",
+		Addr:    fmt.Sprintf(":%d", *port),
 		Handler: mux,
 	}
 
