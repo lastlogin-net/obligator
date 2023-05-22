@@ -273,7 +273,7 @@ func main() {
 			}
 
 			url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&code=%s&state=%s&scope=%s",
-				request.ClientId,
+				request.RedirectUri,
 				request.ClientId,
 				request.RedirectUri,
 				code,
@@ -299,6 +299,15 @@ func main() {
 			io.WriteString(w, "client_id missing")
 			return
 		}
+
+		clientIdUrl, err := url.Parse(clientId)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		printJson(clientIdUrl)
 
 		redirectUri := r.Form.Get("redirect_uri")
 		if redirectUri == "" {
@@ -342,7 +351,7 @@ func main() {
 			ClientId  string
 			RequestId string
 		}{
-			ClientId:  clientId,
+			ClientId:  clientIdUrl.Host,
 			RequestId: requestId,
 		}
 
