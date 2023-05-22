@@ -90,6 +90,7 @@ func main() {
 	}
 
 	rootUri := config.RootUri
+	callbackUri := fmt.Sprintf("%s/callback", rootUri)
 
 	if config.Providers.Google == nil {
 		fmt.Fprintln(os.Stderr, "Google provider is required")
@@ -114,7 +115,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	storage := NewStorage()
+	storage := NewFileStorage()
 
 	tmpl, err := template.ParseFS(fs, "templates/*.tmpl")
 	if err != nil {
@@ -145,7 +146,7 @@ func main() {
 	http.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
 	})
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
 
@@ -166,7 +167,7 @@ func main() {
 			body.Set("code", googCode)
 			body.Set("client_id", googClientId)
 			body.Set("client_secret", googClientSecret)
-			body.Set("redirect_uri", rootUri)
+			body.Set("redirect_uri", callbackUri)
 			body.Set("grant_type", "authorization_code")
 
 			r, err := http.NewRequest(http.MethodPost, googConfig.TokenEndpoint, strings.NewReader(body.Encode()))
@@ -299,7 +300,18 @@ func main() {
 			return
 		}
 
-		redirectUri := clientId
+		redirectUri := r.Form.Get("redirect_uri")
+		if redirectUri == "" {
+			w.WriteHeader(400)
+			io.WriteString(w, "redirect_uri missing")
+			return
+		}
+
+		if !strings.HasPrefix(redirectUri, clientId) {
+			w.WriteHeader(400)
+			io.WriteString(w, "redirect_uri must be on the same domain as client_id")
+			return
+		}
 
 		state := r.Form.Get("state")
 
@@ -387,7 +399,7 @@ func main() {
 
 		storage.SetRequest(requestId, request)
 
-		googUrl := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=openid email&response_type=code", googConfig.AuthorizationEndpoint, googClientId, rootUri, requestId)
+		googUrl := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=openid email&response_type=code", googConfig.AuthorizationEndpoint, googClientId, callbackUri, requestId)
 
 		http.Redirect(w, r, googUrl, 302)
 	})

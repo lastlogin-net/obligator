@@ -6,19 +6,52 @@ import (
 )
 
 type Storage struct {
+	Users         map[string]*User
+	Identities    []*Identity
 	requests      map[string]*OAuth2AuthRequest
 	pendingTokens map[string]string
 	mutex         *sync.Mutex
 }
 
-func NewStorage() *Storage {
+type User struct {
+}
+
+type Identity struct {
+	Id         string `json:"id"`
+	ProviderId string `json:"provider_id"`
+	OwnerId    string `json:"owner"`
+}
+
+func NewFileStorage() *Storage {
 	s := &Storage{
+		Users:         make(map[string]*User),
+		Identities:    []*Identity{},
 		requests:      make(map[string]*OAuth2AuthRequest),
 		pendingTokens: make(map[string]string),
 		mutex:         &sync.Mutex{},
 	}
 
 	return s
+}
+
+func (s *Storage) AddIdentity(ownerId, providerId string) (string, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	id, err := genRandomKey()
+	if err != nil {
+		return "", err
+	}
+
+	identity := &Identity{
+		Id:         id,
+		ProviderId: providerId,
+		OwnerId:    ownerId,
+	}
+
+	s.Identities = append(s.Identities, identity)
+
+	return id, nil
 }
 
 func (s *Storage) AddRequest(req OAuth2AuthRequest) (string, error) {
