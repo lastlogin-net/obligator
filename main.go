@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -64,6 +65,39 @@ type Oauth2TokenResponse struct {
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int    `json:"expires_in"`
 	IdToken     string `json:"id_token"`
+}
+
+type OathgateMux struct {
+	mux *http.ServeMux
+}
+
+func NewOathgateMux() *OathgateMux {
+	s := &OathgateMux{
+		mux: http.NewServeMux(),
+	}
+
+	return s
+}
+
+func (s *OathgateMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.mux.ServeHTTP(w, r)
+}
+
+func (s *OathgateMux) HandleFunc(p string, f func(w http.ResponseWriter, r *http.Request)) {
+	s.mux.HandleFunc(p, func(w http.ResponseWriter, r *http.Request) {
+
+		timestamp := time.Now().Format(time.RFC3339)
+
+		remoteIp, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+		fmt.Println(fmt.Sprintf("%s\t%s\t%s\t%s\t%s", timestamp, remoteIp, r.Method, r.Host, r.URL.Path))
+
+		f(w, r)
+	})
 }
 
 //go:embed templates
@@ -135,7 +169,7 @@ func main() {
 
 	httpClient := &http.Client{}
 
-	mux := http.NewServeMux()
+	mux := NewOathgateMux()
 
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		doc := OIDCDiscoveryDoc{
