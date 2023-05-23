@@ -12,10 +12,11 @@ type User struct {
 }
 
 type Identity struct {
-	Id         string `json:"id"`
-	ProviderId string `json:"provider_id"`
-	OwnerId    string `json:"owner_id"`
-	Email      string `json:"email"`
+	Id           string `json:"id"`
+	ProviderName string `json:"provider_name"`
+	ProviderId   string `json:"provider_id"`
+	OwnerId      string `json:"owner_id"`
+	Email        string `json:"email"`
 }
 
 type LoginData struct {
@@ -156,7 +157,7 @@ func (s *Storage) AddUser() (string, error) {
 	return id, nil
 }
 
-func (s *Storage) AddIdentity(ownerId, providerId, email string) (string, error) {
+func (s *Storage) AddIdentity(ownerId, providerId, providerName, email string) (string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -172,10 +173,11 @@ func (s *Storage) AddIdentity(ownerId, providerId, email string) (string, error)
 	}
 
 	identity := &Identity{
-		Id:         id,
-		ProviderId: providerId,
-		OwnerId:    ownerId,
-		Email:      email,
+		Id:           id,
+		ProviderName: providerName,
+		ProviderId:   providerId,
+		OwnerId:      ownerId,
+		Email:        email,
 	}
 
 	s.Identities = append(s.Identities, identity)

@@ -7,12 +7,10 @@
 
     {{range $.Identities}}
     <div>
-      <form class='' id='login-form' action="/approve" method="POST">
+      <form action="/approve" method="POST">
         <input type="hidden" name="request_id" value="{{$.RequestId}}" required>
         <input type='hidden' name='identity_id' value='{{.Id}}' required>
-        <button class='og-formbutton' type="submit">
-          {{.Email}}
-        </button>
+        <button class='og-formbutton' type="submit">Log in with <strong>{{.Email}}</strong> ({{.ProviderName}})</button>
       </form>
     </div>
     {{end}}
@@ -24,10 +22,10 @@
 
     {{range $.OIDCProviders}}
     <div>
-      <form class='tn-form' id='login-form' action="/login-oidc" method="POST">
+      <form action="/login-oidc" method="POST">
         <input type="hidden" name="request_id" value="{{$.RequestId}}" required>
         <input type="hidden" name="oidc_provider_id" value="{{.ID}}" required>
-        <button class='button' type="submit">Continue with {{.Name}}</button>
+        <button class='og-formbutton' type="submit">Add identity with {{.Name}}</button>
       </form>
     </div>
     {{end}}

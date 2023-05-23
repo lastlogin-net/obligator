@@ -360,7 +360,7 @@ func main() {
 		}
 		http.SetCookie(w, cookie)
 
-		storage.AddIdentity(userId, providerToken.Subject(), providerToken.Email())
+		storage.AddIdentity(userId, providerToken.Subject(), oidcProvider.Name, providerToken.Email())
 
 		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
 
