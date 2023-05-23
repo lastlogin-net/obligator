@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"github.com/lestrrat-go/jwx/jwt/openid"
 	"os"
 	"sync"
+
+	"github.com/lestrrat-go/jwx/jwk"
+	"github.com/lestrrat-go/jwx/jwt/openid"
 )
 
 type User struct {
@@ -42,9 +44,11 @@ type OIDCProvider struct {
 }
 
 type Storage struct {
+	RootUri       string                `json:"root_uri"`
 	OIDCProviders []*OIDCProvider       `json:"oidc_providers"`
 	Users         map[string]*User      `json:"users"`
 	Identities    []*Identity           `json:"identities"`
+	Jwks          jwk.Set               `json:"jwks"`
 	LoginData     map[string]*LoginData `json:"login_data"`
 	Tokens        map[string]*Token     `json:"tokens"`
 	requests      map[string]*OAuth2AuthRequest
@@ -55,6 +59,7 @@ type Storage struct {
 
 func NewFileStorage(path string) (*Storage, error) {
 	s := &Storage{
+		Jwks:          jwk.NewSet(),
 		OIDCProviders: []*OIDCProvider{},
 		Users:         make(map[string]*User),
 		Identities:    []*Identity{},
@@ -77,6 +82,25 @@ func NewFileStorage(path string) (*Storage, error) {
 	s.persist()
 
 	return s, nil
+}
+
+func (s *Storage) GetRootUri() string {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.RootUri
+}
+
+func (s *Storage) AddJWKKey(key jwk.Key) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.Jwks.Add(key)
+	s.persist()
+}
+
+func (s *Storage) GetJWKSet() jwk.Set {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.Jwks
 }
 
 func (s *Storage) GetOIDCProviders() []*OIDCProvider {

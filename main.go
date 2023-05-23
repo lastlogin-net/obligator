@@ -25,11 +25,6 @@ import (
 	"github.com/lestrrat-go/jwx/jwt/openid"
 )
 
-type Config struct {
-	RootUri string  `json:"root_uri"`
-	Jwks    jwk.Set `json:"jwks"`
-}
-
 type OIDCDiscoveryDoc struct {
 	Issuer                string `json:"issuer"`
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
@@ -102,35 +97,30 @@ func main() {
 	port := flag.Int("port", 9002, "Port")
 	flag.Parse()
 
-	config := &Config{
-		Jwks: jwk.NewSet(),
-	}
-
-	configJson, err := os.ReadFile("oathgate_config.json")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-	err = json.Unmarshal(configJson, config)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
-	publicJwks, err := jwk.PublicSetOf(config.Jwks)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
-	rootUri := config.RootUri
-	callbackUri := fmt.Sprintf("%s/callback", rootUri)
-
 	storage, err := NewFileStorage("oathgate_db.json")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+
+	if storage.GetJWKSet().Len() == 0 {
+		key, err := GenerateJWK()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+
+		storage.AddJWKKey(key)
+	}
+
+	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	rootUri := storage.GetRootUri()
+	callbackUri := fmt.Sprintf("%s/callback", rootUri)
 
 	ctx := context.Background()
 
@@ -581,7 +571,7 @@ func main() {
 			return
 		}
 
-		key, exists := config.Jwks.Get(0)
+		key, exists := storage.GetJWKSet().Get(0)
 		if !exists {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, "No keys available")
@@ -722,7 +712,7 @@ func genRandomKey() (string, error) {
 	return id, nil
 }
 
-func GenerateJwks() (jwk.Set, error) {
+func GenerateJWK() (jwk.Key, error) {
 	raw, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, err
@@ -744,11 +734,10 @@ func GenerateJwks() (jwk.Set, error) {
 		return nil, err
 	}
 
-	key.Set(jwk.KeyUsageKey, "sig")
+	//key.Set(jwk.KeyUsageKey, "sig")
+	//keyset := jwk.NewSet()
+	//keyset.Add(key)
+	//return keyset, nil
 
-	keyset := jwk.NewSet()
-
-	keyset.Add(key)
-
-	return keyset, nil
+	return key, nil
 }
