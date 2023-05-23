@@ -46,6 +46,7 @@ type OIDCProvider struct {
 type Storage struct {
 	RootUri       string                `json:"root_uri"`
 	OIDCProviders []*OIDCProvider       `json:"oidc_providers"`
+	Smtp          *SmtpConfig           `json:"smtp"`
 	Users         map[string]*User      `json:"users"`
 	Identities    []*Identity           `json:"identities"`
 	Jwks          jwk.Set               `json:"jwks"`

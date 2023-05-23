@@ -1,0 +1,11 @@
+{{ template "header.tmpl" . }}
+
+    <form class='tn-form' id='complete-login-form' action="/complete-email-login" method="POST">
+      <label id='complete-login-label' for="code-input">Enter the code we emailed you:</label>
+      <input type="code" id="code-input" name="code" required>
+      <input type="hidden" name="request_id" value="{{.RequestId}}"required>
+      <input type="hidden" name="email_request_id" value="{{.EmailRequestId}}"required>
+      <button class='button' type="submit">Submit</button>
+    </form>
+
+{{ template "footer.tmpl" . }}

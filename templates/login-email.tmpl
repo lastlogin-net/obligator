@@ -1,0 +1,14 @@
+{{ template "header.tmpl" . }}
+
+    <p>
+      Use the form below to add an email identity
+    </p>
+
+    <form class='tn-form' id='login-form' action="/email-code" method="POST">
+      <input type="hidden" name="request_id" value="{{.RequestId}}"required>
+      <label id='login-label' for="email-input">Enter your email address:</label>
+      <input type="email" id="email-input" name="email" required>
+      <button class='button' type="submit">Login</button>
+    </form>
+    
+{{ template "footer.tmpl" . }}

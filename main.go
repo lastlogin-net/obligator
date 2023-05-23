@@ -25,6 +25,15 @@ import (
 	"github.com/lestrrat-go/jwx/jwt/openid"
 )
 
+type SmtpConfig struct {
+	Server     string `json:"server,omitempty"`
+	Username   string `json:"username,omitempty"`
+	Password   string `json:"password,omitempty"`
+	Port       int    `json:"port,omitempty"`
+	Sender     string `json:"sender,omitempty"`
+	SenderName string `json:"sender_name,omitempty"`
+}
+
 type OIDCDiscoveryDoc struct {
 	Issuer                string `json:"issuer"`
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
@@ -112,6 +121,8 @@ func main() {
 
 		storage.AddJWKKey(key)
 	}
+
+	emailAuth := NewEmailAuth(storage)
 
 	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
 	if err != nil {
@@ -655,6 +666,157 @@ func main() {
 		http.SetCookie(w, cookie)
 
 		http.Redirect(w, r, redirect, 303)
+	})
+
+	mux.HandleFunc("/login-email", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+
+		if r.Method != "POST" {
+			w.WriteHeader(405)
+			io.WriteString(w, "Invalid method")
+			return
+		}
+
+		requestId := r.Form.Get("request_id")
+
+		templateData := struct {
+			RequestId string
+		}{
+			RequestId: requestId,
+		}
+
+		err = tmpl.ExecuteTemplate(w, "login-email.tmpl", templateData)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+	})
+
+	mux.HandleFunc("/email-code", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+
+		if r.Method != "POST" {
+			w.WriteHeader(405)
+			io.WriteString(w, "Invalid method")
+			return
+		}
+
+		email := r.Form.Get("email")
+		if email == "" {
+			w.WriteHeader(400)
+			io.WriteString(w, "email param missing")
+			return
+		}
+
+		requestId := r.Form.Get("request_id")
+
+		emailRequestId, err := emailAuth.StartEmailValidation(email)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		data := struct {
+			RequestId      string
+			EmailRequestId string
+		}{
+			RequestId:      requestId,
+			EmailRequestId: emailRequestId,
+		}
+
+		err = tmpl.ExecuteTemplate(w, "email-code.tmpl", data)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+	})
+
+	mux.HandleFunc("/complete-email-login", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(405)
+			io.WriteString(w, "Invalid method")
+			return
+		}
+
+		r.ParseForm()
+
+		requestId := r.Form.Get("request_id")
+		request, err := storage.GetRequest(requestId)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		emailRequestId := r.Form.Get("email_request_id")
+		if emailRequestId == "" {
+			w.WriteHeader(400)
+			io.WriteString(w, "email_request_id param missing")
+			return
+		}
+
+		code := r.Form.Get("code")
+		if code == "" {
+			w.WriteHeader(400)
+			io.WriteString(w, "code param missing")
+			return
+		}
+
+		_, email, err := emailAuth.CompleteEmailValidation(emailRequestId, code)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		var userId string
+		loggedIn := false
+
+		loginKeyCookie, err := r.Cookie("login_key")
+		if err == nil {
+			loginData, err := storage.GetLoginData(loginKeyCookie.Value)
+			if err == nil {
+				userId = loginData.OwnerId
+				loggedIn = true
+			}
+		}
+
+		if !loggedIn {
+			userId, err = storage.AddUser()
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+		}
+
+		loginKey, err := storage.AddLoginData(userId)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		cookie := &http.Cookie{
+			Name:     "login_key",
+			Value:    loginKey,
+			Secure:   true,
+			HttpOnly: true,
+			MaxAge:   86400 * 365,
+			Path:     "/",
+			SameSite: http.SameSiteLaxMode,
+			//SameSite: http.SameSiteStrictMode,
+		}
+		http.SetCookie(w, cookie)
+
+		storage.AddIdentity(userId, email, "Email", email)
+
+		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
+
+		http.Redirect(w, r, redirUrl, 302)
 	})
 
 	server := http.Server{

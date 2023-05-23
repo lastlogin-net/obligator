@@ -27,6 +27,13 @@
       providers:
     </p>
 
+    <div>
+      <form action="/login-email" method="POST">
+        <input type="hidden" name="request_id" value="{{$.RequestId}}" required>
+        <button class='og-formbutton' type="submit">Add identity with Email</button>
+      </form>
+    </div>
+
     {{range $.OIDCProviders}}
     <div>
       <form action="/login-oidc" method="POST">
