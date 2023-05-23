@@ -3,19 +3,10 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"github.com/lestrrat-go/jwx/jwt/openid"
 	"os"
 	"sync"
 )
-
-type Storage struct {
-	Users         map[string]*User      `json:"users"`
-	Identities    []*Identity           `json:"identities"`
-	LoginData     map[string]*LoginData `json:"login_data"`
-	requests      map[string]*OAuth2AuthRequest
-	pendingTokens map[string]string
-	mutex         *sync.Mutex
-	path          string
-}
 
 type User struct {
 }
@@ -31,13 +22,35 @@ type LoginData struct {
 	OwnerId string `json:"owner_id"`
 }
 
+type PendingOAuth2Token struct {
+	OwnerId     string       `json:"owner_id"`
+	AccessToken string       `json:"access_token"`
+	IdToken     openid.Token `json:"id_token"`
+}
+
+type Token struct {
+	IdentityId string `json:"identity_id"`
+}
+
+type Storage struct {
+	Users         map[string]*User      `json:"users"`
+	Identities    []*Identity           `json:"identities"`
+	LoginData     map[string]*LoginData `json:"login_data"`
+	Tokens        map[string]*Token     `json:"tokens"`
+	requests      map[string]*OAuth2AuthRequest
+	pendingTokens map[string]*PendingOAuth2Token
+	mutex         *sync.Mutex
+	path          string
+}
+
 func NewFileStorage(path string) (*Storage, error) {
 	s := &Storage{
 		Users:         make(map[string]*User),
 		Identities:    []*Identity{},
 		LoginData:     make(map[string]*LoginData),
+		Tokens:        make(map[string]*Token),
 		requests:      make(map[string]*OAuth2AuthRequest),
-		pendingTokens: make(map[string]string),
+		pendingTokens: make(map[string]*PendingOAuth2Token),
 		mutex:         &sync.Mutex{},
 		path:          path,
 	}
@@ -207,7 +220,7 @@ func (s *Storage) SetRequest(requestId string, request OAuth2AuthRequest) {
 	s.persist()
 }
 
-func (s *Storage) AddPendingToken(token string) (string, error) {
+func (s *Storage) AddPendingToken(token *PendingOAuth2Token) (string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -216,13 +229,20 @@ func (s *Storage) AddPendingToken(token string) (string, error) {
 		return "", err
 	}
 
+	accessToken, err := genRandomKey()
+	if err != nil {
+		return "", err
+	}
+
+	token.AccessToken = accessToken
+
 	s.pendingTokens[code] = token
 
 	s.persist()
 
 	return code, nil
 }
-func (s *Storage) GetPendingToken(code string) (string, error) {
+func (s *Storage) GetPendingToken(code string) (*PendingOAuth2Token, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -232,6 +252,35 @@ func (s *Storage) GetPendingToken(code string) (string, error) {
 	}
 
 	return token, nil
+}
+
+func (s *Storage) SetToken(token, identityId string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for _, ident := range s.Identities {
+		if ident.Id == identityId {
+			tok := &Token{
+				IdentityId: ident.Id,
+			}
+			s.Tokens[token] = tok
+			s.persist()
+			return nil
+		}
+	}
+
+	return errors.New("No such identity")
+}
+func (s *Storage) GetToken(token string) (*Token, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	tok, ok := s.Tokens[token]
+	if ok {
+		return tok, nil
+	}
+
+	return nil, errors.New("Invalid token")
 }
 
 func (s *Storage) persist() {

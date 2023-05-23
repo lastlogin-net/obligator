@@ -71,6 +71,11 @@ type OathgateMux struct {
 	mux *http.ServeMux
 }
 
+type UserinfoResponse struct {
+	Sub   string `json:"sub"`
+	Email string `json:"email"`
+}
+
 func NewOathgateMux() *OathgateMux {
 	s := &OathgateMux{
 		mux: http.NewServeMux(),
@@ -190,6 +195,41 @@ func main() {
 	})
 
 	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		parts := strings.Split(authHeader, " ")
+
+		if len(parts) != 2 {
+			w.WriteHeader(400)
+			io.WriteString(w, "Invalid Authorization header")
+			return
+		}
+
+		token := parts[1]
+
+		tok, err := storage.GetToken(token)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		ident, err := storage.GetIdentityById(tok.IdentityId)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
+
+		userResponse := UserinfoResponse{
+			Sub:   ident.Id,
+			Email: ident.Email,
+		}
+
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		enc.Encode(userResponse)
 	})
 
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
@@ -483,7 +523,7 @@ func main() {
 		expiresAt := issuedAt.Add(10 * time.Minute)
 
 		token, err := openid.NewBuilder().
-			Subject(userId).
+			Subject(identId).
 			Audience([]string{request.ClientId}).
 			Issuer(rootUri).
 			Email(identity.Email).
@@ -498,21 +538,12 @@ func main() {
 			return
 		}
 
-		key, exists := config.Jwks.Get(0)
-		if !exists {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "No keys available")
-			return
+		oauth2Token := &PendingOAuth2Token{
+			OwnerId: userId,
+			IdToken: token,
 		}
 
-		signed, err := jwt.Sign(token, jwa.RS256, key)
-		if err != nil {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, err.Error())
-			return
-		}
-
-		code, err := storage.AddPendingToken(string(signed))
+		code, err := storage.AddPendingToken(oauth2Token)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -536,10 +567,31 @@ func main() {
 
 		code := r.Form.Get("code")
 
-		idToken, err := storage.GetPendingToken(code)
+		token, err := storage.GetPendingToken(code)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
+			return
+		}
+
+		err = storage.SetToken(token.AccessToken, token.IdToken.Subject())
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		key, exists := config.Jwks.Get(0)
+		if !exists {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "No keys available")
+			return
+		}
+
+		signed, err := jwt.Sign(token.IdToken, jwa.RS256, key)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
 
@@ -547,9 +599,9 @@ func main() {
 		w.Header().Set("Cache-Control", "no-store")
 
 		tokenRes := Oauth2TokenResponse{
-			AccessToken: "inert-token",
+			AccessToken: token.AccessToken,
 			ExpiresIn:   3600,
-			IdToken:     idToken,
+			IdToken:     string(signed),
 			TokenType:   "bearer",
 		}
 
