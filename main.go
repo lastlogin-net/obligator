@@ -166,6 +166,10 @@ func main() {
 
 	mux := NewOathgateMux()
 
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("<h1>Welcome to LastLogin.io</h1>"))
+	})
+
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		doc := OIDCDiscoveryDoc{
 			Issuer:                rootUri,
@@ -441,11 +445,13 @@ func main() {
 			RequestId     string
 			Identities    []*Identity
 			OIDCProviders []*OIDCProvider
+			URL           string
 		}{
 			ClientId:      clientIdUrl.Host,
 			RequestId:     requestId,
 			Identities:    identities,
 			OIDCProviders: storage.GetOIDCProviders(),
+			URL:           fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "auth.tmpl", data)
@@ -631,6 +637,32 @@ func main() {
 		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=openid email&response_type=code", oidcConfigs[provider.ID].AuthorizationEndpoint, provider.ClientID, callbackUri, requestId)
 
 		http.Redirect(w, r, url, 302)
+	})
+
+	mux.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
+
+		if r.Method != http.MethodPost {
+			w.WriteHeader(405)
+			return
+		}
+
+		r.ParseForm()
+
+		redirect := r.Form.Get("prev_page")
+
+		cookie := &http.Cookie{
+			Name:     "login_key",
+			Value:    "",
+			Secure:   true,
+			HttpOnly: true,
+			MaxAge:   86400 * 365,
+			Path:     "/",
+			SameSite: http.SameSiteLaxMode,
+			//SameSite: http.SameSiteStrictMode,
+		}
+		http.SetCookie(w, cookie)
+
+		http.Redirect(w, r, redirect, 303)
 	})
 
 	server := http.Server{

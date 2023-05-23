@@ -1,6 +1,13 @@
 {{ template "header.tmpl" . }}
 
-    <p>
+    <div class='og-logout-container'>
+      <form action="/logout" method="POST">
+        <input type='hidden' name='prev_page' value='{{.URL}}' required>
+        <button class='og-formbutton' type="submit">Log out</button>
+      </form>
+    </div>
+
+    <p class='og-first-elem'>
       <strong>{{$.ClientId}}</strong> wants to log you in. To approve this
       action, select an identity below.
     </p>
