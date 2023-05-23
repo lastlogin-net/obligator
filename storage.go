@@ -285,6 +285,12 @@ func (s *Storage) GetPendingToken(code string) (*PendingOAuth2Token, error) {
 
 	return token, nil
 }
+func (s *Storage) DeletePendingToken(code string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	delete(s.pendingTokens, code)
+}
 
 func (s *Storage) SetToken(token, identityId string) error {
 	s.mutex.Lock()

@@ -572,6 +572,8 @@ func main() {
 			return
 		}
 
+		storage.DeletePendingToken(code)
+
 		err = storage.SetToken(token.AccessToken, token.IdToken.Subject())
 		if err != nil {
 			w.WriteHeader(400)
