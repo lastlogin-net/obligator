@@ -17,11 +17,19 @@
     </div>
     {{end}}
 
+    <p>
+      You can also add additional identities using one of the following
+      providers:
+    </p>
+
+    {{range $.OIDCProviders}}
     <div>
-      <form class='tn-form' id='login-form' action="/google" method="POST">
+      <form class='tn-form' id='login-form' action="/login-oidc" method="POST">
         <input type="hidden" name="request_id" value="{{$.RequestId}}" required>
-        <button class='button' type="submit">Continue with Google</button>
+        <input type="hidden" name="oidc_provider_id" value="{{.ID}}" required>
+        <button class='button' type="submit">Continue with {{.Name}}</button>
       </form>
     </div>
+    {{end}}
 
 {{ template "footer.tmpl" . }}

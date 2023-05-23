@@ -32,7 +32,16 @@ type Token struct {
 	IdentityId string `json:"identity_id"`
 }
 
+type OIDCProvider struct {
+	Name         string `json:"name"`
+	ID           string `json:"id"`
+	URI          string `json:"uri"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+}
+
 type Storage struct {
+	OIDCProviders []*OIDCProvider       `json:"oidc_providers"`
 	Users         map[string]*User      `json:"users"`
 	Identities    []*Identity           `json:"identities"`
 	LoginData     map[string]*LoginData `json:"login_data"`
@@ -45,6 +54,7 @@ type Storage struct {
 
 func NewFileStorage(path string) (*Storage, error) {
 	s := &Storage{
+		OIDCProviders: []*OIDCProvider{},
 		Users:         make(map[string]*User),
 		Identities:    []*Identity{},
 		LoginData:     make(map[string]*LoginData),
@@ -66,6 +76,26 @@ func NewFileStorage(path string) (*Storage, error) {
 	s.persist()
 
 	return s, nil
+}
+
+func (s *Storage) GetOIDCProviders() []*OIDCProvider {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	return s.OIDCProviders
+}
+
+func (s *Storage) GetOIDCProviderByID(id string) (*OIDCProvider, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for _, provider := range s.OIDCProviders {
+		if provider.ID == id {
+			return provider, nil
+		}
+	}
+
+	return nil, errors.New("No such provider")
 }
 
 func (s *Storage) GetAllIdentities() []*Identity {
