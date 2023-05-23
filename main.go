@@ -136,22 +136,25 @@ func main() {
 
 	oidcConfigs := make(map[string]*OIDCDiscoveryDoc)
 	jwksRefreshers := make(map[string]*jwk.AutoRefresh)
-	for _, oidcProvider := range storage.GetOIDCProviders() {
-		oidcConfigs[oidcProvider.ID], err = GetOidcConfiguration(oidcProvider.URI)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
+	// TODO: This is not thread-safe
+	go func() {
+		for _, oidcProvider := range storage.GetOIDCProviders() {
+			oidcConfigs[oidcProvider.ID], err = GetOidcConfiguration(oidcProvider.URI)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+				os.Exit(1)
+			}
 
-		jwksRefreshers[oidcProvider.ID] = jwk.NewAutoRefresh(ctx)
-		jwksRefreshers[oidcProvider.ID].Configure(oidcConfigs[oidcProvider.ID].JwksUri)
+			jwksRefreshers[oidcProvider.ID] = jwk.NewAutoRefresh(ctx)
+			jwksRefreshers[oidcProvider.ID].Configure(oidcConfigs[oidcProvider.ID].JwksUri)
 
-		_, err = jwksRefreshers[oidcProvider.ID].Refresh(ctx, oidcConfigs[oidcProvider.ID].JwksUri)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
+			_, err = jwksRefreshers[oidcProvider.ID].Refresh(ctx, oidcConfigs[oidcProvider.ID].JwksUri)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+				os.Exit(1)
+			}
 		}
-	}
+	}()
 
 	tmpl, err := template.ParseFS(fs, "templates/*.tmpl")
 	if err != nil {
