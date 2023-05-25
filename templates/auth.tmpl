@@ -8,8 +8,11 @@
     </div>
 
     <p class='og-first-elem'>
-      <strong>{{$.ClientId}}</strong> wants to log you in. To approve this
-      action, select an identity below.
+      <strong>{{$.ClientId}}</strong> wants to log you in.
+
+      {{if $.Identities}}
+      To approve this action, select an identity below.
+      {{end}}
     </p>
 
     {{range $.Identities}}
@@ -22,10 +25,16 @@
     </div>
     {{end}}
 
+    {{if $.Identities}}
     <p>
       You can also add additional identities using one of the following
       providers:
     </p>
+    {{else}}
+    <p>
+      Add an identity using a provider below to get started:
+    </p>
+    {{end}}
 
     <div>
       <form action="/login-email" method="POST">
