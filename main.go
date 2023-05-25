@@ -43,7 +43,7 @@ type OIDCDiscoveryDoc struct {
 }
 
 type OAuth2AuthRequest struct {
-	OwnerId     string `json:"owner_id"`
+	LoginKey    string `json:"login_key"`
 	RawQuery    string `json:"raw_query"`
 	ClientId    string `json:"client_id"`
 	RedirectUri string `json:"redirect_uri"`
@@ -311,61 +311,49 @@ func main() {
 			return
 		}
 
-		var userId string
 		loggedIn := false
+
+		var loginKey string
 
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
-			loginData, err := storage.GetLoginData(loginKeyCookie.Value)
+			loginKey = loginKeyCookie.Value
+			_, err := storage.GetLoginData(loginKey)
 			if err == nil {
-				userId = loginData.OwnerId
 				loggedIn = true
-			}
-		}
-
-		// Login cookie didn't point to a user. See if the provider identity we just received
-		// is associated with an existing user
-		if !loggedIn {
-			allIdentities := storage.GetAllIdentities()
-			for _, ident := range allIdentities {
-				if ident.ProviderId == providerToken.Subject() {
-					userId = ident.OwnerId
-					loggedIn = true
-					break
-				}
 			}
 		}
 
 		// Since no identities exist for the user, create a new user
 		if !loggedIn {
-			userId, err = storage.AddUser()
+			loginKey, err = storage.AddLoginData()
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
 				return
 			}
+
+			cookie := &http.Cookie{
+				Name:     "login_key",
+				Value:    loginKey,
+				Secure:   true,
+				HttpOnly: true,
+				MaxAge:   86400 * 365,
+				Path:     "/",
+				SameSite: http.SameSiteLaxMode,
+				//SameSite: http.SameSiteStrictMode,
+			}
+			http.SetCookie(w, cookie)
 		}
 
-		loginKey, err := storage.AddLoginData(userId)
+		identId, err := storage.EnsureIdentity(providerToken.Subject(), oidcProvider.Name, providerToken.Email())
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
 
-		cookie := &http.Cookie{
-			Name:     "login_key",
-			Value:    loginKey,
-			Secure:   true,
-			HttpOnly: true,
-			MaxAge:   86400 * 365,
-			Path:     "/",
-			SameSite: http.SameSiteLaxMode,
-			//SameSite: http.SameSiteStrictMode,
-		}
-		http.SetCookie(w, cookie)
-
-		storage.AddIdentity(userId, providerToken.Subject(), oidcProvider.Name, providerToken.Email())
+		storage.EnsureLoginMapping(identId, loginKey)
 
 		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
 
@@ -413,17 +401,18 @@ func main() {
 			return
 		}
 
-		userId := ""
+		identities := []*Identity{}
+
+		var loginKey string
+
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
-			loginData, err := storage.GetLoginData(loginKeyCookie.Value)
-			if err == nil {
-				userId = loginData.OwnerId
-			}
+			loginKey = loginKeyCookie.Value
+			identities = storage.GetIdentitiesByLoginKey(loginKey)
 		}
 
 		req := OAuth2AuthRequest{
-			OwnerId:     userId,
+			LoginKey:    loginKey,
 			RawQuery:    r.URL.RawQuery,
 			ClientId:    clientId,
 			RedirectUri: redirectUri,
@@ -438,8 +427,6 @@ func main() {
 			io.WriteString(w, err.Error())
 			return
 		}
-
-		identities := storage.GetIdentitiesByUser(userId)
 
 		data := struct {
 			ClientId      string
@@ -479,14 +466,7 @@ func main() {
 			return
 		}
 
-		loginData, err := storage.GetLoginData(loginKeyCookie.Value)
-		if err != nil {
-			w.WriteHeader(403)
-			io.WriteString(w, "Forbidden")
-			return
-		}
-
-		userId := loginData.OwnerId
+		loginKey := loginKeyCookie.Value
 
 		requestId := r.Form.Get("request_id")
 
@@ -497,7 +477,7 @@ func main() {
 			return
 		}
 
-		if request.OwnerId != userId {
+		if request.LoginKey != loginKey {
 			w.WriteHeader(403)
 			io.WriteString(w, "Not your request")
 			return
@@ -512,9 +492,17 @@ func main() {
 			return
 		}
 
-		if identity.OwnerId != userId {
+		owner := false
+		for _, mapping := range storage.GetLoginMap() {
+			if mapping.LoginKey == loginKey && mapping.IdentityId == identId {
+				owner = true
+				break
+			}
+		}
+
+		if !owner {
 			w.WriteHeader(403)
-			io.WriteString(w, "User doesn't own identity")
+			io.WriteString(w, "You don't have permissions for this identity")
 			return
 		}
 
@@ -538,7 +526,6 @@ func main() {
 		}
 
 		oauth2Token := &PendingOAuth2Token{
-			OwnerId: userId,
 			IdToken: token,
 		}
 
@@ -772,47 +759,47 @@ func main() {
 			return
 		}
 
-		var userId string
+		var loginKey string
 		loggedIn := false
 
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
-			loginData, err := storage.GetLoginData(loginKeyCookie.Value)
+			loginKey = loginKeyCookie.Value
+			_, err := storage.GetLoginData(loginKey)
 			if err == nil {
-				userId = loginData.OwnerId
 				loggedIn = true
 			}
 		}
 
 		if !loggedIn {
-			userId, err = storage.AddUser()
+			loginKey, err = storage.AddLoginData()
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
 				return
 			}
+
+			cookie := &http.Cookie{
+				Name:     "login_key",
+				Value:    loginKey,
+				Secure:   true,
+				HttpOnly: true,
+				MaxAge:   86400 * 365,
+				Path:     "/",
+				SameSite: http.SameSiteLaxMode,
+				//SameSite: http.SameSiteStrictMode,
+			}
+			http.SetCookie(w, cookie)
 		}
 
-		loginKey, err := storage.AddLoginData(userId)
+		identId, err := storage.EnsureIdentity(email, "Email", email)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
 
-		cookie := &http.Cookie{
-			Name:     "login_key",
-			Value:    loginKey,
-			Secure:   true,
-			HttpOnly: true,
-			MaxAge:   86400 * 365,
-			Path:     "/",
-			SameSite: http.SameSiteLaxMode,
-			//SameSite: http.SameSiteStrictMode,
-		}
-		http.SetCookie(w, cookie)
-
-		storage.AddIdentity(userId, email, "Email", email)
+		storage.EnsureLoginMapping(identId, loginKey)
 
 		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
 

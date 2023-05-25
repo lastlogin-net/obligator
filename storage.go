@@ -10,23 +10,17 @@ import (
 	"github.com/lestrrat-go/jwx/jwt/openid"
 )
 
-type User struct {
-}
-
 type Identity struct {
 	Id           string `json:"id"`
 	ProviderName string `json:"provider_name"`
 	ProviderId   string `json:"provider_id"`
-	OwnerId      string `json:"owner_id"`
 	Email        string `json:"email"`
 }
 
 type LoginData struct {
-	OwnerId string `json:"owner_id"`
 }
 
 type PendingOAuth2Token struct {
-	OwnerId     string       `json:"owner_id"`
 	AccessToken string       `json:"access_token"`
 	IdToken     openid.Token `json:"id_token"`
 }
@@ -43,15 +37,20 @@ type OIDCProvider struct {
 	ClientSecret string `json:"client_secret"`
 }
 
+type LoginMapping struct {
+	IdentityId string
+	LoginKey   string
+}
+
 type Storage struct {
 	RootUri       string                `json:"root_uri"`
 	OIDCProviders []*OIDCProvider       `json:"oidc_providers"`
 	Smtp          *SmtpConfig           `json:"smtp"`
-	Users         map[string]*User      `json:"users"`
-	Identities    []*Identity           `json:"identities"`
 	Jwks          jwk.Set               `json:"jwks"`
+	Identities    []*Identity           `json:"identities"`
 	LoginData     map[string]*LoginData `json:"login_data"`
 	Tokens        map[string]*Token     `json:"tokens"`
+	LoginMap      []*LoginMapping       `json:"login_map"`
 	requests      map[string]*OAuth2AuthRequest
 	pendingTokens map[string]*PendingOAuth2Token
 	mutex         *sync.Mutex
@@ -60,12 +59,12 @@ type Storage struct {
 
 func NewFileStorage(path string) (*Storage, error) {
 	s := &Storage{
-		Jwks:          jwk.NewSet(),
 		OIDCProviders: []*OIDCProvider{},
-		Users:         make(map[string]*User),
+		Jwks:          jwk.NewSet(),
 		Identities:    []*Identity{},
 		LoginData:     make(map[string]*LoginData),
 		Tokens:        make(map[string]*Token),
+		LoginMap:      []*LoginMapping{},
 		requests:      make(map[string]*OAuth2AuthRequest),
 		pendingTokens: make(map[string]*PendingOAuth2Token),
 		mutex:         &sync.Mutex{},
@@ -89,6 +88,33 @@ func (s *Storage) GetRootUri() string {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	return s.RootUri
+}
+
+func (s *Storage) GetLoginMap() []*LoginMapping {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	return s.LoginMap
+}
+
+func (s *Storage) EnsureLoginMapping(identityId, loginKey string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for _, mapping := range s.LoginMap {
+		if mapping.IdentityId == identityId && mapping.LoginKey == loginKey {
+			return
+		}
+	}
+
+	newMapping := &LoginMapping{
+		IdentityId: identityId,
+		LoginKey:   loginKey,
+	}
+
+	s.LoginMap = append(s.LoginMap, newMapping)
+
+	s.persist()
 }
 
 func (s *Storage) AddJWKKey(key jwk.Key) {
@@ -131,23 +157,16 @@ func (s *Storage) GetAllIdentities() []*Identity {
 	return s.Identities
 }
 
-func (s *Storage) AddLoginData(userId string) (string, error) {
+func (s *Storage) AddLoginData() (string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-
-	_, ok := s.Users[userId]
-	if !ok {
-		return "", errors.New("No such user. Could not login")
-	}
 
 	id, err := genRandomKey()
 	if err != nil {
 		return "", err
 	}
 
-	s.LoginData[id] = &LoginData{
-		OwnerId: userId,
-	}
+	s.LoginData[id] = &LoginData{}
 
 	s.persist()
 
@@ -166,29 +185,13 @@ func (s *Storage) GetLoginData(loginKey string) (*LoginData, error) {
 	return data, nil
 }
 
-func (s *Storage) AddUser() (string, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	id, err := genRandomKey()
-	if err != nil {
-		return "", err
-	}
-
-	s.Users[id] = &User{}
-
-	s.persist()
-
-	return id, nil
-}
-
-func (s *Storage) AddIdentity(ownerId, providerId, providerName, email string) (string, error) {
+func (s *Storage) EnsureIdentity(providerId, providerName, email string) (string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	for _, ident := range s.Identities {
-		if ident.OwnerId == ownerId && ident.ProviderId == providerId {
-			return "", errors.New("Identity already exists")
+		if ident.ProviderName == providerName && ident.ProviderId == providerId {
+			return ident.Id, nil
 		}
 	}
 
@@ -201,7 +204,6 @@ func (s *Storage) AddIdentity(ownerId, providerId, providerName, email string) (
 		Id:           id,
 		ProviderName: providerName,
 		ProviderId:   providerId,
-		OwnerId:      ownerId,
 		Email:        email,
 	}
 
@@ -216,6 +218,10 @@ func (s *Storage) GetIdentityById(identId string) (*Identity, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	return s.getIdentityById(identId)
+}
+func (s *Storage) getIdentityById(identId string) (*Identity, error) {
+
 	for _, ident := range s.Identities {
 		if ident.Id == identId {
 			return ident, nil
@@ -225,15 +231,20 @@ func (s *Storage) GetIdentityById(identId string) (*Identity, error) {
 	return nil, errors.New("Identity not found")
 }
 
-func (s *Storage) GetIdentitiesByUser(userId string) []*Identity {
+func (s *Storage) GetIdentitiesByLoginKey(loginKey string) []*Identity {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	idents := []*Identity{}
 
-	for _, ident := range s.Identities {
-		if ident.OwnerId == userId {
-			idents = append(idents, ident)
+	for _, mapping := range s.LoginMap {
+		if mapping.LoginKey == loginKey {
+			ident, err := s.getIdentityById(mapping.IdentityId)
+			if err != nil {
+				continue
+			} else {
+				idents = append(idents, ident)
+			}
 		}
 	}
 
