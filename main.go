@@ -43,14 +43,15 @@ type OIDCDiscoveryDoc struct {
 }
 
 type OAuth2AuthRequest struct {
-	LoginKey    string `json:"login_key"`
-	RawQuery    string `json:"raw_query"`
-	ClientId    string `json:"client_id"`
-	RedirectUri string `json:"redirect_uri"`
-	State       string `json:"state"`
-	Scope       string `json:"scope"`
-	Provider    string `json:"provider"`
-	Nonce       string `json:"nonce"`
+	LoginKey         string `json:"login_key"`
+	RawQuery         string `json:"raw_query"`
+	ClientId         string `json:"client_id"`
+	RedirectUri      string `json:"redirect_uri"`
+	State            string `json:"state"`
+	Scope            string `json:"scope"`
+	Provider         string `json:"provider"`
+	Nonce            string `json:"nonce"`
+	PKCECodeVerifier string `json:"pkce_code_verifier"`
 }
 
 type Oauth2TokenResponse struct {
@@ -643,8 +644,6 @@ func main() {
 
 		request.Provider = provider.ID
 
-		storage.SetRequest(requestId, request)
-
 		scope := "openid email"
 		if provider.Scope != "" {
 			scope = provider.Scope
@@ -657,8 +656,19 @@ func main() {
 			authURL = provider.AuthorizationURI
 		}
 
-		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code",
-			authURL, provider.ClientID, callbackUri, requestId, scope)
+		pkceCodeChallenge, pkceCodeVerifier, err := GeneratePKCEData()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		request.PKCECodeVerifier = pkceCodeVerifier
+
+		storage.SetRequest(requestId, request)
+
+		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s",
+			authURL, provider.ClientID, callbackUri, requestId, scope, pkceCodeChallenge)
 
 		http.Redirect(w, r, url, 302)
 	})
@@ -690,6 +700,7 @@ func main() {
 		body.Set("client_secret", oauth2Provider.ClientSecret)
 		body.Set("redirect_uri", callbackUri)
 		body.Set("grant_type", "authorization_code")
+		body.Set("code_verifier", request.PKCECodeVerifier)
 
 		var tokenEndpoint string
 		if oauth2Provider.OpenIDConnect {
