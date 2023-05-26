@@ -140,6 +140,9 @@ func main() {
 	// TODO: This is not thread-safe
 	go func() {
 		for _, oidcProvider := range storage.GetOIDCProviders() {
+			if !oidcProvider.OpenIDConnect {
+				continue
+			}
 			oidcConfigs[oidcProvider.ID], err = GetOidcConfiguration(oidcProvider.URI)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err.Error())
@@ -642,7 +645,20 @@ func main() {
 
 		storage.SetRequest(requestId, request)
 
-		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=openid email&response_type=code", oidcConfigs[provider.ID].AuthorizationEndpoint, provider.ClientID, callbackUri, requestId)
+		scope := "openid email"
+		if provider.Scope != "" {
+			scope = provider.Scope
+		}
+
+		var authURL string
+		if provider.OpenIDConnect {
+			authURL = oidcConfigs[provider.ID].AuthorizationEndpoint
+		} else {
+			authURL = provider.AuthorizationURI
+		}
+
+		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code",
+			authURL, provider.ClientID, callbackUri, requestId, scope)
 
 		http.Redirect(w, r, url, 302)
 	})
@@ -675,8 +691,20 @@ func main() {
 		body.Set("redirect_uri", callbackUri)
 		body.Set("grant_type", "authorization_code")
 
+		var tokenEndpoint string
+		if oidcProvider.OpenIDConnect {
+			if oidcProvider.ID == "facebook" {
+				// Facebook strangely appears to implement all of OIDC except the token endpoint...
+				tokenEndpoint = oidcProvider.TokenURI
+			} else {
+				tokenEndpoint = oidcConfigs[oidcProvider.ID].TokenEndpoint
+			}
+		} else {
+			tokenEndpoint = oidcProvider.TokenURI
+		}
+
 		upstreamReq, err := http.NewRequest(http.MethodPost,
-			oidcConfigs[oidcProvider.ID].TokenEndpoint,
+			tokenEndpoint,
 			strings.NewReader(body.Encode()))
 		if err != nil {
 			w.WriteHeader(500)
@@ -685,6 +713,7 @@ func main() {
 		}
 
 		upstreamReq.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+		upstreamReq.Header.Add("Accept", "application/json")
 
 		resp, err := httpClient.Do(upstreamReq)
 		if err != nil {
@@ -710,25 +739,35 @@ func main() {
 			return
 		}
 
-		keyset, err := jwksRefreshers[oidcProvider.ID].Fetch(ctx, oidcConfigs[oidcProvider.ID].JwksUri)
-		if err != nil {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, err.Error())
-			return
-		}
+		var providerIdentityId string
+		var email string
 
-		providerOauth2Token, err := jwt.Parse([]byte(tokenRes.IdToken), jwt.WithKeySet(keyset), jwt.WithToken(openid.New()))
-		if err != nil {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, err.Error())
-			return
-		}
+		if oidcProvider.OpenIDConnect {
+			keyset, err := jwksRefreshers[oidcProvider.ID].Fetch(ctx, oidcConfigs[oidcProvider.ID].JwksUri)
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
 
-		providerToken, ok := providerOauth2Token.(openid.Token)
-		if !ok {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "Not a valid OpenId Connect token")
-			return
+			providerOauth2Token, err := jwt.Parse([]byte(tokenRes.IdToken), jwt.WithKeySet(keyset), jwt.WithToken(openid.New()))
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+
+			providerToken, ok := providerOauth2Token.(openid.Token)
+			if !ok {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, "Not a valid OpenId Connect token")
+				return
+			}
+
+			providerIdentityId = providerToken.Subject()
+			email = providerToken.Email()
+		} else {
+			providerIdentityId, email, _ = GetProfile(oidcProvider, tokenRes.AccessToken)
 		}
 
 		loggedIn := false
@@ -766,7 +805,7 @@ func main() {
 			http.SetCookie(w, cookie)
 		}
 
-		identId, err := storage.EnsureIdentity(providerToken.Subject(), oidcProvider.Name, providerToken.Email())
+		identId, err := storage.EnsureIdentity(providerIdentityId, oidcProvider.Name, email)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -889,4 +928,51 @@ func GenerateJWK() (jwk.Key, error) {
 	//return keyset, nil
 
 	return key, nil
+}
+
+type GitHubEmailResponse []*GitHubEmail
+
+type GitHubEmail struct {
+	Email    string `json:"email"`
+	Primary  bool   `json:"primary"`
+	Verified bool   `json:"verified"`
+}
+
+func GetProfile(provider *OIDCProvider, accessToken string) (string, string, error) {
+	httpClient := &http.Client{}
+
+	switch provider.ID {
+	case "github":
+		req, err := http.NewRequest(http.MethodGet, "https://api.github.com/user/emails", nil)
+		if err != nil {
+			return "", "", err
+		}
+
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return "", "", err
+		}
+
+		if resp.StatusCode != 200 {
+			return "", "", errors.New("Bad status getting profile")
+		}
+
+		var profileResponse GitHubEmailResponse
+
+		err = json.NewDecoder(resp.Body).Decode(&profileResponse)
+		if err != nil {
+			return "", "", err
+		}
+
+		for _, email := range profileResponse {
+			if email.Primary {
+				return provider.URI, email.Email, nil
+			}
+		}
+
+	}
+
+	return "", "", errors.New("Unknown GetProfile error")
 }

@@ -30,11 +30,15 @@ type Token struct {
 }
 
 type OIDCProvider struct {
-	Name         string `json:"name"`
-	ID           string `json:"id"`
-	URI          string `json:"uri"`
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
+	Name             string `json:"name"`
+	ID               string `json:"id"`
+	URI              string `json:"uri"`
+	ClientID         string `json:"client_id"`
+	ClientSecret     string `json:"client_secret"`
+	AuthorizationURI string `json:"authorization_uri,omitempty"`
+	TokenURI         string `json:"token_uri,omitempty"`
+	Scope            string `json:"scope,omitempty"`
+	OpenIDConnect    bool   `json:"openid_connect"`
 }
 
 type LoginMapping struct {
