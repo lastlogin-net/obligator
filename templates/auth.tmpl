@@ -43,11 +43,11 @@
       </form>
     </div>
 
-    {{range $.OIDCProviders}}
+    {{range $.OAuth2Providers}}
     <div>
-      <form action="/login-oidc" method="POST">
+      <form action="/login-oauth2" method="POST">
         <input type="hidden" name="request_id" value="{{$.RequestId}}" required>
-        <input type="hidden" name="oidc_provider_id" value="{{.ID}}" required>
+        <input type="hidden" name="oauth2_provider_id" value="{{.ID}}" required>
         <button class='og-formbutton' type="submit">Add identity with {{.Name}}</button>
       </form>
     </div>

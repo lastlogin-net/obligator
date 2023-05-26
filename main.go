@@ -139,7 +139,7 @@ func main() {
 	jwksRefreshers := make(map[string]*jwk.AutoRefresh)
 	// TODO: This is not thread-safe
 	go func() {
-		for _, oidcProvider := range storage.GetOIDCProviders() {
+		for _, oidcProvider := range storage.GetOAuth2Providers() {
 			if !oidcProvider.OpenIDConnect {
 				continue
 			}
@@ -299,17 +299,17 @@ func main() {
 		}
 
 		data := struct {
-			ClientId      string
-			RequestId     string
-			Identities    []*Identity
-			OIDCProviders []*OIDCProvider
-			URL           string
+			ClientId        string
+			RequestId       string
+			Identities      []*Identity
+			OAuth2Providers []*OAuth2Provider
+			URL             string
 		}{
-			ClientId:      clientIdUrl.Host,
-			RequestId:     requestId,
-			Identities:    identities,
-			OIDCProviders: storage.GetOIDCProviders(),
-			URL:           fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
+			ClientId:        clientIdUrl.Host,
+			RequestId:       requestId,
+			Identities:      identities,
+			OAuth2Providers: storage.GetOAuth2Providers(),
+			URL:             fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "auth.tmpl", data)
@@ -619,15 +619,15 @@ func main() {
 		http.Redirect(w, r, redirUrl, 302)
 	})
 
-	mux.HandleFunc("/login-oidc", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/login-oauth2", func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
 
 		requestId := r.Form.Get("request_id")
 
-		oidcProviderId := r.Form.Get("oidc_provider_id")
+		oauth2ProviderId := r.Form.Get("oauth2_provider_id")
 
-		provider, err := storage.GetOIDCProviderByID(oidcProviderId)
+		provider, err := storage.GetOAuth2ProviderByID(oauth2ProviderId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -675,7 +675,7 @@ func main() {
 			return
 		}
 
-		oidcProvider, err := storage.GetOIDCProviderByID(request.Provider)
+		oauth2Provider, err := storage.GetOAuth2ProviderByID(request.Provider)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -686,21 +686,21 @@ func main() {
 
 		body := url.Values{}
 		body.Set("code", providerCode)
-		body.Set("client_id", oidcProvider.ClientID)
-		body.Set("client_secret", oidcProvider.ClientSecret)
+		body.Set("client_id", oauth2Provider.ClientID)
+		body.Set("client_secret", oauth2Provider.ClientSecret)
 		body.Set("redirect_uri", callbackUri)
 		body.Set("grant_type", "authorization_code")
 
 		var tokenEndpoint string
-		if oidcProvider.OpenIDConnect {
-			if oidcProvider.ID == "facebook" {
+		if oauth2Provider.OpenIDConnect {
+			if oauth2Provider.ID == "facebook" {
 				// Facebook strangely appears to implement all of OIDC except the token endpoint...
-				tokenEndpoint = oidcProvider.TokenURI
+				tokenEndpoint = oauth2Provider.TokenURI
 			} else {
-				tokenEndpoint = oidcConfigs[oidcProvider.ID].TokenEndpoint
+				tokenEndpoint = oidcConfigs[oauth2Provider.ID].TokenEndpoint
 			}
 		} else {
-			tokenEndpoint = oidcProvider.TokenURI
+			tokenEndpoint = oauth2Provider.TokenURI
 		}
 
 		upstreamReq, err := http.NewRequest(http.MethodPost,
@@ -742,8 +742,8 @@ func main() {
 		var providerIdentityId string
 		var email string
 
-		if oidcProvider.OpenIDConnect {
-			keyset, err := jwksRefreshers[oidcProvider.ID].Fetch(ctx, oidcConfigs[oidcProvider.ID].JwksUri)
+		if oauth2Provider.OpenIDConnect {
+			keyset, err := jwksRefreshers[oauth2Provider.ID].Fetch(ctx, oidcConfigs[oauth2Provider.ID].JwksUri)
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
@@ -767,7 +767,7 @@ func main() {
 			providerIdentityId = providerToken.Subject()
 			email = providerToken.Email()
 		} else {
-			providerIdentityId, email, _ = GetProfile(oidcProvider, tokenRes.AccessToken)
+			providerIdentityId, email, _ = GetProfile(oauth2Provider, tokenRes.AccessToken)
 		}
 
 		loggedIn := false
@@ -805,7 +805,7 @@ func main() {
 			http.SetCookie(w, cookie)
 		}
 
-		identId, err := storage.EnsureIdentity(providerIdentityId, oidcProvider.Name, email)
+		identId, err := storage.EnsureIdentity(providerIdentityId, oauth2Provider.Name, email)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -938,7 +938,7 @@ type GitHubEmail struct {
 	Verified bool   `json:"verified"`
 }
 
-func GetProfile(provider *OIDCProvider, accessToken string) (string, string, error) {
+func GetProfile(provider *OAuth2Provider, accessToken string) (string, string, error) {
 	httpClient := &http.Client{}
 
 	switch provider.ID {

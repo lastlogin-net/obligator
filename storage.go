@@ -29,7 +29,7 @@ type Token struct {
 	IdentityId string `json:"identity_id"`
 }
 
-type OIDCProvider struct {
+type OAuth2Provider struct {
 	Name             string `json:"name"`
 	ID               string `json:"id"`
 	URI              string `json:"uri"`
@@ -42,37 +42,37 @@ type OIDCProvider struct {
 }
 
 type LoginMapping struct {
-	IdentityId string
-	LoginKey   string
+	IdentityId string `json:"identity_id"`
+	LoginKey   string `json:"login_key"`
 }
 
 type Storage struct {
-	RootUri       string                `json:"root_uri"`
-	OIDCProviders []*OIDCProvider       `json:"oidc_providers"`
-	Smtp          *SmtpConfig           `json:"smtp"`
-	Jwks          jwk.Set               `json:"jwks"`
-	Identities    []*Identity           `json:"identities"`
-	LoginData     map[string]*LoginData `json:"login_data"`
-	Tokens        map[string]*Token     `json:"tokens"`
-	LoginMap      []*LoginMapping       `json:"login_map"`
-	requests      map[string]*OAuth2AuthRequest
-	pendingTokens map[string]*PendingOAuth2Token
-	mutex         *sync.Mutex
-	path          string
+	RootUri         string                `json:"root_uri"`
+	OAuth2Providers []*OAuth2Provider     `json:"oauth2_providers"`
+	Smtp            *SmtpConfig           `json:"smtp"`
+	Jwks            jwk.Set               `json:"jwks"`
+	Identities      []*Identity           `json:"identities"`
+	LoginData       map[string]*LoginData `json:"login_data"`
+	Tokens          map[string]*Token     `json:"tokens"`
+	LoginMap        []*LoginMapping       `json:"login_map"`
+	requests        map[string]*OAuth2AuthRequest
+	pendingTokens   map[string]*PendingOAuth2Token
+	mutex           *sync.Mutex
+	path            string
 }
 
 func NewFileStorage(path string) (*Storage, error) {
 	s := &Storage{
-		OIDCProviders: []*OIDCProvider{},
-		Jwks:          jwk.NewSet(),
-		Identities:    []*Identity{},
-		LoginData:     make(map[string]*LoginData),
-		Tokens:        make(map[string]*Token),
-		LoginMap:      []*LoginMapping{},
-		requests:      make(map[string]*OAuth2AuthRequest),
-		pendingTokens: make(map[string]*PendingOAuth2Token),
-		mutex:         &sync.Mutex{},
-		path:          path,
+		OAuth2Providers: []*OAuth2Provider{},
+		Jwks:            jwk.NewSet(),
+		Identities:      []*Identity{},
+		LoginData:       make(map[string]*LoginData),
+		Tokens:          make(map[string]*Token),
+		LoginMap:        []*LoginMapping{},
+		requests:        make(map[string]*OAuth2AuthRequest),
+		pendingTokens:   make(map[string]*PendingOAuth2Token),
+		mutex:           &sync.Mutex{},
+		path:            path,
 	}
 
 	dbJson, err := os.ReadFile(path)
@@ -134,18 +134,18 @@ func (s *Storage) GetJWKSet() jwk.Set {
 	return s.Jwks
 }
 
-func (s *Storage) GetOIDCProviders() []*OIDCProvider {
+func (s *Storage) GetOAuth2Providers() []*OAuth2Provider {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	return s.OIDCProviders
+	return s.OAuth2Providers
 }
 
-func (s *Storage) GetOIDCProviderByID(id string) (*OIDCProvider, error) {
+func (s *Storage) GetOAuth2ProviderByID(id string) (*OAuth2Provider, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	for _, provider := range s.OIDCProviders {
+	for _, provider := range s.OAuth2Providers {
 		if provider.ID == id {
 			return provider, nil
 		}
