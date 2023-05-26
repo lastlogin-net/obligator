@@ -839,6 +839,12 @@ func main() {
 
 		r.ParseForm()
 
+		loginKeyCookie, err := r.Cookie("login_key")
+		if err == nil {
+			loginKey := loginKeyCookie.Value
+			storage.DeleteLoginData(loginKey)
+		}
+
 		redirect := r.Form.Get("prev_page")
 
 		cookie := &http.Cookie{

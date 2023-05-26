@@ -177,6 +177,24 @@ func (s *Storage) AddLoginData() (string, error) {
 	return id, nil
 }
 
+func (s *Storage) DeleteLoginData(loginKey string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	newLoginMap := []*LoginMapping{}
+
+	for _, mapping := range s.LoginMap {
+		if mapping.LoginKey != loginKey {
+			newLoginMap = append(newLoginMap, mapping)
+		}
+	}
+
+	delete(s.LoginData, loginKey)
+	s.LoginMap = newLoginMap
+
+	s.persist()
+}
+
 func (s *Storage) GetLoginData(loginKey string) (*LoginData, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
