@@ -227,139 +227,6 @@ func main() {
 		enc.Encode(userResponse)
 	})
 
-	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
-
-		r.ParseForm()
-
-		requestId := r.Form.Get("state")
-		request, err := storage.GetRequest(requestId)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		oidcProvider, err := storage.GetOIDCProviderByID(request.Provider)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		providerCode := r.Form.Get("code")
-
-		body := url.Values{}
-		body.Set("code", providerCode)
-		body.Set("client_id", oidcProvider.ClientID)
-		body.Set("client_secret", oidcProvider.ClientSecret)
-		body.Set("redirect_uri", callbackUri)
-		body.Set("grant_type", "authorization_code")
-
-		upstreamReq, err := http.NewRequest(http.MethodPost,
-			oidcConfigs[oidcProvider.ID].TokenEndpoint,
-			strings.NewReader(body.Encode()))
-		if err != nil {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "Creating request failed")
-			return
-		}
-
-		upstreamReq.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
-		resp, err := httpClient.Do(upstreamReq)
-		if err != nil {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "Doing request failed")
-			return
-		}
-
-		if resp.StatusCode != 200 {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "Request failed with invalid status")
-			b, _ := io.ReadAll(resp.Body)
-			fmt.Println(string(b))
-			return
-		}
-
-		var tokenRes Oauth2TokenResponse
-
-		err = json.NewDecoder(resp.Body).Decode(&tokenRes)
-		if err != nil {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, err.Error())
-			return
-		}
-
-		keyset, err := jwksRefreshers[oidcProvider.ID].Fetch(ctx, oidcConfigs[oidcProvider.ID].JwksUri)
-		if err != nil {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, err.Error())
-			return
-		}
-
-		providerOauth2Token, err := jwt.Parse([]byte(tokenRes.IdToken), jwt.WithKeySet(keyset), jwt.WithToken(openid.New()))
-		if err != nil {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, err.Error())
-			return
-		}
-
-		providerToken, ok := providerOauth2Token.(openid.Token)
-		if !ok {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "Not a valid OpenId Connect token")
-			return
-		}
-
-		loggedIn := false
-
-		var loginKey string
-
-		loginKeyCookie, err := r.Cookie("login_key")
-		if err == nil {
-			loginKey = loginKeyCookie.Value
-			_, err := storage.GetLoginData(loginKey)
-			if err == nil {
-				loggedIn = true
-			}
-		}
-
-		// Since no identities exist for the user, create a new user
-		if !loggedIn {
-			loginKey, err = storage.AddLoginData()
-			if err != nil {
-				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, err.Error())
-				return
-			}
-
-			cookie := &http.Cookie{
-				Name:     "login_key",
-				Value:    loginKey,
-				Secure:   true,
-				HttpOnly: true,
-				MaxAge:   86400 * 365,
-				Path:     "/",
-				SameSite: http.SameSiteLaxMode,
-				//SameSite: http.SameSiteStrictMode,
-			}
-			http.SetCookie(w, cookie)
-		}
-
-		identId, err := storage.EnsureIdentity(providerToken.Subject(), oidcProvider.Name, providerToken.Email())
-		if err != nil {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, err.Error())
-			return
-		}
-
-		storage.EnsureLoginMapping(identId, loginKey)
-
-		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
-
-		http.Redirect(w, r, redirUrl, 302)
-	})
-
 	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
@@ -598,63 +465,6 @@ func main() {
 		enc.Encode(tokenRes)
 	})
 
-	mux.HandleFunc("/login-oidc", func(w http.ResponseWriter, r *http.Request) {
-
-		r.ParseForm()
-
-		requestId := r.Form.Get("request_id")
-
-		oidcProviderId := r.Form.Get("oidc_provider_id")
-
-		provider, err := storage.GetOIDCProviderByID(oidcProviderId)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		request, err := storage.GetRequest(requestId)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		request.Provider = provider.ID
-
-		storage.SetRequest(requestId, request)
-
-		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=openid email&response_type=code", oidcConfigs[provider.ID].AuthorizationEndpoint, provider.ClientID, callbackUri, requestId)
-
-		http.Redirect(w, r, url, 302)
-	})
-
-	mux.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
-
-		if r.Method != http.MethodPost {
-			w.WriteHeader(405)
-			return
-		}
-
-		r.ParseForm()
-
-		redirect := r.Form.Get("prev_page")
-
-		cookie := &http.Cookie{
-			Name:     "login_key",
-			Value:    "",
-			Secure:   true,
-			HttpOnly: true,
-			MaxAge:   86400 * 365,
-			Path:     "/",
-			SameSite: http.SameSiteLaxMode,
-			//SameSite: http.SameSiteStrictMode,
-		}
-		http.SetCookie(w, cookie)
-
-		http.Redirect(w, r, redirect, 303)
-	})
-
 	mux.HandleFunc("/login-email", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 
@@ -804,6 +614,196 @@ func main() {
 		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
 
 		http.Redirect(w, r, redirUrl, 302)
+	})
+
+	mux.HandleFunc("/login-oidc", func(w http.ResponseWriter, r *http.Request) {
+
+		r.ParseForm()
+
+		requestId := r.Form.Get("request_id")
+
+		oidcProviderId := r.Form.Get("oidc_provider_id")
+
+		provider, err := storage.GetOIDCProviderByID(oidcProviderId)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		request, err := storage.GetRequest(requestId)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		request.Provider = provider.ID
+
+		storage.SetRequest(requestId, request)
+
+		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=openid email&response_type=code", oidcConfigs[provider.ID].AuthorizationEndpoint, provider.ClientID, callbackUri, requestId)
+
+		http.Redirect(w, r, url, 302)
+	})
+
+	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+
+		r.ParseForm()
+
+		requestId := r.Form.Get("state")
+		request, err := storage.GetRequest(requestId)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		oidcProvider, err := storage.GetOIDCProviderByID(request.Provider)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		providerCode := r.Form.Get("code")
+
+		body := url.Values{}
+		body.Set("code", providerCode)
+		body.Set("client_id", oidcProvider.ClientID)
+		body.Set("client_secret", oidcProvider.ClientSecret)
+		body.Set("redirect_uri", callbackUri)
+		body.Set("grant_type", "authorization_code")
+
+		upstreamReq, err := http.NewRequest(http.MethodPost,
+			oidcConfigs[oidcProvider.ID].TokenEndpoint,
+			strings.NewReader(body.Encode()))
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "Creating request failed")
+			return
+		}
+
+		upstreamReq.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err := httpClient.Do(upstreamReq)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "Doing request failed")
+			return
+		}
+
+		if resp.StatusCode != 200 {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "Request failed with invalid status")
+			b, _ := io.ReadAll(resp.Body)
+			fmt.Println(string(b))
+			return
+		}
+
+		var tokenRes Oauth2TokenResponse
+
+		err = json.NewDecoder(resp.Body).Decode(&tokenRes)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		keyset, err := jwksRefreshers[oidcProvider.ID].Fetch(ctx, oidcConfigs[oidcProvider.ID].JwksUri)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		providerOauth2Token, err := jwt.Parse([]byte(tokenRes.IdToken), jwt.WithKeySet(keyset), jwt.WithToken(openid.New()))
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		providerToken, ok := providerOauth2Token.(openid.Token)
+		if !ok {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "Not a valid OpenId Connect token")
+			return
+		}
+
+		loggedIn := false
+
+		var loginKey string
+
+		loginKeyCookie, err := r.Cookie("login_key")
+		if err == nil {
+			loginKey = loginKeyCookie.Value
+			_, err := storage.GetLoginData(loginKey)
+			if err == nil {
+				loggedIn = true
+			}
+		}
+
+		// Since no identities exist for the user, create a new user
+		if !loggedIn {
+			loginKey, err = storage.AddLoginData()
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+
+			cookie := &http.Cookie{
+				Name:     "login_key",
+				Value:    loginKey,
+				Secure:   true,
+				HttpOnly: true,
+				MaxAge:   86400 * 365,
+				Path:     "/",
+				SameSite: http.SameSiteLaxMode,
+				//SameSite: http.SameSiteStrictMode,
+			}
+			http.SetCookie(w, cookie)
+		}
+
+		identId, err := storage.EnsureIdentity(providerToken.Subject(), oidcProvider.Name, providerToken.Email())
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		storage.EnsureLoginMapping(identId, loginKey)
+
+		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
+
+		http.Redirect(w, r, redirUrl, 302)
+	})
+
+	mux.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
+
+		if r.Method != http.MethodPost {
+			w.WriteHeader(405)
+			return
+		}
+
+		r.ParseForm()
+
+		redirect := r.Form.Get("prev_page")
+
+		cookie := &http.Cookie{
+			Name:     "login_key",
+			Value:    "",
+			Secure:   true,
+			HttpOnly: true,
+			MaxAge:   86400 * 365,
+			Path:     "/",
+			SameSite: http.SameSiteLaxMode,
+			//SameSite: http.SameSiteStrictMode,
+		}
+		http.SetCookie(w, cookie)
+
+		http.Redirect(w, r, redirect, 303)
 	})
 
 	server := http.Server{
