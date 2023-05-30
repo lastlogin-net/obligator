@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/lestrrat-go/jwx/jwk"
 	"github.com/lestrrat-go/jwx/jwt/openid"
@@ -18,6 +19,7 @@ type Identity struct {
 }
 
 type LoginData struct {
+	Timestamp string `json:"timestamp"`
 }
 
 type PendingOAuth2Token struct {
@@ -172,7 +174,11 @@ func (s *Storage) AddLoginData() (string, error) {
 
 	loginKeyHash := Hash(loginKey)
 
-	s.LoginData[loginKeyHash] = &LoginData{}
+	timestamp := time.Now().Format(time.RFC3339)
+
+	s.LoginData[loginKeyHash] = &LoginData{
+		Timestamp: timestamp,
+	}
 
 	s.persist()
 
