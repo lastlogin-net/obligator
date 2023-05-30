@@ -274,6 +274,14 @@ func main() {
 
 		state := r.Form.Get("state")
 
+		promptParam := r.Form.Get("prompt")
+		if promptParam == "none" {
+			errUrl := fmt.Sprintf("%s?error=interaction_required&state=%s",
+				redirectUri, state)
+			http.Redirect(w, r, errUrl, 302)
+			return
+		}
+
 		responseType := r.Form.Get("response_type")
 		if responseType == "" {
 			errUrl := fmt.Sprintf("%s?error=unsupported_response_type&state=%s",
