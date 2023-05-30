@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -914,24 +913,6 @@ func GetOidcConfiguration(baseUrl string) (*OIDCDiscoveryDoc, error) {
 	}
 
 	return &doc, nil
-}
-
-func printJson(data interface{}) {
-	d, _ := json.MarshalIndent(data, "", "  ")
-	fmt.Println(string(d))
-}
-
-func genRandomKey() (string, error) {
-	const chars string = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	id := ""
-	for i := 0; i < 32; i++ {
-		randIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
-		if err != nil {
-			return "", err
-		}
-		id += string(chars[randIndex.Int64()])
-	}
-	return id, nil
 }
 
 func GenerateJWK() (jwk.Key, error) {

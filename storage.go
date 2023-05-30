@@ -384,16 +384,3 @@ func (s *Storage) GetToken(token string) (*Token, error) {
 func (s *Storage) persist() {
 	saveJson(s, s.path)
 }
-
-func saveJson(data interface{}, filePath string) error {
-	jsonStr, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return errors.New("Error serializing JSON")
-	} else {
-		err := os.WriteFile(filePath, jsonStr, 0644)
-		if err != nil {
-			return errors.New("Error saving JSON")
-		}
-	}
-	return nil
-}
