@@ -99,7 +99,7 @@ func (s *OathgateMux) HandleFunc(p string, f func(w http.ResponseWriter, r *http
 	})
 }
 
-//go:embed templates
+//go:embed templates assets
 var fs embed.FS
 
 func main() {
@@ -160,6 +160,17 @@ func main() {
 			}
 		}
 	}()
+
+	providerLogoMap := make(map[string]template.HTML)
+	for _, prov := range storage.GetOAuth2Providers() {
+		logoPath := fmt.Sprintf("assets/logo_%s.svg", prov.ID)
+		logoBytes, err := fs.ReadFile(logoPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+		providerLogoMap[prov.ID] = template.HTML(logoBytes)
+	}
 
 	tmpl, err := template.ParseFS(fs, "templates/*.tmpl")
 	if err != nil {
@@ -304,12 +315,14 @@ func main() {
 			RequestId       string
 			Identities      []*Identity
 			OAuth2Providers []*OAuth2Provider
+			LogoMap         map[string]template.HTML
 			URL             string
 		}{
 			ClientId:        clientIdUrl.Host,
 			RequestId:       requestId,
 			Identities:      identities,
 			OAuth2Providers: storage.GetOAuth2Providers(),
+			LogoMap:         providerLogoMap,
 			URL:             fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
 		}
 
