@@ -165,16 +165,18 @@ func (s *Storage) AddLoginData() (string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	id, err := genRandomKey()
+	loginKey, err := genRandomKey()
 	if err != nil {
 		return "", err
 	}
 
-	s.LoginData[id] = &LoginData{}
+	loginKeyHash := Hash(loginKey)
+
+	s.LoginData[loginKeyHash] = &LoginData{}
 
 	s.persist()
 
-	return id, nil
+	return loginKey, nil
 }
 
 func (s *Storage) DeleteLoginData(loginKey string) {

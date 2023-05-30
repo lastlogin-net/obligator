@@ -289,7 +289,7 @@ func main() {
 
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
-			loginKey = loginKeyCookie.Value
+			loginKey = Hash(loginKeyCookie.Value)
 			identities = storage.GetIdentitiesByLoginKey(loginKey)
 		}
 
@@ -350,7 +350,7 @@ func main() {
 			return
 		}
 
-		loginKey := loginKeyCookie.Value
+		loginKey := Hash(loginKeyCookie.Value)
 
 		requestId := r.Form.Get("request_id")
 
@@ -591,7 +591,7 @@ func main() {
 
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
-			loginKey = loginKeyCookie.Value
+			loginKey = Hash(loginKeyCookie.Value)
 			_, err := storage.GetLoginData(loginKey)
 			if err == nil {
 				loggedIn = true
@@ -599,7 +599,7 @@ func main() {
 		}
 
 		if !loggedIn {
-			loginKey, err = storage.AddLoginData()
+			unhashedLoginKey, err := storage.AddLoginData()
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
@@ -608,7 +608,7 @@ func main() {
 
 			cookie := &http.Cookie{
 				Name:     "login_key",
-				Value:    loginKey,
+				Value:    unhashedLoginKey,
 				Secure:   true,
 				HttpOnly: true,
 				MaxAge:   86400 * 365,
@@ -617,6 +617,8 @@ func main() {
 				//SameSite: http.SameSiteStrictMode,
 			}
 			http.SetCookie(w, cookie)
+
+			loginKey = Hash(unhashedLoginKey)
 		}
 
 		identId, err := storage.EnsureIdentity(email, "Email", email)
@@ -800,7 +802,7 @@ func main() {
 
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
-			loginKey = loginKeyCookie.Value
+			loginKey = Hash(loginKeyCookie.Value)
 			_, err := storage.GetLoginData(loginKey)
 			if err == nil {
 				loggedIn = true
@@ -809,7 +811,7 @@ func main() {
 
 		// Since no identities exist for the user, create a new user
 		if !loggedIn {
-			loginKey, err = storage.AddLoginData()
+			unhashedLoginKey, err := storage.AddLoginData()
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
@@ -818,7 +820,7 @@ func main() {
 
 			cookie := &http.Cookie{
 				Name:     "login_key",
-				Value:    loginKey,
+				Value:    unhashedLoginKey,
 				Secure:   true,
 				HttpOnly: true,
 				MaxAge:   86400 * 365,
@@ -827,6 +829,8 @@ func main() {
 				//SameSite: http.SameSiteStrictMode,
 			}
 			http.SetCookie(w, cookie)
+
+			loginKey = Hash(unhashedLoginKey)
 		}
 
 		identId, err := storage.EnsureIdentity(providerIdentityId, oauth2Provider.Name, email)
@@ -854,7 +858,7 @@ func main() {
 
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
-			loginKey := loginKeyCookie.Value
+			loginKey := Hash(loginKeyCookie.Value)
 			storage.DeleteLoginData(loginKey)
 		}
 
