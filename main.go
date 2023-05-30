@@ -243,6 +243,8 @@ func main() {
 
 	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
 
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+
 		r.ParseForm()
 
 		clientId := r.Form.Get("client_id")
