@@ -301,7 +301,7 @@ func main() {
 		if promptParam == "none" {
 			errUrl := fmt.Sprintf("%s?error=interaction_required&state=%s",
 				redirectUri, state)
-			http.Redirect(w, r, errUrl, 302)
+			http.Redirect(w, r, errUrl, http.StatusSeeOther)
 			return
 		}
 
@@ -309,7 +309,7 @@ func main() {
 		if responseType == "" {
 			errUrl := fmt.Sprintf("%s?error=unsupported_response_type&state=%s",
 				redirectUri, state)
-			http.Redirect(w, r, errUrl, 302)
+			http.Redirect(w, r, errUrl, http.StatusSeeOther)
 			return
 		}
 
@@ -458,7 +458,7 @@ func main() {
 			request.State,
 			request.Scope)
 
-		http.Redirect(w, r, url, 302)
+		http.Redirect(w, r, url, http.StatusSeeOther)
 	})
 
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
@@ -680,7 +680,7 @@ func main() {
 
 		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
 
-		http.Redirect(w, r, redirUrl, 302)
+		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})
 
 	mux.HandleFunc("/login-oauth2", func(w http.ResponseWriter, r *http.Request) {
@@ -741,7 +741,7 @@ func main() {
 			authURL, provider.ClientID, callbackUri, requestId,
 			scope, pkceCodeChallenge, request.ProviderNonce)
 
-		http.Redirect(w, r, url, 302)
+		http.Redirect(w, r, url, http.StatusSeeOther)
 	})
 
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
@@ -924,7 +924,7 @@ func main() {
 
 		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
 
-		http.Redirect(w, r, redirUrl, 302)
+		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})
 
 	mux.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
@@ -956,7 +956,7 @@ func main() {
 		}
 		http.SetCookie(w, cookie)
 
-		http.Redirect(w, r, redirect, 303)
+		http.Redirect(w, r, redirect, http.StatusSeeOther)
 	})
 
 	mux.HandleFunc("/debug", func(w http.ResponseWriter, r *http.Request) {
