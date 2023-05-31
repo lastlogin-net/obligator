@@ -186,6 +186,9 @@ func main() {
 	})
 
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
 		doc := OIDCDiscoveryDoc{
 			Issuer:                rootUri,
 			AuthorizationEndpoint: fmt.Sprintf("%s/auth", rootUri),
@@ -198,6 +201,9 @@ func main() {
 	})
 
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
+
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		enc.Encode(publicJwks)
