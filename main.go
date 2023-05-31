@@ -219,9 +219,9 @@ func main() {
 			return
 		}
 
-		token := parts[1]
+		unhashedToken := parts[1]
 
-		tok, err := storage.GetToken(token)
+		tok, err := storage.GetToken(Hash(unhashedToken))
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -461,7 +461,7 @@ func main() {
 
 		storage.DeletePendingToken(code)
 
-		err = storage.SetToken(token.AccessToken, token.IdToken.Subject())
+		err = storage.SetToken(Hash(token.AccessToken), token.IdToken.Subject())
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
