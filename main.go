@@ -747,6 +747,8 @@ func main() {
 			return
 		}
 
+		storage.DeleteRequest(requestId)
+
 		oauth2Provider, err := storage.GetOAuth2ProviderByID(request.Provider)
 		if err != nil {
 			w.WriteHeader(500)

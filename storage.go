@@ -320,6 +320,12 @@ func (s *Storage) SetRequest(requestId string, request OAuth2AuthRequest) {
 
 	s.persist()
 }
+func (s *Storage) DeleteRequest(requestId string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	delete(s.requests, requestId)
+}
 
 func (s *Storage) AddPendingToken(token *PendingOAuth2Token) (string, error) {
 	s.mutex.Lock()
