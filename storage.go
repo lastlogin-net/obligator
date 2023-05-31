@@ -28,9 +28,10 @@ type PendingOAuth2Token struct {
 }
 
 type Token struct {
-	IdentityId string `json:"identity_id"`
-	CreatedAt  string `json:"created_at"`
-	ExpiresIn  int    `json:"expires_in"`
+	IdentityId        string `json:"identity_id"`
+	CreatedAt         string `json:"created_at"`
+	ExpiresIn         int    `json:"expires_in"`
+	AuthorizationCode string `json:"authorization_code"`
 }
 
 type OAuth2Provider struct {

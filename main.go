@@ -467,6 +467,17 @@ func main() {
 
 		token, err := storage.GetPendingToken(code)
 		if err != nil {
+
+			// Check if code has been used more than once
+			for token, tokenData := range storage.GetTokens() {
+				if code == tokenData.AuthorizationCode {
+					storage.DeleteToken(token)
+					w.WriteHeader(401)
+					io.WriteString(w, "Attempt to use authorization code multiple times. Someone may be trying to hack your account. Deleting access token as a precaution.")
+					return
+				}
+			}
+
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
 			return
@@ -475,9 +486,10 @@ func main() {
 		storage.DeletePendingToken(code)
 
 		tokenData := &Token{
-			IdentityId: token.IdToken.Subject(),
-			CreatedAt:  time.Now().UTC().Format(time.RFC3339),
-			ExpiresIn:  10,
+			IdentityId:        token.IdToken.Subject(),
+			CreatedAt:         time.Now().UTC().Format(time.RFC3339),
+			ExpiresIn:         10,
+			AuthorizationCode: code,
 		}
 
 		err = storage.SetToken(Hash(token.AccessToken), tokenData)
