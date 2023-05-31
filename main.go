@@ -50,6 +50,7 @@ type OAuth2AuthRequest struct {
 	Scope            string `json:"scope"`
 	Provider         string `json:"provider"`
 	Nonce            string `json:"nonce"`
+	ProviderNonce    string `json:"provider_nonce"`
 	PKCECodeVerifier string `json:"pkce_code_verifier"`
 }
 
@@ -727,10 +728,18 @@ func main() {
 
 		request.PKCECodeVerifier = pkceCodeVerifier
 
+		request.ProviderNonce, err = genRandomKey()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, "Failed to generate nonce")
+			return
+		}
+
 		storage.SetRequest(requestId, request)
 
-		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s",
-			authURL, provider.ClientID, callbackUri, requestId, scope, pkceCodeChallenge)
+		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s&nonce=%s",
+			authURL, provider.ClientID, callbackUri, requestId,
+			scope, pkceCodeChallenge, request.ProviderNonce)
 
 		http.Redirect(w, r, url, 302)
 	})
@@ -832,15 +841,37 @@ func main() {
 				return
 			}
 
-			providerToken, ok := providerOauth2Token.(openid.Token)
+			providerOidcToken, ok := providerOauth2Token.(openid.Token)
 			if !ok {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, "Not a valid OpenId Connect token")
 				return
 			}
 
-			providerIdentityId = providerToken.Subject()
-			email = providerToken.Email()
+			printJson(providerOidcToken)
+
+			nonceClaim, exists := providerOidcToken.Get("nonce")
+			if !exists {
+				w.WriteHeader(400)
+				fmt.Fprintf(os.Stderr, "Nonce missing")
+				return
+			}
+
+			nonce, ok := nonceClaim.(string)
+			if !ok {
+				w.WriteHeader(400)
+				fmt.Fprintf(os.Stderr, "Invalid nonce format")
+				return
+			}
+
+			if request.ProviderNonce != nonce {
+				w.WriteHeader(403)
+				fmt.Fprintf(os.Stderr, "Invalid nonce")
+				return
+			}
+
+			providerIdentityId = providerOidcToken.Subject()
+			email = providerOidcToken.Email()
 		} else {
 			providerIdentityId, email, _ = GetProfile(oauth2Provider, tokenRes.AccessToken)
 		}
