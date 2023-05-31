@@ -29,6 +29,8 @@ type PendingOAuth2Token struct {
 
 type Token struct {
 	IdentityId string `json:"identity_id"`
+	CreatedAt  string `json:"created_at"`
+	ExpiresIn  int    `json:"expires_in"`
 }
 
 type OAuth2Provider struct {
@@ -358,16 +360,13 @@ func (s *Storage) DeletePendingToken(code string) {
 	delete(s.pendingTokens, code)
 }
 
-func (s *Storage) SetToken(token, identityId string) error {
+func (s *Storage) SetToken(token string, tokenData *Token) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	for _, ident := range s.Identities {
-		if ident.Id == identityId {
-			tok := &Token{
-				IdentityId: ident.Id,
-			}
-			s.Tokens[token] = tok
+		if ident.Id == tokenData.IdentityId {
+			s.Tokens[token] = tokenData
 			s.persist()
 			return nil
 		}
@@ -385,6 +384,20 @@ func (s *Storage) GetToken(token string) (*Token, error) {
 	}
 
 	return nil, errors.New("Invalid token")
+}
+func (s *Storage) GetTokens() map[string]*Token {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	return s.Tokens
+}
+func (s *Storage) DeleteToken(token string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	delete(s.Tokens, token)
+
+	s.persist()
 }
 
 func (s *Storage) persist() {

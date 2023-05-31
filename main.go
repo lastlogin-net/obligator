@@ -221,14 +221,27 @@ func main() {
 
 		unhashedToken := parts[1]
 
-		tok, err := storage.GetToken(Hash(unhashedToken))
+		tokenData, err := storage.GetToken(Hash(unhashedToken))
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		ident, err := storage.GetIdentityById(tok.IdentityId)
+		expired, err := tokenExpired(tokenData)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+		if expired {
+			storage.DeleteToken(Hash(unhashedToken))
+			w.WriteHeader(401)
+			io.WriteString(w, "Token expired")
+			return
+		}
+
+		ident, err := storage.GetIdentityById(tokenData.IdentityId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -461,7 +474,13 @@ func main() {
 
 		storage.DeletePendingToken(code)
 
-		err = storage.SetToken(Hash(token.AccessToken), token.IdToken.Subject())
+		tokenData := &Token{
+			IdentityId: token.IdToken.Subject(),
+			CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+			ExpiresIn:  10,
+		}
+
+		err = storage.SetToken(Hash(token.AccessToken), tokenData)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
@@ -898,6 +917,24 @@ func main() {
 		Addr:    fmt.Sprintf(":%d", *port),
 		Handler: mux,
 	}
+
+	// Clean up expired tokens occasionally
+	go func() {
+		for {
+			for token, tokenData := range storage.GetTokens() {
+				expired, err := tokenExpired(tokenData)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to parse time\n")
+					continue
+				}
+				if expired {
+					storage.DeleteToken(token)
+				}
+			}
+
+			time.Sleep(1 * time.Hour)
+		}
+	}()
 
 	fmt.Println("Running")
 

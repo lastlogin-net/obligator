@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/big"
 	"os"
+	"time"
 )
 
 func Hash(input string) string {
@@ -46,4 +47,16 @@ func genRandomKey() (string, error) {
 		id += string(chars[randIndex.Int64()])
 	}
 	return id, nil
+}
+
+func tokenExpired(tokenData *Token) (bool, error) {
+	timeNow := time.Now().UTC()
+	createdAt, err := time.Parse("2006-01-02T15:04:05Z", tokenData.CreatedAt)
+	if err != nil {
+		return false, err
+	}
+
+	expiresAt := createdAt.Add(time.Duration(tokenData.ExpiresIn) * time.Second)
+
+	return timeNow.After(expiresAt), nil
 }
