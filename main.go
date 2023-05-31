@@ -85,7 +85,7 @@ func (s *OathgateMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *OathgateMux) HandleFunc(p string, f func(w http.ResponseWriter, r *http.Request)) {
 	s.mux.HandleFunc(p, func(w http.ResponseWriter, r *http.Request) {
 
-		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'; script-src 'none'")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 
 		timestamp := time.Now().Format(time.RFC3339)
