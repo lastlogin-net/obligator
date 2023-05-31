@@ -737,7 +737,7 @@ func main() {
 
 		storage.SetRequest(requestId, request)
 
-		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s&nonce=%s",
+		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s&nonce=%s&prompt=consent",
 			authURL, provider.ClientID, callbackUri, requestId,
 			scope, pkceCodeChallenge, request.ProviderNonce)
 
@@ -847,8 +847,6 @@ func main() {
 				fmt.Fprintf(os.Stderr, "Not a valid OpenId Connect token")
 				return
 			}
-
-			printJson(providerOidcToken)
 
 			nonceClaim, exists := providerOidcToken.Get("nonce")
 			if !exists {
