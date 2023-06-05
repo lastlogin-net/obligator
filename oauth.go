@@ -37,7 +37,7 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 	httpClient := &http.Client{}
 
 	ctx := context.Background()
-	oidcConfigs := make(map[string]*OIDCDiscoveryDoc)
+	oidcConfigs := make(map[string]*OAuth2ServerMetadata)
 	jwksRefreshers := make(map[string]*jwk.AutoRefresh)
 	// TODO: This is not thread-safe
 	go func() {
@@ -378,7 +378,7 @@ func GetProfile(provider *OAuth2Provider, accessToken string) (string, string, e
 	return "", "", errors.New("Unknown GetProfile error")
 }
 
-func GetOidcConfiguration(baseUrl string) (*OIDCDiscoveryDoc, error) {
+func GetOidcConfiguration(baseUrl string) (*OAuth2ServerMetadata, error) {
 
 	url := fmt.Sprintf("%s/.well-known/openid-configuration", baseUrl)
 
@@ -391,7 +391,7 @@ func GetOidcConfiguration(baseUrl string) (*OIDCDiscoveryDoc, error) {
 		return nil, errors.New("Invalid HTTP response")
 	}
 
-	var doc OIDCDiscoveryDoc
+	var doc OAuth2ServerMetadata
 
 	err = json.NewDecoder(resp.Body).Decode(&doc)
 	if err != nil {

@@ -31,12 +31,14 @@ type SmtpConfig struct {
 	SenderName string `json:"sender_name,omitempty"`
 }
 
-type OIDCDiscoveryDoc struct {
-	Issuer                string `json:"issuer"`
-	AuthorizationEndpoint string `json:"authorization_endpoint"`
-	TokenEndpoint         string `json:"token_endpoint"`
-	UserinfoEndpoint      string `json:"userinfo_endpoint"`
-	JwksUri               string `json:"jwks_uri"`
+type OAuth2ServerMetadata struct {
+	Issuer                 string   `json:"issuer,omitempty"`
+	AuthorizationEndpoint  string   `json:"authorization_endpoint,omitempty"`
+	TokenEndpoint          string   `json:"token_endpoint,omitempty"`
+	UserinfoEndpoint       string   `json:"userinfo_endpoint,omitempty"`
+	JwksUri                string   `json:"jwks_uri,omitempty"`
+	ScopesSupported        []string `json:"scopes_supported,omitempty"`
+	ResponseTypesSupported []string `json:"response_types_supported,omitempty"`
 }
 
 type OAuth2AuthRequest struct {
@@ -167,13 +169,16 @@ func main() {
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 
-		doc := OIDCDiscoveryDoc{
-			Issuer:                rootUri,
-			AuthorizationEndpoint: fmt.Sprintf("%s/auth", rootUri),
-			TokenEndpoint:         fmt.Sprintf("%s/token", rootUri),
-			UserinfoEndpoint:      fmt.Sprintf("%s/userinfo", rootUri),
-			JwksUri:               fmt.Sprintf("%s/jwks", rootUri),
+		doc := OAuth2ServerMetadata{
+			Issuer:                 rootUri,
+			AuthorizationEndpoint:  fmt.Sprintf("%s/auth", rootUri),
+			TokenEndpoint:          fmt.Sprintf("%s/token", rootUri),
+			UserinfoEndpoint:       fmt.Sprintf("%s/userinfo", rootUri),
+			JwksUri:                fmt.Sprintf("%s/jwks", rootUri),
+			ScopesSupported:        []string{"openid", "email", "profile"},
+			ResponseTypesSupported: []string{"code"},
 		}
 
 		json.NewEncoder(w).Encode(doc)
