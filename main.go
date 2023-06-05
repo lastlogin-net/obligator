@@ -124,8 +124,6 @@ func main() {
 		storage.AddJWKKey(key)
 	}
 
-	emailAuth := NewEmailAuth(storage)
-
 	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -156,6 +154,11 @@ func main() {
 
 	mux.Handle("/login-oauth2", oauth2Handler)
 	mux.Handle("/callback", oauth2Handler)
+
+	emailHandler := NewEmailHander(storage)
+	mux.Handle("/login-email", emailHandler)
+	mux.Handle("/email-code", emailHandler)
+	mux.Handle("/complete-email-login", emailHandler)
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("<h1>Welcome to LastLogin.io</h1>"))
@@ -500,159 +503,6 @@ func main() {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		enc.Encode(tokenRes)
-	})
-
-	mux.HandleFunc("/login-email", func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
-
-		if r.Method != "POST" {
-			w.WriteHeader(405)
-			io.WriteString(w, "Invalid method")
-			return
-		}
-
-		requestId := r.Form.Get("request_id")
-
-		templateData := struct {
-			RequestId string
-		}{
-			RequestId: requestId,
-		}
-
-		err = tmpl.ExecuteTemplate(w, "login-email.tmpl", templateData)
-		if err != nil {
-			w.WriteHeader(400)
-			io.WriteString(w, err.Error())
-			return
-		}
-	})
-
-	mux.HandleFunc("/email-code", func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
-
-		if r.Method != "POST" {
-			w.WriteHeader(405)
-			io.WriteString(w, "Invalid method")
-			return
-		}
-
-		email := r.Form.Get("email")
-		if email == "" {
-			w.WriteHeader(400)
-			io.WriteString(w, "email param missing")
-			return
-		}
-
-		requestId := r.Form.Get("request_id")
-
-		emailRequestId, err := emailAuth.StartEmailValidation(email)
-		if err != nil {
-			w.WriteHeader(400)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		data := struct {
-			RequestId      string
-			EmailRequestId string
-		}{
-			RequestId:      requestId,
-			EmailRequestId: emailRequestId,
-		}
-
-		err = tmpl.ExecuteTemplate(w, "email-code.tmpl", data)
-		if err != nil {
-			w.WriteHeader(400)
-			io.WriteString(w, err.Error())
-			return
-		}
-	})
-
-	mux.HandleFunc("/complete-email-login", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			w.WriteHeader(405)
-			io.WriteString(w, "Invalid method")
-			return
-		}
-
-		r.ParseForm()
-
-		requestId := r.Form.Get("request_id")
-		request, err := storage.GetRequest(requestId)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		emailRequestId := r.Form.Get("email_request_id")
-		if emailRequestId == "" {
-			w.WriteHeader(400)
-			io.WriteString(w, "email_request_id param missing")
-			return
-		}
-
-		code := r.Form.Get("code")
-		if code == "" {
-			w.WriteHeader(400)
-			io.WriteString(w, "code param missing")
-			return
-		}
-
-		_, email, err := emailAuth.CompleteEmailValidation(emailRequestId, code)
-		if err != nil {
-			w.WriteHeader(400)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		var loginKey string
-		loggedIn := false
-
-		loginKeyCookie, err := r.Cookie("login_key")
-		if err == nil {
-			loginKey = Hash(loginKeyCookie.Value)
-			_, err := storage.GetLoginData(loginKey)
-			if err == nil {
-				loggedIn = true
-			}
-		}
-
-		if !loggedIn {
-			unhashedLoginKey, err := storage.AddLoginData()
-			if err != nil {
-				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, err.Error())
-				return
-			}
-
-			cookie := &http.Cookie{
-				Name:     "login_key",
-				Value:    unhashedLoginKey,
-				Secure:   true,
-				HttpOnly: true,
-				MaxAge:   86400 * 365,
-				Path:     "/",
-				SameSite: http.SameSiteLaxMode,
-				//SameSite: http.SameSiteStrictMode,
-			}
-			http.SetCookie(w, cookie)
-
-			loginKey = Hash(unhashedLoginKey)
-		}
-
-		identId, err := storage.EnsureIdentity(email, "Email", email)
-		if err != nil {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, err.Error())
-			return
-		}
-
-		storage.EnsureLoginMapping(identId, loginKey)
-
-		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
-
-		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})
 
 	mux.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
