@@ -2,6 +2,8 @@ module github.com/anderspitman/oathgate
 
 go 1.20
 
+//replace github.com/lestrrat-go/jwx/v2 => ../jwx
+
 require github.com/lestrrat-go/jwx/v2 v2.0.11
 
 require (

@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -59,4 +61,15 @@ func tokenExpired(tokenData *Token) (bool, error) {
 	expiresAt := createdAt.Add(time.Duration(tokenData.ExpiresIn) * time.Second)
 
 	return timeNow.After(expiresAt), nil
+}
+
+func buildCookieDomain(fullUrl string) (string, error) {
+	rootUrlParsed, err := url.Parse(fullUrl)
+	if err != nil {
+		return "", err
+	}
+	hostParts := strings.Split(rootUrlParsed.Host, ".")
+	cookieDomain := strings.Join(hostParts[1:], ".")
+
+	return cookieDomain, nil
 }

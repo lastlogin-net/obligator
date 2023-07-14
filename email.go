@@ -190,7 +190,15 @@ func NewEmailHander(storage *Storage) *EmailHandler {
 				return
 			}
 
+			cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+
 			cookie := &http.Cookie{
+				Domain:   cookieDomain,
 				Name:     "login_key",
 				Value:    unhashedLoginKey,
 				Secure:   true,

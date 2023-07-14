@@ -276,8 +276,15 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 				return
 			}
 
-			// TODO: set proper domain for sharing cookies with subdomains
+			cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+
 			cookie := &http.Cookie{
+				Domain:   cookieDomain,
 				Name:     "login_key",
 				Value:    unhashedLoginKey,
 				Secure:   true,

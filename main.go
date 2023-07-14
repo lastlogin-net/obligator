@@ -32,13 +32,14 @@ type SmtpConfig struct {
 }
 
 type OAuth2ServerMetadata struct {
-	Issuer                 string   `json:"issuer,omitempty"`
-	AuthorizationEndpoint  string   `json:"authorization_endpoint,omitempty"`
-	TokenEndpoint          string   `json:"token_endpoint,omitempty"`
-	UserinfoEndpoint       string   `json:"userinfo_endpoint,omitempty"`
-	JwksUri                string   `json:"jwks_uri,omitempty"`
-	ScopesSupported        []string `json:"scopes_supported,omitempty"`
-	ResponseTypesSupported []string `json:"response_types_supported,omitempty"`
+	Issuer                           string   `json:"issuer,omitempty"`
+	AuthorizationEndpoint            string   `json:"authorization_endpoint,omitempty"`
+	TokenEndpoint                    string   `json:"token_endpoint,omitempty"`
+	UserinfoEndpoint                 string   `json:"userinfo_endpoint,omitempty"`
+	JwksUri                          string   `json:"jwks_uri,omitempty"`
+	ScopesSupported                  []string `json:"scopes_supported,omitempty"`
+	ResponseTypesSupported           []string `json:"response_types_supported,omitempty"`
+	IdTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported,omitempty"`
 }
 
 type OAuth2AuthRequest struct {
@@ -166,19 +167,45 @@ func main() {
 		w.Write([]byte("<h1>Welcome to LastLogin.io</h1>"))
 	})
 
+	mux.HandleFunc("/validate", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+
+		redirectUri := r.Form.Get("redirect_uri")
+		url := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=code&state=&scope=",
+			storage.GetRootUri(), redirectUri, redirectUri)
+
+		loginKeyCookie, err := r.Cookie("login_key")
+		if err != nil {
+			http.Redirect(w, r, url, 307)
+			return
+		}
+
+		loginKey := Hash(loginKeyCookie.Value)
+
+		for _, mapping := range storage.GetLoginMap() {
+			if mapping.LoginKey == loginKey {
+				// found a valid user
+				return
+			}
+		}
+
+		http.Redirect(w, r, url, 307)
+	})
+
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 
 		doc := OAuth2ServerMetadata{
-			Issuer:                 rootUri,
-			AuthorizationEndpoint:  fmt.Sprintf("%s/auth", rootUri),
-			TokenEndpoint:          fmt.Sprintf("%s/token", rootUri),
-			UserinfoEndpoint:       fmt.Sprintf("%s/userinfo", rootUri),
-			JwksUri:                fmt.Sprintf("%s/jwks", rootUri),
-			ScopesSupported:        []string{"openid", "email", "profile"},
-			ResponseTypesSupported: []string{"code"},
+			Issuer:                           rootUri,
+			AuthorizationEndpoint:            fmt.Sprintf("%s/auth", rootUri),
+			TokenEndpoint:                    fmt.Sprintf("%s/token", rootUri),
+			UserinfoEndpoint:                 fmt.Sprintf("%s/userinfo", rootUri),
+			JwksUri:                          fmt.Sprintf("%s/jwks", rootUri),
+			ScopesSupported:                  []string{"openid", "email", "profile"},
+			ResponseTypesSupported:           []string{"code"},
+			IdTokenSigningAlgValuesSupported: []string{"RS256"},
 		}
 
 		json.NewEncoder(w).Encode(doc)
@@ -187,6 +214,7 @@ func main() {
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
 
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
@@ -599,6 +627,8 @@ func GenerateJWK() (jwk.Key, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	key.Set("alg", "RS256")
 
 	//key.Set(jwk.KeyUsageKey, "sig")
 	//keyset := jwk.NewSet()
