@@ -109,11 +109,18 @@ func NewEmailHander(storage *Storage) *EmailHandler {
 
 		requestId := r.Form.Get("request_id")
 
-		emailRequestId, err := emailAuth.StartEmailValidation(email)
+		emailRequestId, err := genRandomKey()
 		if err != nil {
-			w.WriteHeader(400)
+			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
+		}
+
+		if validUser(email, storage.GetUsers()) {
+			// run in goroutine so the user can't use timing to determine whether the account exists
+			go func() {
+				_ = emailAuth.StartEmailValidation(email, emailRequestId)
+			}()
 		}
 
 		data := struct {
@@ -230,16 +237,11 @@ func NewEmailHander(storage *Storage) *EmailHandler {
 	return h
 }
 
-func (a *Auth) StartEmailValidation(email string) (string, error) {
-
-	requestId, err := genRandomKey()
-	if err != nil {
-		return "", err
-	}
+func (a *Auth) StartEmailValidation(email, requestId string) error {
 
 	code, err := genCode()
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	bodyTemplate := "From: %s <%s>\r\n" +
@@ -259,7 +261,7 @@ func (a *Auth) StartEmailValidation(email string) (string, error) {
 	msg := []byte(emailBody)
 	err = smtp.SendMail(srv, emailAuth, fromEmail, []string{email}, msg)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	a.mut.Lock()
@@ -277,7 +279,7 @@ func (a *Auth) StartEmailValidation(email string) (string, error) {
 		a.mut.Unlock()
 	}()
 
-	return requestId, nil
+	return nil
 }
 
 func (a *Auth) CompleteEmailValidation(requestId, code string) (string, string, error) {

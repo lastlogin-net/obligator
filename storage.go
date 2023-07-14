@@ -51,6 +51,10 @@ type LoginMapping struct {
 	LoginKey   string `json:"login_key"`
 }
 
+type User struct {
+	Email string `json:"email"`
+}
+
 type Storage struct {
 	RootUri         string                `json:"root_uri"`
 	OAuth2Providers []*OAuth2Provider     `json:"oauth2_providers"`
@@ -60,10 +64,12 @@ type Storage struct {
 	LoginData       map[string]*LoginData `json:"login_data"`
 	Tokens          map[string]*Token     `json:"tokens"`
 	LoginMap        []*LoginMapping       `json:"login_map"`
+	Users           []User                `json:"users"`
 	requests        map[string]*OAuth2AuthRequest
 	pendingTokens   map[string]*PendingOAuth2Token
 	mutex           *sync.Mutex
 	path            string
+	message_chan    chan interface{}
 }
 
 func NewFileStorage(path string) (*Storage, error) {
@@ -78,6 +84,7 @@ func NewFileStorage(path string) (*Storage, error) {
 		pendingTokens:   make(map[string]*PendingOAuth2Token),
 		mutex:           &sync.Mutex{},
 		path:            path,
+		message_chan:    make(chan interface{}),
 	}
 
 	dbJson, err := os.ReadFile(path)
@@ -87,6 +94,20 @@ func NewFileStorage(path string) (*Storage, error) {
 			return nil, err
 		}
 	}
+
+	go func() {
+		for {
+			rawMessage := <-s.message_chan
+			switch msg := rawMessage.(type) {
+			case getUsersMessage:
+				users := []User{}
+				for _, user := range s.Users {
+					users = append(users, user)
+				}
+				msg.resp <- users
+			}
+		}
+	}()
 
 	s.persist()
 
@@ -405,6 +426,19 @@ func (s *Storage) DeleteToken(token string) {
 	delete(s.Tokens, token)
 
 	s.persist()
+}
+
+type getUsersMessage struct {
+	resp chan []User
+}
+
+func (s *Storage) GetUsers() []User {
+	ch := make(chan []User)
+	s.message_chan <- getUsersMessage{
+		resp: ch,
+	}
+	users := <-ch
+	return users
 }
 
 func (s *Storage) persist() {

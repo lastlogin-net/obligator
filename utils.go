@@ -73,3 +73,12 @@ func buildCookieDomain(fullUrl string) (string, error) {
 
 	return cookieDomain, nil
 }
+
+func validUser(email string, users []User) bool {
+	for _, user := range users {
+		if email == user.Email {
+			return true
+		}
+	}
+	return false
+}

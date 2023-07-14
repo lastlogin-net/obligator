@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"html/template"
@@ -137,13 +138,20 @@ func main() {
 
 	providerLogoMap := make(map[string]template.HTML)
 	for _, prov := range storage.GetOAuth2Providers() {
+
 		logoPath := fmt.Sprintf("assets/logo_%s.svg", prov.ID)
+
+		if _, err := os.Stat(logoPath); errors.Is(err, os.ErrNotExist) {
+			logoPath = "assets/logo_generic_openid.svg"
+		}
+
 		logoBytes, err := fs.ReadFile(logoPath)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
 		providerLogoMap[prov.ID] = template.HTML(logoBytes)
+
 	}
 
 	tmpl, err := template.ParseFS(fs, "templates/*.tmpl")
@@ -568,6 +576,21 @@ func main() {
 		http.SetCookie(w, cookie)
 
 		http.Redirect(w, r, redirect, http.StatusSeeOther)
+	})
+
+	mux.HandleFunc("/no-account", func(w http.ResponseWriter, r *http.Request) {
+		data := struct {
+			URL string
+		}{
+			URL: fmt.Sprintf("/auth?%s", r.URL.RawQuery),
+		}
+
+		err = tmpl.ExecuteTemplate(w, "no-account.tmpl", data)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
 	})
 
 	mux.HandleFunc("/debug", func(w http.ResponseWriter, r *http.Request) {
