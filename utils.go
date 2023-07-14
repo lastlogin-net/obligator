@@ -69,9 +69,14 @@ func buildCookieDomain(fullUrl string) (string, error) {
 		return "", err
 	}
 	hostParts := strings.Split(rootUrlParsed.Host, ".")
-	cookieDomain := strings.Join(hostParts[1:], ".")
 
-	return cookieDomain, nil
+	if len(hostParts) < 3 {
+		// apex domain
+		return fullUrl, nil
+	} else {
+		cookieDomain := strings.Join(hostParts[1:], ".")
+		return cookieDomain, nil
+	}
 }
 
 func validUser(email string, users []User) bool {

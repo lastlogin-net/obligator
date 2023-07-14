@@ -561,7 +561,15 @@ func main() {
 
 		redirect := r.Form.Get("prev_page")
 
+		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
 		cookie := &http.Cookie{
+			Domain:   cookieDomain,
 			Name:     "login_key",
 			Value:    "",
 			Secure:   true,
