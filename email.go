@@ -116,7 +116,7 @@ func NewEmailHander(storage *Storage) *EmailHandler {
 			return
 		}
 
-		if validUser(email, storage.GetUsers()) {
+		if storage.GetPublic() || validUser(email, storage.GetUsers()) {
 			// run in goroutine so the user can't use timing to determine whether the account exists
 			go func() {
 				_ = emailAuth.StartEmailValidation(email, emailRequestId)

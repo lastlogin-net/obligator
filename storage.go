@@ -65,6 +65,7 @@ type Storage struct {
 	Tokens          map[string]*Token     `json:"tokens"`
 	LoginMap        []*LoginMapping       `json:"login_map"`
 	Users           []User                `json:"users"`
+	Public          bool                  `json:"public"`
 	requests        map[string]*OAuth2AuthRequest
 	pendingTokens   map[string]*PendingOAuth2Token
 	mutex           *sync.Mutex
@@ -99,6 +100,8 @@ func NewFileStorage(path string) (*Storage, error) {
 		for {
 			rawMessage := <-s.message_chan
 			switch msg := rawMessage.(type) {
+			case getPublicMessage:
+				msg.resp <- s.Public
 			case getUsersMessage:
 				users := []User{}
 				for _, user := range s.Users {
@@ -426,6 +429,19 @@ func (s *Storage) DeleteToken(token string) {
 	delete(s.Tokens, token)
 
 	s.persist()
+}
+
+type getPublicMessage struct {
+	resp chan bool
+}
+
+func (s *Storage) GetPublic() bool {
+	ch := make(chan bool)
+	s.message_chan <- getPublicMessage{
+		resp: ch,
+	}
+	public := <-ch
+	return public
 }
 
 type getUsersMessage struct {

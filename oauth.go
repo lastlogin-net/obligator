@@ -254,7 +254,7 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 			providerIdentityId, email, _ = GetProfile(oauth2Provider, tokenRes.AccessToken)
 		}
 
-		if !validUser(email, storage.GetUsers()) {
+		if !storage.GetPublic() && !validUser(email, storage.GetUsers()) {
 			redirUrl := fmt.Sprintf("%s/no-account?%s", rootUri, request.RawQuery)
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 			return
