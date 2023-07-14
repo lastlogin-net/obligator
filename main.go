@@ -5,7 +5,6 @@ import (
 	"crypto/rsa"
 	"embed"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"html/template"
@@ -140,16 +139,15 @@ func main() {
 	for _, prov := range storage.GetOAuth2Providers() {
 
 		logoPath := fmt.Sprintf("assets/logo_%s.svg", prov.ID)
-
-		if _, err := os.Stat(logoPath); errors.Is(err, os.ErrNotExist) {
-			logoPath = "assets/logo_generic_openid.svg"
-		}
-
 		logoBytes, err := fs.ReadFile(logoPath)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
+			logoBytes, err = fs.ReadFile("assets/logo_generic_openid.svg")
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+				os.Exit(1)
+			}
 		}
+
 		providerLogoMap[prov.ID] = template.HTML(logoBytes)
 
 	}
