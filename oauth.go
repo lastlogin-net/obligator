@@ -15,9 +15,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lestrrat-go/jwx/jwk"
-	"github.com/lestrrat-go/jwx/jwt"
-	"github.com/lestrrat-go/jwx/jwt/openid"
+	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
 type Oauth2Handler struct {
@@ -38,7 +38,7 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 
 	ctx := context.Background()
 	oidcConfigs := make(map[string]*OAuth2ServerMetadata)
-	jwksRefreshers := make(map[string]*jwk.AutoRefresh)
+	jwksRefreshers := make(map[string]*jwk.Cache)
 	// TODO: This is not thread-safe
 	go func() {
 		for _, oidcProvider := range storage.GetOAuth2Providers() {
@@ -52,8 +52,8 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 				os.Exit(1)
 			}
 
-			jwksRefreshers[oidcProvider.ID] = jwk.NewAutoRefresh(ctx)
-			jwksRefreshers[oidcProvider.ID].Configure(oidcConfigs[oidcProvider.ID].JwksUri)
+			jwksRefreshers[oidcProvider.ID] = jwk.NewCache(ctx)
+			jwksRefreshers[oidcProvider.ID].Register(oidcConfigs[oidcProvider.ID].JwksUri)
 
 			_, err = jwksRefreshers[oidcProvider.ID].Refresh(ctx, oidcConfigs[oidcProvider.ID].JwksUri)
 			if err != nil {
@@ -207,7 +207,7 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 		var email string
 
 		if oauth2Provider.OpenIDConnect {
-			keyset, err := jwksRefreshers[oauth2Provider.ID].Fetch(ctx, oidcConfigs[oauth2Provider.ID].JwksUri)
+			keyset, err := jwksRefreshers[oauth2Provider.ID].Get(ctx, oidcConfigs[oauth2Provider.ID].JwksUri)
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
@@ -276,6 +276,7 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 				return
 			}
 
+			// TODO: set proper domain for sharing cookies with subdomains
 			cookie := &http.Cookie{
 				Name:     "login_key",
 				Value:    unhashedLoginKey,

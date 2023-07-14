@@ -16,10 +16,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/jwa"
-	"github.com/lestrrat-go/jwx/jwk"
-	"github.com/lestrrat-go/jwx/jwt"
-	"github.com/lestrrat-go/jwx/jwt/openid"
+	"github.com/lestrrat-go/jwx/v2/jwa"
+	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
 type SmtpConfig struct {
@@ -481,14 +481,14 @@ func main() {
 			return
 		}
 
-		key, exists := storage.GetJWKSet().Get(0)
+		key, exists := storage.GetJWKSet().Key(0)
 		if !exists {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, "No keys available")
 			return
 		}
 
-		signed, err := jwt.Sign(token.IdToken, jwa.RS256, key)
+		signed, err := jwt.Sign(token.IdToken, jwt.WithKey(jwa.RS256, key))
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -584,7 +584,7 @@ func GenerateJWK() (jwk.Key, error) {
 		return nil, err
 	}
 
-	key, err := jwk.New(raw)
+	key, err := jwk.FromRaw(raw)
 	if err != nil {
 		return nil, err
 	}

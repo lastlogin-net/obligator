@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lestrrat-go/jwx/jwk"
-	"github.com/lestrrat-go/jwx/jwt/openid"
+	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
 type Identity struct {
@@ -129,7 +129,7 @@ func (s *Storage) EnsureLoginMapping(identityId, loginKey string) {
 func (s *Storage) AddJWKKey(key jwk.Key) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.Jwks.Add(key)
+	s.Jwks.AddKey(key)
 	s.persist()
 }
 
