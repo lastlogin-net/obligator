@@ -31,9 +31,6 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 		mux: mux,
 	}
 
-	rootUri := storage.GetRootUri()
-	callbackUri := fmt.Sprintf("%s/callback", rootUri)
-
 	httpClient := &http.Client{}
 
 	ctx := context.Background()
@@ -117,6 +114,8 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 
 		storage.SetRequest(requestId, request)
 
+		callbackUri := fmt.Sprintf("%s/callback", storage.GetRootUri())
+
 		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s&nonce=%s&prompt=consent",
 			authURL, provider.ClientID, callbackUri, requestId,
 			scope, pkceCodeChallenge, request.ProviderNonce)
@@ -146,6 +145,9 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 		}
 
 		providerCode := r.Form.Get("code")
+
+		rootUri := storage.GetRootUri()
+		callbackUri := fmt.Sprintf("%s/callback", rootUri)
 
 		body := url.Values{}
 		body.Set("code", providerCode)
@@ -282,7 +284,7 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 				return
 			}
 
-			cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+			cookieDomain, err := buildCookieDomain(rootUri)
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
@@ -314,7 +316,7 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 
 		storage.EnsureLoginMapping(identId, loginKey)
 
-		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
+		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), request.RawQuery)
 
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})

@@ -57,7 +57,7 @@ type User struct {
 
 type Storage struct {
 	RootUri         string                `json:"root_uri"`
-	OAuth2Providers []*OAuth2Provider     `json:"oauth2_providers"`
+	OAuth2Providers []OAuth2Provider      `json:"oauth2_providers"`
 	Smtp            *SmtpConfig           `json:"smtp"`
 	Jwks            jwk.Set               `json:"jwks"`
 	Identities      []*Identity           `json:"identities"`
@@ -75,7 +75,7 @@ type Storage struct {
 
 func NewFileStorage(path string) (*Storage, error) {
 	s := &Storage{
-		OAuth2Providers: []*OAuth2Provider{},
+		OAuth2Providers: []OAuth2Provider{},
 		Jwks:            jwk.NewSet(),
 		Identities:      []*Identity{},
 		LoginData:       make(map[string]*LoginData),
@@ -129,6 +129,34 @@ func NewFileStorage(path string) (*Storage, error) {
 				s.RootUri = msg.rootUri
 				s.persist()
 				s.mutex.Unlock()
+
+				msg.resp <- nil
+			case getOauth2ProvidersMessage:
+				providers := []OAuth2Provider{}
+				for _, prov := range s.OAuth2Providers {
+					providers = append(providers, prov)
+				}
+				msg.resp <- providers
+			case setOauth2ProviderMessage:
+
+				foundIdx := -1
+				for i, prov := range s.OAuth2Providers {
+					if prov.ID == msg.provider.ID {
+						foundIdx = i
+						break
+					}
+				}
+
+				if foundIdx != -1 {
+					// replace
+					tmp := append(s.OAuth2Providers[:foundIdx], msg.provider)
+					s.OAuth2Providers = append(tmp, s.OAuth2Providers[foundIdx+1:]...)
+				} else {
+					// append a new one
+					s.OAuth2Providers = append(s.OAuth2Providers, msg.provider)
+				}
+
+				s.Persist()
 
 				msg.resp <- nil
 			}
@@ -186,20 +214,14 @@ func (s *Storage) GetJWKSet() jwk.Set {
 	return s.Jwks
 }
 
-func (s *Storage) GetOAuth2Providers() []*OAuth2Provider {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	return s.OAuth2Providers
-}
-
 func (s *Storage) GetOAuth2ProviderByID(id string) (*OAuth2Provider, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
 
-	for _, provider := range s.OAuth2Providers {
+	providers := s.GetOAuth2Providers()
+
+	for _, provider := range providers {
 		if provider.ID == id {
-			return provider, nil
+			provCopy := provider
+			return &provCopy, nil
 		}
 	}
 
@@ -504,6 +526,33 @@ func (s *Storage) SetRootUri(rootUri string) error {
 	resp := make(chan error)
 	s.message_chan <- setRootUriMessage{
 		rootUri,
+		resp,
+	}
+	err := <-resp
+	return err
+}
+
+type getOauth2ProvidersMessage struct {
+	resp chan []OAuth2Provider
+}
+
+func (s *Storage) GetOAuth2Providers() []OAuth2Provider {
+	ch := make(chan []OAuth2Provider)
+	s.message_chan <- getOauth2ProvidersMessage{
+		resp: ch,
+	}
+	return <-ch
+}
+
+type setOauth2ProviderMessage struct {
+	provider OAuth2Provider
+	resp     chan error
+}
+
+func (s *Storage) SetOauth2Provider(provider OAuth2Provider) error {
+	resp := make(chan error)
+	s.message_chan <- setOauth2ProviderMessage{
+		provider,
 		resp,
 	}
 	err := <-resp

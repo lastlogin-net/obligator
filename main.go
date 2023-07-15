@@ -366,7 +366,7 @@ func main() {
 			ClientId        string
 			RequestId       string
 			Identities      []*Identity
-			OAuth2Providers []*OAuth2Provider
+			OAuth2Providers []OAuth2Provider
 			LogoMap         map[string]template.HTML
 			URL             string
 		}{
