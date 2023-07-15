@@ -62,7 +62,7 @@ type Oauth2TokenResponse struct {
 	IdToken     string `json:"id_token"`
 }
 
-type OathgateMux struct {
+type ObligatorMux struct {
 	mux *http.ServeMux
 }
 
@@ -71,15 +71,15 @@ type UserinfoResponse struct {
 	Email string `json:"email"`
 }
 
-func NewOathgateMux() *OathgateMux {
-	s := &OathgateMux{
+func NewObligatorMux() *ObligatorMux {
+	s := &ObligatorMux{
 		mux: http.NewServeMux(),
 	}
 
 	return s
 }
 
-func (s *OathgateMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *ObligatorMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'; script-src 'none'")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 
@@ -95,11 +95,11 @@ func (s *OathgateMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-func (s *OathgateMux) Handle(p string, h http.Handler) {
+func (s *ObligatorMux) Handle(p string, h http.Handler) {
 	s.mux.Handle(p, h)
 }
 
-func (s *OathgateMux) HandleFunc(p string, f func(w http.ResponseWriter, r *http.Request)) {
+func (s *ObligatorMux) HandleFunc(p string, f func(w http.ResponseWriter, r *http.Request)) {
 	s.mux.HandleFunc(p, f)
 }
 
@@ -111,7 +111,7 @@ func main() {
 	port := flag.Int("port", 9002, "Port")
 	flag.Parse()
 
-	storage, err := NewFileStorage("oathgate_db.json")
+	storage, err := NewFileStorage("obligator_storage.json")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -159,7 +159,7 @@ func main() {
 	}
 
 	oauth2Handler := NewOauth2Handler(storage)
-	mux := NewOathgateMux()
+	mux := NewObligatorMux()
 
 	mux.Handle("/login-oauth2", oauth2Handler)
 	mux.Handle("/callback", oauth2Handler)

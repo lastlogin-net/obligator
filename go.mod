@@ -1,4 +1,4 @@
-module github.com/anderspitman/oathgate
+module github.com/anderspitman/obligator
 
 go 1.20
 
