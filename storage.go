@@ -108,6 +108,21 @@ func NewFileStorage(path string) (*Storage, error) {
 					users = append(users, user)
 				}
 				msg.resp <- users
+			case createUserMessage:
+				var err error
+				for _, user := range s.Users {
+					if user.Email == msg.user.Email {
+						err = errors.New("User exists")
+						break
+					}
+				}
+
+				if err == nil {
+					s.Users = append(s.Users, msg.user)
+					s.Persist()
+				}
+
+				msg.resp <- err
 			}
 		}
 	}()
@@ -455,6 +470,27 @@ func (s *Storage) GetUsers() []User {
 	}
 	users := <-ch
 	return users
+}
+
+type createUserMessage struct {
+	user User
+	resp chan error
+}
+
+func (s *Storage) CreateUser(user User) error {
+	resp := make(chan error)
+	s.message_chan <- createUserMessage{
+		user,
+		resp,
+	}
+	err := <-resp
+	return err
+}
+
+func (s *Storage) Persist() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	saveJson(s, s.path)
 }
 
 func (s *Storage) persist() {

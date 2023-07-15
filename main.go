@@ -117,6 +117,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	api, err := NewApi(storage)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	printJson(api)
+
 	if storage.GetJWKSet().Len() == 0 {
 		key, err := GenerateJWK()
 		if err != nil {
