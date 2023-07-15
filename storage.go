@@ -123,6 +123,14 @@ func NewFileStorage(path string) (*Storage, error) {
 				}
 
 				msg.resp <- err
+			case setRootUriMessage:
+
+				s.mutex.Lock()
+				s.RootUri = msg.rootUri
+				s.persist()
+				s.mutex.Unlock()
+
+				msg.resp <- nil
 			}
 		}
 	}()
@@ -481,6 +489,21 @@ func (s *Storage) CreateUser(user User) error {
 	resp := make(chan error)
 	s.message_chan <- createUserMessage{
 		user,
+		resp,
+	}
+	err := <-resp
+	return err
+}
+
+type setRootUriMessage struct {
+	rootUri string
+	resp    chan error
+}
+
+func (s *Storage) SetRootUri(rootUri string) error {
+	resp := make(chan error)
+	s.message_chan <- setRootUriMessage{
+		rootUri,
 		resp,
 	}
 	err := <-resp

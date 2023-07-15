@@ -141,8 +141,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	rootUri := storage.GetRootUri()
-
 	providerLogoMap := make(map[string]template.HTML)
 	for _, prov := range storage.GetOAuth2Providers() {
 
@@ -210,6 +208,8 @@ func main() {
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
+
+		rootUri := storage.GetRootUri()
 
 		doc := OAuth2ServerMetadata{
 			Issuer:                           rootUri,
@@ -448,7 +448,7 @@ func main() {
 		token, err := openid.NewBuilder().
 			Subject(identId).
 			Audience([]string{request.ClientId}).
-			Issuer(rootUri).
+			Issuer(storage.GetRootUri()).
 			Email(identity.Email).
 			EmailVerified(true).
 			IssuedAt(issuedAt).
