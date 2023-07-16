@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"math/big"
 	"net/http"
@@ -24,6 +25,52 @@ type Oauth2Handler struct {
 	mux *http.ServeMux
 }
 
+var oidcConfigs map[string]*OAuth2ServerMetadata
+var jwksRefreshers map[string]*jwk.Cache
+var providerLogoMap map[string]template.HTML
+
+// TODO: This is not thread-safe
+func updateOidcConfigs(storage *Storage) {
+	oidcConfigs = make(map[string]*OAuth2ServerMetadata)
+	jwksRefreshers = make(map[string]*jwk.Cache)
+	providerLogoMap = make(map[string]template.HTML)
+
+	ctx := context.Background()
+
+	for _, oidcProvider := range storage.GetOAuth2Providers() {
+		if !oidcProvider.OpenIDConnect {
+			continue
+		}
+		var err error
+		oidcConfigs[oidcProvider.ID], err = GetOidcConfiguration(oidcProvider.URI)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+
+		jwksRefreshers[oidcProvider.ID] = jwk.NewCache(ctx)
+		jwksRefreshers[oidcProvider.ID].Register(oidcConfigs[oidcProvider.ID].JwksUri)
+
+		_, err = jwksRefreshers[oidcProvider.ID].Refresh(ctx, oidcConfigs[oidcProvider.ID].JwksUri)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+
+		logoPath := fmt.Sprintf("assets/logo_%s.svg", oidcProvider.ID)
+		logoBytes, err := fs.ReadFile(logoPath)
+		if err != nil {
+			logoBytes, err = fs.ReadFile("assets/logo_generic_openid.svg")
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+				os.Exit(1)
+			}
+		}
+
+		providerLogoMap[oidcProvider.ID] = template.HTML(logoBytes)
+	}
+}
+
 func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 	mux := http.NewServeMux()
 
@@ -34,31 +81,8 @@ func NewOauth2Handler(storage *Storage) *Oauth2Handler {
 	httpClient := &http.Client{}
 
 	ctx := context.Background()
-	oidcConfigs := make(map[string]*OAuth2ServerMetadata)
-	jwksRefreshers := make(map[string]*jwk.Cache)
-	// TODO: This is not thread-safe
-	go func() {
-		for _, oidcProvider := range storage.GetOAuth2Providers() {
-			if !oidcProvider.OpenIDConnect {
-				continue
-			}
-			var err error
-			oidcConfigs[oidcProvider.ID], err = GetOidcConfiguration(oidcProvider.URI)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err.Error())
-				os.Exit(1)
-			}
 
-			jwksRefreshers[oidcProvider.ID] = jwk.NewCache(ctx)
-			jwksRefreshers[oidcProvider.ID].Register(oidcConfigs[oidcProvider.ID].JwksUri)
-
-			_, err = jwksRefreshers[oidcProvider.ID].Refresh(ctx, oidcConfigs[oidcProvider.ID].JwksUri)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err.Error())
-				os.Exit(1)
-			}
-		}
-	}()
+	go updateOidcConfigs(storage)
 
 	mux.HandleFunc("/login-oauth2", func(w http.ResponseWriter, r *http.Request) {
 

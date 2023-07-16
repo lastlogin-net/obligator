@@ -81,6 +81,7 @@ func NewFileStorage(path string) (*Storage, error) {
 		LoginData:       make(map[string]*LoginData),
 		Tokens:          make(map[string]*Token),
 		LoginMap:        []*LoginMapping{},
+		Users:           []User{},
 		requests:        make(map[string]*OAuth2AuthRequest),
 		pendingTokens:   make(map[string]*PendingOAuth2Token),
 		mutex:           &sync.Mutex{},

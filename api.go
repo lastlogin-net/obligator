@@ -85,6 +85,8 @@ func NewApi(storage *Storage) (*Api, error) {
 				io.WriteString(w, err.Error())
 				return
 			}
+
+			updateOidcConfigs(storage)
 		}
 	})
 

@@ -141,23 +141,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	providerLogoMap := make(map[string]template.HTML)
-	for _, prov := range storage.GetOAuth2Providers() {
-
-		logoPath := fmt.Sprintf("assets/logo_%s.svg", prov.ID)
-		logoBytes, err := fs.ReadFile(logoPath)
-		if err != nil {
-			logoBytes, err = fs.ReadFile("assets/logo_generic_openid.svg")
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err.Error())
-				os.Exit(1)
-			}
-		}
-
-		providerLogoMap[prov.ID] = template.HTML(logoBytes)
-
-	}
-
 	tmpl, err := template.ParseFS(fs, "templates/*.tmpl")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
