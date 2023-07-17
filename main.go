@@ -43,16 +43,17 @@ type OAuth2ServerMetadata struct {
 }
 
 type OAuth2AuthRequest struct {
-	LoginKey         string `json:"login_key"`
-	RawQuery         string `json:"raw_query"`
-	ClientId         string `json:"client_id"`
-	RedirectUri      string `json:"redirect_uri"`
-	State            string `json:"state"`
-	Scope            string `json:"scope"`
-	Provider         string `json:"provider"`
-	Nonce            string `json:"nonce"`
-	ProviderNonce    string `json:"provider_nonce"`
-	PKCECodeVerifier string `json:"pkce_code_verifier"`
+	LoginKey          string `json:"login_key"`
+	RawQuery          string `json:"raw_query"`
+	ClientId          string `json:"client_id"`
+	RedirectUri       string `json:"redirect_uri"`
+	State             string `json:"state"`
+	Scope             string `json:"scope"`
+	Provider          string `json:"provider"`
+	Nonce             string `json:"nonce"`
+	ProviderNonce     string `json:"provider_nonce"`
+	PKCECodeVerifier  string `json:"pkce_code_verifier"`
+	PKCECodeChallenge string `json:"pkce_code_challenge"`
 }
 
 type Oauth2TokenResponse struct {
@@ -117,13 +118,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	api, err := NewApi(storage)
+	_, err = NewApi(storage)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-
-	printJson(api)
 
 	if storage.GetJWKSet().Len() == 0 {
 		key, err := GenerateJWK()
@@ -329,13 +328,14 @@ func main() {
 		}
 
 		req := OAuth2AuthRequest{
-			LoginKey:    loginKey,
-			RawQuery:    r.URL.RawQuery,
-			ClientId:    clientId,
-			RedirectUri: redirectUri,
-			State:       state,
-			Scope:       r.Form.Get("scope"),
-			Nonce:       r.Form.Get("nonce"),
+			LoginKey:          loginKey,
+			RawQuery:          r.URL.RawQuery,
+			ClientId:          clientId,
+			RedirectUri:       redirectUri,
+			State:             state,
+			Scope:             r.Form.Get("scope"),
+			Nonce:             r.Form.Get("nonce"),
+			PKCECodeChallenge: r.Form.Get("code_challenge"),
 		}
 
 		requestId, err := storage.AddRequest(req)
@@ -445,7 +445,8 @@ func main() {
 		}
 
 		oauth2Token := &PendingOAuth2Token{
-			IdToken: token,
+			IdToken:           token,
+			PKCECodeChallenge: request.PKCECodeChallenge,
 		}
 
 		code, err := storage.AddPendingToken(oauth2Token)
@@ -471,6 +472,7 @@ func main() {
 		r.ParseForm()
 
 		code := r.Form.Get("code")
+		defer storage.DeletePendingToken(code)
 
 		token, err := storage.GetPendingToken(code)
 		if err != nil {
@@ -490,7 +492,22 @@ func main() {
 			return
 		}
 
-		storage.DeletePendingToken(code)
+		// https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics#section-4.8.2
+		pkceCodeVerifier := r.Form.Get("code_verifier")
+		if token.PKCECodeChallenge != "" {
+			challenge := GeneratePKCECodeChallenge(pkceCodeVerifier)
+			if challenge != token.PKCECodeChallenge {
+				w.WriteHeader(401)
+				io.WriteString(w, "Invalid code_verifier")
+				return
+			}
+		} else {
+			if pkceCodeVerifier != "" {
+				w.WriteHeader(401)
+				io.WriteString(w, "code_verifier provided for request that did not include code_challenge")
+				return
+			}
+		}
 
 		tokenData := &Token{
 			IdentityId:        token.IdToken.Subject(),

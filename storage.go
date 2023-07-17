@@ -23,8 +23,9 @@ type LoginData struct {
 }
 
 type PendingOAuth2Token struct {
-	AccessToken string       `json:"access_token"`
-	IdToken     openid.Token `json:"id_token"`
+	AccessToken       string       `json:"access_token"`
+	IdToken           openid.Token `json:"id_token"`
+	PKCECodeChallenge string       `json:"pkce_code_challenge"`
 }
 
 type Token struct {
