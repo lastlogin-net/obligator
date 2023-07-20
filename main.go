@@ -112,29 +112,29 @@ func main() {
 	port := flag.Int("port", 9002, "Port")
 	flag.Parse()
 
-	storage, err := NewFileStorage("obligator_storage.json")
+	jsonStorage, err := NewJsonStorage("obligator_storage.json")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
-	_, err = NewApi(storage)
+	_, err = NewApi(jsonStorage)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
-	if storage.GetJWKSet().Len() == 0 {
+	if jsonStorage.GetJWKSet().Len() == 0 {
 		key, err := GenerateJWK()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
 
-		storage.AddJWKKey(key)
+		jsonStorage.AddJWKKey(key)
 	}
 
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+	publicJwks, err := jwk.PublicSetOf(jsonStorage.GetJWKSet())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -146,13 +146,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	oauth2Handler := NewOauth2Handler(storage)
+	oauth2Handler := NewOauth2Handler(jsonStorage)
 	mux := NewObligatorMux()
 
 	mux.Handle("/login-oauth2", oauth2Handler)
 	mux.Handle("/callback", oauth2Handler)
 
-	emailHandler := NewEmailHander(storage)
+	emailHandler := NewEmailHander(jsonStorage)
 	mux.Handle("/login-email", emailHandler)
 	mux.Handle("/email-code", emailHandler)
 	mux.Handle("/complete-email-login", emailHandler)
@@ -166,7 +166,7 @@ func main() {
 
 		redirectUri := r.Form.Get("redirect_uri")
 		url := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=code&state=&scope=",
-			storage.GetRootUri(), redirectUri, redirectUri)
+			jsonStorage.GetRootUri(), redirectUri, redirectUri)
 
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err != nil {
@@ -176,7 +176,7 @@ func main() {
 
 		loginKey := Hash(loginKeyCookie.Value)
 
-		for _, mapping := range storage.GetLoginMap() {
+		for _, mapping := range jsonStorage.GetLoginMap() {
 			if mapping.LoginKey == loginKey {
 				// found a valid user
 				return
@@ -191,7 +191,7 @@ func main() {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 
-		rootUri := storage.GetRootUri()
+		rootUri := jsonStorage.GetRootUri()
 
 		doc := OAuth2ServerMetadata{
 			Issuer:                           rootUri,
@@ -229,7 +229,7 @@ func main() {
 
 		unhashedToken := parts[1]
 
-		tokenData, err := storage.GetToken(Hash(unhashedToken))
+		tokenData, err := jsonStorage.GetToken(Hash(unhashedToken))
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -243,13 +243,13 @@ func main() {
 			return
 		}
 		if expired {
-			storage.DeleteToken(Hash(unhashedToken))
+			jsonStorage.DeleteToken(Hash(unhashedToken))
 			w.WriteHeader(401)
 			io.WriteString(w, "Token expired")
 			return
 		}
 
-		ident, err := storage.GetIdentityById(tokenData.IdentityId)
+		ident, err := jsonStorage.GetIdentityById(tokenData.IdentityId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -324,7 +324,7 @@ func main() {
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
 			loginKey = Hash(loginKeyCookie.Value)
-			identities = storage.GetIdentitiesByLoginKey(loginKey)
+			identities = jsonStorage.GetIdentitiesByLoginKey(loginKey)
 		}
 
 		req := OAuth2AuthRequest{
@@ -338,7 +338,7 @@ func main() {
 			PKCECodeChallenge: r.Form.Get("code_challenge"),
 		}
 
-		requestId, err := storage.AddRequest(req)
+		requestId, err := jsonStorage.AddRequest(req)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -356,7 +356,7 @@ func main() {
 			ClientId:        clientIdUrl.Host,
 			RequestId:       requestId,
 			Identities:      identities,
-			OAuth2Providers: storage.GetOAuth2Providers(),
+			OAuth2Providers: jsonStorage.GetOAuth2Providers(),
 			LogoMap:         providerLogoMap,
 			URL:             fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
 		}
@@ -389,7 +389,7 @@ func main() {
 
 		requestId := r.Form.Get("request_id")
 
-		request, err := storage.GetRequest(requestId)
+		request, err := jsonStorage.GetRequest(requestId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -404,7 +404,7 @@ func main() {
 
 		identId := r.Form.Get("identity_id")
 
-		identity, err := storage.GetIdentityById(identId)
+		identity, err := jsonStorage.GetIdentityById(identId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -412,7 +412,7 @@ func main() {
 		}
 
 		owner := false
-		for _, mapping := range storage.GetLoginMap() {
+		for _, mapping := range jsonStorage.GetLoginMap() {
 			if mapping.LoginKey == loginKey && mapping.IdentityId == identId {
 				owner = true
 				break
@@ -431,7 +431,7 @@ func main() {
 		token, err := openid.NewBuilder().
 			Subject(identId).
 			Audience([]string{request.ClientId}).
-			Issuer(storage.GetRootUri()).
+			Issuer(jsonStorage.GetRootUri()).
 			Email(identity.Email).
 			EmailVerified(true).
 			IssuedAt(issuedAt).
@@ -449,7 +449,7 @@ func main() {
 			PKCECodeChallenge: request.PKCECodeChallenge,
 		}
 
-		code, err := storage.AddPendingToken(oauth2Token)
+		code, err := jsonStorage.AddPendingToken(oauth2Token)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -472,15 +472,15 @@ func main() {
 		r.ParseForm()
 
 		code := r.Form.Get("code")
-		defer storage.DeletePendingToken(code)
+		defer jsonStorage.DeletePendingToken(code)
 
-		token, err := storage.GetPendingToken(code)
+		token, err := jsonStorage.GetPendingToken(code)
 		if err != nil {
 
 			// Check if code has been used more than once
-			for token, tokenData := range storage.GetTokens() {
+			for token, tokenData := range jsonStorage.GetTokens() {
 				if code == tokenData.AuthorizationCode {
-					storage.DeleteToken(token)
+					jsonStorage.DeleteToken(token)
 					w.WriteHeader(401)
 					io.WriteString(w, "Attempt to use authorization code multiple times. Someone may be trying to hack your account. Deleting access token as a precaution.")
 					return
@@ -516,14 +516,14 @@ func main() {
 			AuthorizationCode: code,
 		}
 
-		err = storage.SetToken(Hash(token.AccessToken), tokenData)
+		err = jsonStorage.SetToken(Hash(token.AccessToken), tokenData)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		key, exists := storage.GetJWKSet().Key(0)
+		key, exists := jsonStorage.GetJWKSet().Key(0)
 		if !exists {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, "No keys available")
@@ -564,12 +564,12 @@ func main() {
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
 			loginKey := Hash(loginKeyCookie.Value)
-			storage.DeleteLoginData(loginKey)
+			jsonStorage.DeleteLoginData(loginKey)
 		}
 
 		redirect := r.Form.Get("prev_page")
 
-		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+		cookieDomain, err := buildCookieDomain(jsonStorage.GetRootUri())
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -619,14 +619,14 @@ func main() {
 	// Clean up expired tokens occasionally
 	go func() {
 		for {
-			for token, tokenData := range storage.GetTokens() {
+			for token, tokenData := range jsonStorage.GetTokens() {
 				expired, err := tokenExpired(tokenData)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to parse time\n")
 					continue
 				}
 				if expired {
-					storage.DeleteToken(token)
+					jsonStorage.DeleteToken(token)
 				}
 			}
 

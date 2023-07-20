@@ -14,14 +14,14 @@ import (
 type Api struct {
 }
 
-func NewApi(storage *Storage) (*Api, error) {
+func NewApi(jsonStorage *JsonStorage) (*Api, error) {
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/oauth2-providers", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			json.NewEncoder(w).Encode(storage.GetOAuth2Providers())
+			json.NewEncoder(w).Encode(jsonStorage.GetOAuth2Providers())
 		}
 	})
 
@@ -79,14 +79,14 @@ func NewApi(storage *Storage) (*Api, error) {
 				return
 			}
 
-			err = storage.SetOauth2Provider(prov)
+			err = jsonStorage.SetOauth2Provider(prov)
 			if err != nil {
 				w.WriteHeader(400)
 				io.WriteString(w, err.Error())
 				return
 			}
 
-			updateOidcConfigs(storage)
+			updateOidcConfigs(jsonStorage)
 		}
 	})
 
@@ -101,7 +101,7 @@ func NewApi(storage *Storage) (*Api, error) {
 				return
 			}
 
-			err := storage.SetRootUri(rootUri)
+			err := jsonStorage.SetRootUri(rootUri)
 			if err != nil {
 				w.WriteHeader(400)
 				io.WriteString(w, err.Error())
@@ -113,7 +113,7 @@ func NewApi(storage *Storage) (*Api, error) {
 	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			users := storage.GetUsers()
+			users := jsonStorage.GetUsers()
 			json.NewEncoder(w).Encode(users)
 		case "POST":
 			var user User
@@ -131,7 +131,7 @@ func NewApi(storage *Storage) (*Api, error) {
 				return
 			}
 
-			err = storage.CreateUser(user)
+			err = jsonStorage.CreateUser(user)
 			if err != nil {
 				w.WriteHeader(400)
 				io.WriteString(w, err.Error())

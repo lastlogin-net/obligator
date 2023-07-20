@@ -15,7 +15,7 @@ import (
 )
 
 type Auth struct {
-	storage             *Storage
+	jsonStorage         *JsonStorage
 	pendingAuthRequests map[string]*PendingAuthRequest
 	mut                 *sync.Mutex
 }
@@ -34,13 +34,13 @@ func (h *EmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
-func NewEmailAuth(storage *Storage) *Auth {
+func NewEmailAuth(jsonStorage *JsonStorage) *Auth {
 
 	pendingAuthRequests := make(map[string]*PendingAuthRequest)
 	mut := &sync.Mutex{}
 
 	return &Auth{
-		storage,
+		jsonStorage,
 		pendingAuthRequests,
 		mut,
 	}
@@ -50,13 +50,13 @@ type EmailHandler struct {
 	mux *http.ServeMux
 }
 
-func NewEmailHander(storage *Storage) *EmailHandler {
+func NewEmailHander(jsonStorage *JsonStorage) *EmailHandler {
 	mux := http.NewServeMux()
 	h := &EmailHandler{
 		mux: mux,
 	}
 
-	rootUri := storage.GetRootUri()
+	rootUri := jsonStorage.GetRootUri()
 
 	tmpl, err := template.ParseFS(fs, "templates/*.tmpl")
 	if err != nil {
@@ -64,7 +64,7 @@ func NewEmailHander(storage *Storage) *EmailHandler {
 		os.Exit(1)
 	}
 
-	emailAuth := NewEmailAuth(storage)
+	emailAuth := NewEmailAuth(jsonStorage)
 
 	mux.HandleFunc("/login-email", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
@@ -116,7 +116,7 @@ func NewEmailHander(storage *Storage) *EmailHandler {
 			return
 		}
 
-		if storage.GetPublic() || validUser(email, storage.GetUsers()) {
+		if jsonStorage.GetPublic() || validUser(email, jsonStorage.GetUsers()) {
 			// run in goroutine so the user can't use timing to determine whether the account exists
 			go func() {
 				_ = emailAuth.StartEmailValidation(email, emailRequestId)
@@ -149,7 +149,7 @@ func NewEmailHander(storage *Storage) *EmailHandler {
 		r.ParseForm()
 
 		requestId := r.Form.Get("request_id")
-		request, err := storage.GetRequest(requestId)
+		request, err := jsonStorage.GetRequest(requestId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -183,21 +183,21 @@ func NewEmailHander(storage *Storage) *EmailHandler {
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
 			loginKey = Hash(loginKeyCookie.Value)
-			_, err := storage.GetLoginData(loginKey)
+			_, err := jsonStorage.GetLoginData(loginKey)
 			if err == nil {
 				loggedIn = true
 			}
 		}
 
 		if !loggedIn {
-			unhashedLoginKey, err := storage.AddLoginData()
+			unhashedLoginKey, err := jsonStorage.AddLoginData()
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
 				return
 			}
 
-			cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+			cookieDomain, err := buildCookieDomain(jsonStorage.GetRootUri())
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
@@ -220,14 +220,14 @@ func NewEmailHander(storage *Storage) *EmailHandler {
 			loginKey = Hash(unhashedLoginKey)
 		}
 
-		identId, err := storage.EnsureIdentity(email, "Email", email)
+		identId, err := jsonStorage.EnsureIdentity(email, "Email", email)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
 
-		storage.EnsureLoginMapping(identId, loginKey)
+		jsonStorage.EnsureLoginMapping(identId, loginKey)
 
 		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
 
@@ -252,12 +252,12 @@ func (a *Auth) StartEmailValidation(email, requestId string) error {
 		"\r\n" +
 		"%s\r\n"
 
-	fromText := fmt.Sprintf("%s email validator", a.storage.Smtp.SenderName)
-	fromEmail := a.storage.Smtp.Sender
-	emailBody := fmt.Sprintf(bodyTemplate, fromText, fromEmail, email, a.storage.Smtp.SenderName, email, code)
+	fromText := fmt.Sprintf("%s email validator", a.jsonStorage.Smtp.SenderName)
+	fromEmail := a.jsonStorage.Smtp.Sender
+	emailBody := fmt.Sprintf(bodyTemplate, fromText, fromEmail, email, a.jsonStorage.Smtp.SenderName, email, code)
 
-	emailAuth := smtp.PlainAuth("", a.storage.Smtp.Username, a.storage.Smtp.Password, a.storage.Smtp.Server)
-	srv := fmt.Sprintf("%s:%d", a.storage.Smtp.Server, a.storage.Smtp.Port)
+	emailAuth := smtp.PlainAuth("", a.jsonStorage.Smtp.Username, a.jsonStorage.Smtp.Password, a.jsonStorage.Smtp.Server)
+	srv := fmt.Sprintf("%s:%d", a.jsonStorage.Smtp.Server, a.jsonStorage.Smtp.Port)
 	msg := []byte(emailBody)
 	err = smtp.SendMail(srv, emailAuth, fromEmail, []string{email}, msg)
 	if err != nil {
