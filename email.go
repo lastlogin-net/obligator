@@ -50,13 +50,11 @@ type EmailHandler struct {
 	mux *http.ServeMux
 }
 
-func NewEmailHander(jsonStorage *JsonStorage) *EmailHandler {
+func NewEmailHander(storage Storage, jsonStorage *JsonStorage) *EmailHandler {
 	mux := http.NewServeMux()
 	h := &EmailHandler{
 		mux: mux,
 	}
-
-	rootUri := jsonStorage.GetRootUri()
 
 	tmpl, err := template.ParseFS(fs, "templates/*.tmpl")
 	if err != nil {
@@ -197,7 +195,7 @@ func NewEmailHander(jsonStorage *JsonStorage) *EmailHandler {
 				return
 			}
 
-			cookieDomain, err := buildCookieDomain(jsonStorage.GetRootUri())
+			cookieDomain, err := buildCookieDomain(storage.GetRootUri())
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
@@ -229,7 +227,7 @@ func NewEmailHander(jsonStorage *JsonStorage) *EmailHandler {
 
 		jsonStorage.EnsureLoginMapping(identId, loginKey)
 
-		redirUrl := fmt.Sprintf("%s/auth?%s", rootUri, request.RawQuery)
+		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), request.RawQuery)
 
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})

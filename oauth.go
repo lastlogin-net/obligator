@@ -71,7 +71,7 @@ func updateOidcConfigs(jsonStorage *JsonStorage) {
 	}
 }
 
-func NewOauth2Handler(jsonStorage *JsonStorage) *Oauth2Handler {
+func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler {
 	mux := http.NewServeMux()
 
 	h := &Oauth2Handler{
@@ -138,7 +138,7 @@ func NewOauth2Handler(jsonStorage *JsonStorage) *Oauth2Handler {
 
 		jsonStorage.SetRequest(requestId, request)
 
-		callbackUri := fmt.Sprintf("%s/callback", jsonStorage.GetRootUri())
+		callbackUri := fmt.Sprintf("%s/callback", storage.GetRootUri())
 
 		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s&nonce=%s&prompt=consent",
 			authURL, provider.ClientID, callbackUri, requestId,
@@ -170,7 +170,7 @@ func NewOauth2Handler(jsonStorage *JsonStorage) *Oauth2Handler {
 
 		providerCode := r.Form.Get("code")
 
-		rootUri := jsonStorage.GetRootUri()
+		rootUri := storage.GetRootUri()
 		callbackUri := fmt.Sprintf("%s/callback", rootUri)
 
 		body := url.Values{}
@@ -340,7 +340,7 @@ func NewOauth2Handler(jsonStorage *JsonStorage) *Oauth2Handler {
 
 		jsonStorage.EnsureLoginMapping(identId, loginKey)
 
-		redirUrl := fmt.Sprintf("%s/auth?%s", jsonStorage.GetRootUri(), request.RawQuery)
+		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), request.RawQuery)
 
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})

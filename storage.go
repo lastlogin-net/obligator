@@ -4,6 +4,11 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
+type Storage interface {
+	GetRootUri() string
+	SetRootUri(string) error
+}
+
 type Identity struct {
 	Id           string `json:"id"`
 	ProviderName string `json:"provider_name"`

@@ -112,13 +112,19 @@ func main() {
 	port := flag.Int("port", 9002, "Port")
 	flag.Parse()
 
+	storage, err := NewSqliteStorage("obligator_storage.sqlite3")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
 	jsonStorage, err := NewJsonStorage("obligator_storage.json")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
-	_, err = NewApi(jsonStorage)
+	_, err = NewApi(storage, jsonStorage)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -146,13 +152,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	oauth2Handler := NewOauth2Handler(jsonStorage)
+	oauth2Handler := NewOauth2Handler(storage, jsonStorage)
 	mux := NewObligatorMux()
 
 	mux.Handle("/login-oauth2", oauth2Handler)
 	mux.Handle("/callback", oauth2Handler)
 
-	emailHandler := NewEmailHander(jsonStorage)
+	emailHandler := NewEmailHander(storage, jsonStorage)
 	mux.Handle("/login-email", emailHandler)
 	mux.Handle("/email-code", emailHandler)
 	mux.Handle("/complete-email-login", emailHandler)
@@ -166,7 +172,7 @@ func main() {
 
 		redirectUri := r.Form.Get("redirect_uri")
 		url := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=code&state=&scope=",
-			jsonStorage.GetRootUri(), redirectUri, redirectUri)
+			storage.GetRootUri(), redirectUri, redirectUri)
 
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err != nil {
@@ -191,7 +197,7 @@ func main() {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 
-		rootUri := jsonStorage.GetRootUri()
+		rootUri := storage.GetRootUri()
 
 		doc := OAuth2ServerMetadata{
 			Issuer:                           rootUri,
@@ -431,7 +437,7 @@ func main() {
 		token, err := openid.NewBuilder().
 			Subject(identId).
 			Audience([]string{request.ClientId}).
-			Issuer(jsonStorage.GetRootUri()).
+			Issuer(storage.GetRootUri()).
 			Email(identity.Email).
 			EmailVerified(true).
 			IssuedAt(issuedAt).
@@ -569,7 +575,7 @@ func main() {
 
 		redirect := r.Form.Get("prev_page")
 
-		cookieDomain, err := buildCookieDomain(jsonStorage.GetRootUri())
+		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())

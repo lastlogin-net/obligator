@@ -14,7 +14,7 @@ import (
 type Api struct {
 }
 
-func NewApi(jsonStorage *JsonStorage) (*Api, error) {
+func NewApi(storage Storage, jsonStorage *JsonStorage) (*Api, error) {
 
 	mux := http.NewServeMux()
 
@@ -101,7 +101,7 @@ func NewApi(jsonStorage *JsonStorage) (*Api, error) {
 				return
 			}
 
-			err := jsonStorage.SetRootUri(rootUri)
+			err := storage.SetRootUri(rootUri)
 			if err != nil {
 				w.WriteHeader(400)
 				io.WriteString(w, err.Error())
