@@ -110,11 +110,21 @@ var fs embed.FS
 func main() {
 
 	port := flag.Int("port", 9002, "Port")
+	rootUri := flag.String("root-uri", "", "Root URI")
 	flag.Parse()
 
 	storage, err := NewSqliteStorage("obligator_storage.sqlite3")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	if *rootUri != "" {
+		storage.SetRootUri(*rootUri)
+	}
+
+	if storage.GetRootUri() == "" {
+		fmt.Fprintln(os.Stderr, "No root-uri in storage. You must provide one")
 		os.Exit(1)
 	}
 
