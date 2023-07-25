@@ -113,7 +113,13 @@ func NewApi(storage Storage, jsonStorage *JsonStorage) (*Api, error) {
 	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			users := jsonStorage.GetUsers()
+			users, err := storage.GetUsers()
+			if err != nil {
+				w.WriteHeader(400)
+				io.WriteString(w, err.Error())
+				return
+			}
+
 			json.NewEncoder(w).Encode(users)
 		case "POST":
 			var user User
@@ -131,7 +137,7 @@ func NewApi(storage Storage, jsonStorage *JsonStorage) (*Api, error) {
 				return
 			}
 
-			err = jsonStorage.CreateUser(user)
+			err = storage.CreateUser(user)
 			if err != nil {
 				w.WriteHeader(400)
 				io.WriteString(w, err.Error())

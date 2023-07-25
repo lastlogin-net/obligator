@@ -280,7 +280,14 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 			providerIdentityId, email, _ = GetProfile(oauth2Provider, tokenRes.AccessToken)
 		}
 
-		if !jsonStorage.GetPublic() && !validUser(email, jsonStorage.GetUsers()) {
+		users, err := storage.GetUsers()
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		if !jsonStorage.GetPublic() && !validUser(email, users) {
 			redirUrl := fmt.Sprintf("%s/no-account?%s", rootUri, request.RawQuery)
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 			return

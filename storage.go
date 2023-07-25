@@ -7,6 +7,8 @@ import (
 type Storage interface {
 	GetRootUri() string
 	SetRootUri(string) error
+	GetUsers() ([]User, error)
+	CreateUser(User) error
 }
 
 type Identity struct {
