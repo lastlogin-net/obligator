@@ -20,7 +20,7 @@ func NewSqliteStorage(path string) (*SqliteStorage, error) {
 	}
 
 	stmt := `
-        create table users (id integer not null primary key, email text);
+        create table users (id integer not null primary key, email TEXT NOT NULL UNIQUE);
         `
 	_, err = db.Exec(stmt)
 	if sqliteErr, ok := err.(sqlite3.Error); ok {
@@ -73,6 +73,42 @@ func (s *SqliteStorage) SetRootUri(rootUri string) error {
 	_, err := s.db.Exec(stmt, rootUri)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
+	}
+	return nil
+}
+
+func (s *SqliteStorage) GetUsers() ([]User, error) {
+	rows, err := s.db.Query("select email from users")
+	if err != nil {
+		return []User{}, err
+	}
+	defer rows.Close()
+
+	users := []User{}
+
+	for rows.Next() {
+		var user User
+		err = rows.Scan(&user.Email)
+		if err != nil {
+			return []User{}, err
+		}
+		users = append(users, user)
+	}
+	err = rows.Err()
+	if err != nil {
+		return []User{}, err
+	}
+
+	return users, nil
+}
+
+func (s *SqliteStorage) CreateUser(user User) error {
+	stmt := `
+        INSERT INTO users (email) VALUES(?);
+        `
+	_, err := s.db.Exec(stmt, user.Email)
+	if err != nil {
+		return err
 	}
 	return nil
 }
