@@ -77,7 +77,7 @@ func updateOidcConfigs(storage Storage) {
 	}
 }
 
-func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler {
+func NewOauth2Handler(storage Storage) *Oauth2Handler {
 	mux := http.NewServeMux()
 
 	h := &Oauth2Handler{
@@ -105,7 +105,7 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 			return
 		}
 
-		request, err := jsonStorage.GetRequest(requestId)
+		request, err := storage.GetRequest(requestId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -142,7 +142,7 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 			return
 		}
 
-		jsonStorage.SetRequest(requestId, request)
+		storage.SetRequest(requestId, request)
 
 		callbackUri := fmt.Sprintf("%s/callback", storage.GetRootUri())
 
@@ -158,14 +158,14 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 		r.ParseForm()
 
 		requestId := r.Form.Get("state")
-		request, err := jsonStorage.GetRequest(requestId)
+		request, err := storage.GetRequest(requestId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		jsonStorage.DeleteRequest(requestId)
+		storage.DeleteRequest(requestId)
 
 		oauth2Provider, err := storage.GetOAuth2ProviderByID(request.Provider)
 		if err != nil {
@@ -293,7 +293,7 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 			return
 		}
 
-		if !jsonStorage.GetPublic() && !validUser(email, users) {
+		if !storage.GetPublic() && !validUser(email, users) {
 			redirUrl := fmt.Sprintf("%s/no-account?%s", rootUri, request.RawQuery)
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 			return
@@ -306,7 +306,7 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
 			loginKey = Hash(loginKeyCookie.Value)
-			_, err := jsonStorage.GetLoginData(loginKey)
+			_, err := storage.GetLoginData(loginKey)
 			if err == nil {
 				loggedIn = true
 			}
@@ -314,7 +314,7 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 
 		// Since no identities exist for the user, create a new user
 		if !loggedIn {
-			unhashedLoginKey, err := jsonStorage.AddLoginData()
+			unhashedLoginKey, err := storage.AddLoginData()
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
@@ -344,14 +344,14 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 			loginKey = Hash(unhashedLoginKey)
 		}
 
-		identId, err := jsonStorage.EnsureIdentity(providerIdentityId, oauth2Provider.Name, email)
+		identId, err := storage.EnsureIdentity(providerIdentityId, oauth2Provider.Name, email)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
 
-		jsonStorage.EnsureLoginMapping(identId, loginKey)
+		storage.EnsureLoginMapping(identId, loginKey)
 
 		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), request.RawQuery)
 

@@ -115,6 +115,12 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 				s.Persist()
 
 				msg.resp <- nil
+			case getSmtpConfigMessage:
+				if s.Smtp == nil {
+					msg.resp <- nil
+				} else {
+					msg.resp <- &(*s.Smtp)
+				}
 			}
 		}
 	}()
@@ -170,18 +176,21 @@ func (s *JsonStorage) GetJWKSet() jwk.Set {
 	return s.Jwks
 }
 
-func (s *JsonStorage) GetOAuth2ProviderByID(id string) (*OAuth2Provider, error) {
+func (s *JsonStorage) GetOAuth2ProviderByID(id string) (OAuth2Provider, error) {
 
-	providers := s.GetOAuth2Providers()
+	providers, err := s.GetOAuth2Providers()
+	if err != nil {
+		return OAuth2Provider{}, err
+	}
 
 	for _, provider := range providers {
 		if provider.ID == id {
 			provCopy := provider
-			return &provCopy, nil
+			return provCopy, nil
 		}
 	}
 
-	return nil, errors.New("No such provider")
+	return OAuth2Provider{}, errors.New("No such provider")
 }
 
 func (s *JsonStorage) GetAllIdentities() []*Identity {
@@ -231,16 +240,16 @@ func (s *JsonStorage) DeleteLoginData(loginKey string) {
 	s.persist()
 }
 
-func (s *JsonStorage) GetLoginData(loginKey string) (*LoginData, error) {
+func (s *JsonStorage) GetLoginData(loginKey string) (LoginData, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	data, ok := s.LoginData[loginKey]
 	if !ok {
-		return nil, errors.New("No such login")
+		return LoginData{}, errors.New("No such login")
 	}
 
-	return data, nil
+	return *data, nil
 }
 
 func (s *JsonStorage) EnsureIdentity(providerId, providerName, email string) (string, error) {
@@ -449,13 +458,13 @@ type getUsersMessage struct {
 	resp chan []User
 }
 
-func (s *JsonStorage) GetUsers() []User {
+func (s *JsonStorage) GetUsers() ([]User, error) {
 	ch := make(chan []User)
 	s.message_chan <- getUsersMessage{
 		resp: ch,
 	}
 	users := <-ch
-	return users
+	return users, nil
 }
 
 type createUserMessage struct {
@@ -492,17 +501,21 @@ type getOauth2ProvidersMessage struct {
 	resp chan []OAuth2Provider
 }
 
-func (s *JsonStorage) GetOAuth2Providers() []OAuth2Provider {
+func (s *JsonStorage) GetOAuth2Providers() ([]OAuth2Provider, error) {
 	ch := make(chan []OAuth2Provider)
 	s.message_chan <- getOauth2ProvidersMessage{
 		resp: ch,
 	}
-	return <-ch
+	return <-ch, nil
 }
 
 type setOauth2ProviderMessage struct {
 	provider OAuth2Provider
 	resp     chan error
+}
+
+type getSmtpConfigMessage struct {
+	resp chan *SmtpConfig
 }
 
 func (s *JsonStorage) SetOauth2Provider(provider OAuth2Provider) error {
@@ -513,6 +526,20 @@ func (s *JsonStorage) SetOauth2Provider(provider OAuth2Provider) error {
 	}
 	err := <-resp
 	return err
+}
+
+func (s *JsonStorage) GetSmtpConfig() (SmtpConfig, error) {
+	ch := make(chan *SmtpConfig)
+	s.message_chan <- getSmtpConfigMessage{
+		resp: ch,
+	}
+	smtp := <-ch
+
+	if smtp == nil {
+		return SmtpConfig{}, errors.New("No SMTP config set")
+	} else {
+		return *smtp, nil
+	}
 }
 
 func (s *JsonStorage) Persist() {

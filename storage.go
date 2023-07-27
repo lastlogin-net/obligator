@@ -12,6 +12,15 @@ type Storage interface {
 	GetOAuth2Providers() ([]OAuth2Provider, error)
 	GetOAuth2ProviderByID(string) (OAuth2Provider, error)
 	SetOauth2Provider(OAuth2Provider) error
+	GetRequest(requestId string) (OAuth2AuthRequest, error)
+	SetRequest(requestId string, request OAuth2AuthRequest)
+	DeleteRequest(requestId string)
+	GetPublic() bool
+	GetLoginData(loginKey string) (LoginData, error)
+	AddLoginData() (string, error)
+	EnsureIdentity(providerId, providerName, email string) (string, error)
+	EnsureLoginMapping(identityId, loginKey string)
+	GetSmtpConfig() (SmtpConfig, error)
 }
 
 type Identity struct {

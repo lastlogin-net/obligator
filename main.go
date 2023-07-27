@@ -113,7 +113,13 @@ func main() {
 	rootUri := flag.String("root-uri", "", "Root URI")
 	flag.Parse()
 
-	storage, err := NewSqliteStorage("obligator_storage.sqlite3")
+	//storage, err := NewSqliteStorage("obligator_storage.sqlite3")
+	//if err != nil {
+	//	fmt.Fprintln(os.Stderr, err.Error())
+	//	os.Exit(1)
+	//}
+
+	storage, err := NewJsonStorage("obligator_storage.json")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -128,29 +134,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	jsonStorage, err := NewJsonStorage("obligator_storage.json")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
 	_, err = NewApi(storage)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
-	if jsonStorage.GetJWKSet().Len() == 0 {
+	if storage.GetJWKSet().Len() == 0 {
 		key, err := GenerateJWK()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
 
-		jsonStorage.AddJWKKey(key)
+		storage.AddJWKKey(key)
 	}
 
-	publicJwks, err := jwk.PublicSetOf(jsonStorage.GetJWKSet())
+	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -162,13 +162,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	oauth2Handler := NewOauth2Handler(storage, jsonStorage)
+	oauth2Handler := NewOauth2Handler(storage)
 	mux := NewObligatorMux()
 
 	mux.Handle("/login-oauth2", oauth2Handler)
 	mux.Handle("/callback", oauth2Handler)
 
-	emailHandler := NewEmailHander(storage, jsonStorage)
+	emailHandler := NewEmailHander(storage)
 	mux.Handle("/login-email", emailHandler)
 	mux.Handle("/email-code", emailHandler)
 	mux.Handle("/complete-email-login", emailHandler)
@@ -192,7 +192,7 @@ func main() {
 
 		loginKey := Hash(loginKeyCookie.Value)
 
-		for _, mapping := range jsonStorage.GetLoginMap() {
+		for _, mapping := range storage.GetLoginMap() {
 			if mapping.LoginKey == loginKey {
 				// found a valid user
 				return
@@ -245,7 +245,7 @@ func main() {
 
 		unhashedToken := parts[1]
 
-		tokenData, err := jsonStorage.GetToken(Hash(unhashedToken))
+		tokenData, err := storage.GetToken(Hash(unhashedToken))
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -259,13 +259,13 @@ func main() {
 			return
 		}
 		if expired {
-			jsonStorage.DeleteToken(Hash(unhashedToken))
+			storage.DeleteToken(Hash(unhashedToken))
 			w.WriteHeader(401)
 			io.WriteString(w, "Token expired")
 			return
 		}
 
-		ident, err := jsonStorage.GetIdentityById(tokenData.IdentityId)
+		ident, err := storage.GetIdentityById(tokenData.IdentityId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -340,7 +340,7 @@ func main() {
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
 			loginKey = Hash(loginKeyCookie.Value)
-			identities = jsonStorage.GetIdentitiesByLoginKey(loginKey)
+			identities = storage.GetIdentitiesByLoginKey(loginKey)
 		}
 
 		req := OAuth2AuthRequest{
@@ -354,7 +354,7 @@ func main() {
 			PKCECodeChallenge: r.Form.Get("code_challenge"),
 		}
 
-		requestId, err := jsonStorage.AddRequest(req)
+		requestId, err := storage.AddRequest(req)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -412,7 +412,7 @@ func main() {
 
 		requestId := r.Form.Get("request_id")
 
-		request, err := jsonStorage.GetRequest(requestId)
+		request, err := storage.GetRequest(requestId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -427,7 +427,7 @@ func main() {
 
 		identId := r.Form.Get("identity_id")
 
-		identity, err := jsonStorage.GetIdentityById(identId)
+		identity, err := storage.GetIdentityById(identId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -435,7 +435,7 @@ func main() {
 		}
 
 		owner := false
-		for _, mapping := range jsonStorage.GetLoginMap() {
+		for _, mapping := range storage.GetLoginMap() {
 			if mapping.LoginKey == loginKey && mapping.IdentityId == identId {
 				owner = true
 				break
@@ -472,7 +472,7 @@ func main() {
 			PKCECodeChallenge: request.PKCECodeChallenge,
 		}
 
-		code, err := jsonStorage.AddPendingToken(oauth2Token)
+		code, err := storage.AddPendingToken(oauth2Token)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -495,15 +495,15 @@ func main() {
 		r.ParseForm()
 
 		code := r.Form.Get("code")
-		defer jsonStorage.DeletePendingToken(code)
+		defer storage.DeletePendingToken(code)
 
-		token, err := jsonStorage.GetPendingToken(code)
+		token, err := storage.GetPendingToken(code)
 		if err != nil {
 
 			// Check if code has been used more than once
-			for token, tokenData := range jsonStorage.GetTokens() {
+			for token, tokenData := range storage.GetTokens() {
 				if code == tokenData.AuthorizationCode {
-					jsonStorage.DeleteToken(token)
+					storage.DeleteToken(token)
 					w.WriteHeader(401)
 					io.WriteString(w, "Attempt to use authorization code multiple times. Someone may be trying to hack your account. Deleting access token as a precaution.")
 					return
@@ -539,14 +539,14 @@ func main() {
 			AuthorizationCode: code,
 		}
 
-		err = jsonStorage.SetToken(Hash(token.AccessToken), tokenData)
+		err = storage.SetToken(Hash(token.AccessToken), tokenData)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		key, exists := jsonStorage.GetJWKSet().Key(0)
+		key, exists := storage.GetJWKSet().Key(0)
 		if !exists {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, "No keys available")
@@ -587,7 +587,7 @@ func main() {
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
 			loginKey := Hash(loginKeyCookie.Value)
-			jsonStorage.DeleteLoginData(loginKey)
+			storage.DeleteLoginData(loginKey)
 		}
 
 		redirect := r.Form.Get("prev_page")
@@ -642,14 +642,14 @@ func main() {
 	// Clean up expired tokens occasionally
 	go func() {
 		for {
-			for token, tokenData := range jsonStorage.GetTokens() {
+			for token, tokenData := range storage.GetTokens() {
 				expired, err := tokenExpired(tokenData)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to parse time\n")
 					continue
 				}
 				if expired {
-					jsonStorage.DeleteToken(token)
+					storage.DeleteToken(token)
 				}
 			}
 
