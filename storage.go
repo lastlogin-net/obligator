@@ -9,6 +9,9 @@ type Storage interface {
 	SetRootUri(string) error
 	GetUsers() ([]User, error)
 	CreateUser(User) error
+	GetOAuth2Providers() ([]OAuth2Provider, error)
+	GetOAuth2ProviderByID(string) (OAuth2Provider, error)
+	SetOauth2Provider(OAuth2Provider) error
 }
 
 type Identity struct {
@@ -36,15 +39,15 @@ type Token struct {
 }
 
 type OAuth2Provider struct {
-	Name             string `json:"name"`
 	ID               string `json:"id"`
+	Name             string `json:"name"`
 	URI              string `json:"uri"`
-	ClientID         string `json:"client_id"`
-	ClientSecret     string `json:"client_secret"`
-	AuthorizationURI string `json:"authorization_uri,omitempty"`
-	TokenURI         string `json:"token_uri,omitempty"`
+	ClientID         string `json:"client_id" db:"client_id"`
+	ClientSecret     string `json:"client_secret" db:"client_secret"`
+	AuthorizationURI string `json:"authorization_uri,omitempty" db:"authorization_uri"`
+	TokenURI         string `json:"token_uri,omitempty" db:"token_uri"`
 	Scope            string `json:"scope,omitempty"`
-	OpenIDConnect    bool   `json:"openid_connect"`
+	OpenIDConnect    bool   `json:"openid_connect" db:"supports_openid_connect"`
 }
 
 type LoginMapping struct {

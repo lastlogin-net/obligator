@@ -1,26 +1,39 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"os"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/mattn/go-sqlite3"
 )
 
 type SqliteStorage struct {
-	db *sql.DB
+	db *sqlx.DB
 }
 
 func NewSqliteStorage(path string) (*SqliteStorage, error) {
 
-	db, err := sql.Open("sqlite3", path)
+	db, err := sqlx.Open("sqlite3", path)
 	if err != nil {
 		return nil, err
 	}
 
 	stmt := `
         create table users (id integer not null primary key, email TEXT NOT NULL UNIQUE);
+        `
+	_, err = db.Exec(stmt)
+	if sqliteErr, ok := err.(sqlite3.Error); ok {
+		if sqliteErr.Code != sqlite3.ErrError {
+			return nil, err
+		}
+	}
+
+	stmt = `
+        create table oauth2_providers (id TEXT NOT NULL PRIMARY KEY, name TEXT,
+                uri TEXT, client_id TEXT, client_secret TEXT,
+                authorization_uri TEXT, token_uri TEXT, scope TEXT,
+                supports_openid_connect BOOLEAN);
         `
 	_, err = db.Exec(stmt)
 	if sqliteErr, ok := err.(sqlite3.Error); ok {
@@ -110,5 +123,54 @@ func (s *SqliteStorage) CreateUser(user User) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (s *SqliteStorage) GetOAuth2Providers() ([]OAuth2Provider, error) {
+	rows, err := s.db.Queryx("SELECT * FROM oauth2_providers")
+	if err != nil {
+		return []OAuth2Provider{}, err
+	}
+	defer rows.Close()
+
+	providers := []OAuth2Provider{}
+
+	for rows.Next() {
+		var p OAuth2Provider
+		err = rows.StructScan(&p)
+		if err != nil {
+			return []OAuth2Provider{}, err
+		}
+		providers = append(providers, p)
+	}
+	err = rows.Err()
+	if err != nil {
+		return []OAuth2Provider{}, err
+	}
+
+	return providers, nil
+}
+
+func (s *SqliteStorage) GetOAuth2ProviderByID(id string) (OAuth2Provider, error) {
+	var provider OAuth2Provider
+	err := s.db.Get(&provider, "SELECT * FROM oauth2_providers WHERE id=?", id)
+	if err != nil {
+		return OAuth2Provider{}, err
+	}
+	return provider, nil
+}
+
+func (s *SqliteStorage) SetOauth2Provider(provider OAuth2Provider) error {
+	stmt := `INSERT INTO oauth2_providers
+        (id,name,uri,client_id,client_secret,authorization_uri,token_uri,scope,supports_openid_connect)
+        VALUES
+        (:id,:name,:uri,:client_id,:client_secret,:authorization_uri,:token_uri,:scope,:supports_openid_connect)
+        `
+
+	_, err := s.db.NamedExec(stmt, &provider)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

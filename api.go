@@ -21,7 +21,13 @@ func NewApi(storage Storage, jsonStorage *JsonStorage) (*Api, error) {
 	mux.HandleFunc("/oauth2-providers", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			json.NewEncoder(w).Encode(jsonStorage.GetOAuth2Providers())
+			providers, err := storage.GetOAuth2Providers()
+			if err != nil {
+				w.WriteHeader(500)
+				io.WriteString(w, err.Error())
+				return
+			}
+			json.NewEncoder(w).Encode(providers)
 		}
 	})
 
@@ -43,8 +49,6 @@ func NewApi(storage Storage, jsonStorage *JsonStorage) (*Api, error) {
 				io.WriteString(w, "Missing provider ID")
 				return
 			}
-
-			fmt.Println(providerId)
 
 			var prov OAuth2Provider
 
@@ -79,14 +83,14 @@ func NewApi(storage Storage, jsonStorage *JsonStorage) (*Api, error) {
 				return
 			}
 
-			err = jsonStorage.SetOauth2Provider(prov)
+			err = storage.SetOauth2Provider(prov)
 			if err != nil {
 				w.WriteHeader(400)
 				io.WriteString(w, err.Error())
 				return
 			}
 
-			updateOidcConfigs(jsonStorage)
+			updateOidcConfigs(storage, jsonStorage)
 		}
 	})
 

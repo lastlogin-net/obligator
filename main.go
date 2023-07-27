@@ -361,6 +361,13 @@ func main() {
 			return
 		}
 
+		providers, err := storage.GetOAuth2Providers()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
 		data := struct {
 			ClientId        string
 			RequestId       string
@@ -372,7 +379,7 @@ func main() {
 			ClientId:        clientIdUrl.Host,
 			RequestId:       requestId,
 			Identities:      identities,
-			OAuth2Providers: jsonStorage.GetOAuth2Providers(),
+			OAuth2Providers: providers,
 			LogoMap:         providerLogoMap,
 			URL:             fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
 		}

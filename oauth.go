@@ -30,14 +30,20 @@ var jwksRefreshers map[string]*jwk.Cache
 var providerLogoMap map[string]template.HTML
 
 // TODO: This is not thread-safe
-func updateOidcConfigs(jsonStorage *JsonStorage) {
+func updateOidcConfigs(storage Storage, jsonStorage *JsonStorage) {
 	oidcConfigs = make(map[string]*OAuth2ServerMetadata)
 	jwksRefreshers = make(map[string]*jwk.Cache)
 	providerLogoMap = make(map[string]template.HTML)
 
 	ctx := context.Background()
 
-	for _, oidcProvider := range jsonStorage.GetOAuth2Providers() {
+	providers, err := storage.GetOAuth2Providers()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	for _, oidcProvider := range providers {
 		if !oidcProvider.OpenIDConnect {
 			continue
 		}
@@ -82,7 +88,7 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 
 	ctx := context.Background()
 
-	go updateOidcConfigs(jsonStorage)
+	go updateOidcConfigs(storage, jsonStorage)
 
 	mux.HandleFunc("/login-oauth2", func(w http.ResponseWriter, r *http.Request) {
 
@@ -92,7 +98,7 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 
 		oauth2ProviderId := r.Form.Get("oauth2_provider_id")
 
-		provider, err := jsonStorage.GetOAuth2ProviderByID(oauth2ProviderId)
+		provider, err := storage.GetOAuth2ProviderByID(oauth2ProviderId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -161,7 +167,7 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 
 		jsonStorage.DeleteRequest(requestId)
 
-		oauth2Provider, err := jsonStorage.GetOAuth2ProviderByID(request.Provider)
+		oauth2Provider, err := storage.GetOAuth2ProviderByID(request.Provider)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -277,7 +283,7 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 			providerIdentityId = providerOidcToken.Subject()
 			email = providerOidcToken.Email()
 		} else {
-			providerIdentityId, email, _ = GetProfile(oauth2Provider, tokenRes.AccessToken)
+			providerIdentityId, email, _ = GetProfile(&oauth2Provider, tokenRes.AccessToken)
 		}
 
 		users, err := storage.GetUsers()
