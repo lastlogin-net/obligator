@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -14,7 +13,7 @@ import (
 type Api struct {
 }
 
-func NewApi(storage Storage, jsonStorage *JsonStorage) (*Api, error) {
+func NewApi(storage Storage) (*Api, error) {
 
 	mux := http.NewServeMux()
 
@@ -90,7 +89,7 @@ func NewApi(storage Storage, jsonStorage *JsonStorage) (*Api, error) {
 				return
 			}
 
-			updateOidcConfigs(storage, jsonStorage)
+			updateOidcConfigs(storage)
 		}
 	})
 

@@ -30,7 +30,7 @@ var jwksRefreshers map[string]*jwk.Cache
 var providerLogoMap map[string]template.HTML
 
 // TODO: This is not thread-safe
-func updateOidcConfigs(storage Storage, jsonStorage *JsonStorage) {
+func updateOidcConfigs(storage Storage) {
 	oidcConfigs = make(map[string]*OAuth2ServerMetadata)
 	jwksRefreshers = make(map[string]*jwk.Cache)
 	providerLogoMap = make(map[string]template.HTML)
@@ -88,7 +88,7 @@ func NewOauth2Handler(storage Storage, jsonStorage *JsonStorage) *Oauth2Handler 
 
 	ctx := context.Background()
 
-	go updateOidcConfigs(storage, jsonStorage)
+	go updateOidcConfigs(storage)
 
 	mux.HandleFunc("/login-oauth2", func(w http.ResponseWriter, r *http.Request) {
 
