@@ -130,8 +130,7 @@ func main() {
 	}
 
 	if storage.GetRootUri() == "" {
-		fmt.Fprintln(os.Stderr, "No root-uri in storage. You must provide one")
-		os.Exit(1)
+		fmt.Fprintln(os.Stderr, "WARNING: No root URI set")
 	}
 
 	_, err = NewApi(storage)
