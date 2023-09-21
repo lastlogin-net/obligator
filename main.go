@@ -193,7 +193,17 @@ func main() {
 
 		for _, mapping := range storage.GetLoginMap() {
 			if mapping.LoginKey == loginKey {
+
 				// found a valid user
+
+				ident, err := storage.GetIdentityById(mapping.IdentityId)
+				if err != nil {
+					w.WriteHeader(500)
+					io.WriteString(w, err.Error())
+					return
+				}
+
+				w.Header().Set("Remote-Email", ident.Email)
 				return
 			}
 		}
