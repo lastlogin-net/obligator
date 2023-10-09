@@ -10,15 +10,15 @@ import (
 )
 
 type JsonStorage struct {
-	RootUri         string            `json:"root_uri"`
-	OAuth2Providers []OAuth2Provider  `json:"oauth2_providers"`
-	Smtp            *SmtpConfig       `json:"smtp"`
-	Jwks            jwk.Set           `json:"jwks"`
-	Tokens          map[string]*Token `json:"tokens"`
-	Users           []User            `json:"users"`
-	Public          bool              `json:"public"`
+	RootUri         string           `json:"root_uri"`
+	OAuth2Providers []OAuth2Provider `json:"oauth2_providers"`
+	Smtp            *SmtpConfig      `json:"smtp"`
+	Jwks            jwk.Set          `json:"jwks"`
+	Users           []User           `json:"users"`
+	Public          bool             `json:"public"`
 	requests        map[string]*OAuth2AuthRequest
 	pendingTokens   map[string]*PendingOAuth2Token
+	tokens          map[string]*Token
 	mutex           *sync.Mutex
 	path            string
 	message_chan    chan interface{}
@@ -28,7 +28,7 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 	s := &JsonStorage{
 		OAuth2Providers: []OAuth2Provider{},
 		Jwks:            jwk.NewSet(),
-		Tokens:          make(map[string]*Token),
+		tokens:          make(map[string]*Token),
 		Users:           []User{},
 		requests:        make(map[string]*OAuth2AuthRequest),
 		pendingTokens:   make(map[string]*PendingOAuth2Token),
@@ -246,8 +246,7 @@ func (s *JsonStorage) SetToken(token string, tokenData *Token) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	s.Tokens[token] = tokenData
-	s.persist()
+	s.tokens[token] = tokenData
 
 	return nil
 }
@@ -255,7 +254,7 @@ func (s *JsonStorage) GetToken(token string) (*Token, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	tok, ok := s.Tokens[token]
+	tok, ok := s.tokens[token]
 	if ok {
 		return tok, nil
 	}
@@ -266,15 +265,13 @@ func (s *JsonStorage) GetTokens() map[string]*Token {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	return s.Tokens
+	return s.tokens
 }
 func (s *JsonStorage) DeleteToken(token string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	delete(s.Tokens, token)
-
-	s.persist()
+	delete(s.tokens, token)
 }
 
 type getPublicMessage struct {
