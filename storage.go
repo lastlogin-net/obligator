@@ -28,10 +28,6 @@ type Identity struct {
 	Email        string `json:"email"`
 }
 
-type LoginData struct {
-	Timestamp string `json:"timestamp"`
-}
-
 type PendingOAuth2Token struct {
 	AccessToken       string       `json:"access_token"`
 	IdToken           openid.Token `json:"id_token"`
@@ -56,11 +52,6 @@ type OAuth2Provider struct {
 	TokenURI         string `json:"token_uri,omitempty" db:"token_uri"`
 	Scope            string `json:"scope,omitempty"`
 	OpenIDConnect    bool   `json:"openid_connect" db:"supports_openid_connect"`
-}
-
-type LoginMapping struct {
-	IdentityId string `json:"identity_id"`
-	LoginKey   string `json:"login_key"`
 }
 
 type User struct {
