@@ -31,11 +31,34 @@ var oidcConfigs map[string]*OAuth2ServerMetadata
 var jwksRefreshers map[string]*jwk.Cache
 var providerLogoMap map[string]template.HTML
 
-// TODO: This is not thread-safe
+func buildProviderLogoMap(storage Storage) {
+	providerLogoMap = make(map[string]template.HTML)
+
+	providers, err := storage.GetOAuth2Providers()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	for _, provider := range providers {
+
+		logoPath := fmt.Sprintf("assets/logo_%s.svg", provider.ID)
+		logoBytes, err := fs.ReadFile(logoPath)
+		if err != nil {
+			logoBytes, err = fs.ReadFile("assets/logo_generic_openid.svg")
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+				os.Exit(1)
+			}
+		}
+
+		providerLogoMap[provider.ID] = template.HTML(logoBytes)
+	}
+}
+
 func updateOidcConfigs(storage Storage) {
 	oidcConfigs = make(map[string]*OAuth2ServerMetadata)
 	jwksRefreshers = make(map[string]*jwk.Cache)
-	providerLogoMap = make(map[string]template.HTML)
 
 	ctx := context.Background()
 
@@ -49,6 +72,7 @@ func updateOidcConfigs(storage Storage) {
 		if !oidcProvider.OpenIDConnect {
 			continue
 		}
+
 		var err error
 		oidcConfigs[oidcProvider.ID], err = GetOidcConfiguration(oidcProvider.URI)
 		if err != nil {
@@ -64,18 +88,6 @@ func updateOidcConfigs(storage Storage) {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
-
-		logoPath := fmt.Sprintf("assets/logo_%s.svg", oidcProvider.ID)
-		logoBytes, err := fs.ReadFile(logoPath)
-		if err != nil {
-			logoBytes, err = fs.ReadFile("assets/logo_generic_openid.svg")
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err.Error())
-				os.Exit(1)
-			}
-		}
-
-		providerLogoMap[oidcProvider.ID] = template.HTML(logoBytes)
 	}
 }
 
@@ -90,6 +102,11 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 
 	ctx := context.Background()
 
+	buildProviderLogoMap(storage)
+
+	// TODO: This is not thread-safe to run in a goroutine. It creates a
+	// race condition with any incoming requests. But this speeds up
+	// startup for development.
 	go updateOidcConfigs(storage)
 
 	mux.HandleFunc("/login-oauth2", func(w http.ResponseWriter, r *http.Request) {
