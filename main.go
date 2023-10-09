@@ -111,6 +111,7 @@ func main() {
 
 	port := flag.Int("port", 9002, "Port")
 	rootUri := flag.String("root-uri", "", "Root URI")
+	loginKeyName := flag.String("login-key-name", "obligator_login_key", "Login key name")
 	flag.Parse()
 
 	var identsType []*Identity
@@ -130,6 +131,10 @@ func main() {
 
 	if *rootUri != "" {
 		storage.SetRootUri(*rootUri)
+	}
+
+	if *loginKeyName != "obligator_login_key" || storage.GetLoginKeyName() == "" {
+		storage.SetLoginKeyName(*loginKeyName)
 	}
 
 	if storage.GetRootUri() == "" {
@@ -186,7 +191,7 @@ func main() {
 		url := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=code&state=&scope=",
 			storage.GetRootUri(), redirectUri, redirectUri)
 
-		loginKeyCookie, err := r.Cookie("login_key")
+		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
 		if err != nil {
 			http.Redirect(w, r, url, 307)
 			return
@@ -329,7 +334,7 @@ func main() {
 
 		var loginKey string
 
-		loginKeyCookie, err := r.Cookie("login_key")
+		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
 		if err == nil && loginKeyCookie.Value != "" {
 			loginKey = Hash(loginKeyCookie.Value)
 
@@ -406,7 +411,7 @@ func main() {
 			return
 		}
 
-		loginKeyCookie, err := r.Cookie("login_key")
+		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, "Only logged-in users can access this endpoint")
@@ -627,7 +632,7 @@ func main() {
 
 		cookie := &http.Cookie{
 			Domain:   cookieDomain,
-			Name:     "login_key",
+			Name:     storage.GetLoginKeyName(),
 			Value:    "",
 			Secure:   true,
 			HttpOnly: true,

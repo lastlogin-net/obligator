@@ -165,7 +165,7 @@ func generateCookie(storage Storage, providerIdentityId, providerName, email, co
 
 	cookie := &http.Cookie{
 		Domain:   cookieDomain,
-		Name:     "login_key",
+		Name:     storage.GetLoginKeyName(),
 		Value:    unhashedLoginKey,
 		Secure:   true,
 		HttpOnly: true,

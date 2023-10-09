@@ -183,7 +183,7 @@ func NewEmailHander(storage Storage) *EmailHandler {
 		}
 
 		cookieValue := ""
-		loginKeyCookie, err := r.Cookie("login_key")
+		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
 		if err == nil {
 			cookieValue = loginKeyCookie.Value
 		}

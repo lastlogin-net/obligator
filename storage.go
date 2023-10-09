@@ -7,6 +7,7 @@ import (
 
 type Storage interface {
 	GetRootUri() string
+	GetLoginKeyName() string
 	SetRootUri(string) error
 	GetUsers() ([]User, error)
 	CreateUser(User) error

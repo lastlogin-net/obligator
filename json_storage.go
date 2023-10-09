@@ -11,6 +11,7 @@ import (
 
 type JsonStorage struct {
 	RootUri         string           `json:"root_uri"`
+	LoginKeyName    string           `json:"login_key_name"`
 	OAuth2Providers []OAuth2Provider `json:"oauth2_providers"`
 	Smtp            *SmtpConfig      `json:"smtp"`
 	Jwks            jwk.Set          `json:"jwks"`
@@ -127,6 +128,18 @@ func (s *JsonStorage) GetRootUri() string {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	return s.RootUri
+}
+
+func (s *JsonStorage) GetLoginKeyName() string {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.LoginKeyName
+}
+func (s *JsonStorage) SetLoginKeyName(loginKeyName string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.LoginKeyName = loginKeyName
+	s.persist()
 }
 
 func (s *JsonStorage) AddJWKKey(key jwk.Key) {
