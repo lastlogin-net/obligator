@@ -195,7 +195,14 @@ func NewEmailHander(storage Storage) *EmailHandler {
 		}
 
 		if !loggedIn {
-			unhashedLoginKey, err := storage.AddLoginData()
+			unhashedLoginKey, err := genRandomKey()
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+
+			err = storage.AddLoginData(unhashedLoginKey)
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())

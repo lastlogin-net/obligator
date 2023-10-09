@@ -200,14 +200,9 @@ func (s *JsonStorage) GetAllIdentities() []*Identity {
 	return s.Identities
 }
 
-func (s *JsonStorage) AddLoginData() (string, error) {
+func (s *JsonStorage) AddLoginData(loginKey string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-
-	loginKey, err := genRandomKey()
-	if err != nil {
-		return "", err
-	}
 
 	loginKeyHash := Hash(loginKey)
 
@@ -219,7 +214,7 @@ func (s *JsonStorage) AddLoginData() (string, error) {
 
 	s.persist()
 
-	return loginKey, nil
+	return nil
 }
 
 func (s *JsonStorage) DeleteLoginData(loginKey string) {
@@ -405,15 +400,19 @@ func (s *JsonStorage) SetToken(token string, tokenData *Token) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	for _, ident := range s.Identities {
-		if ident.Id == tokenData.IdentityId {
-			s.Tokens[token] = tokenData
-			s.persist()
-			return nil
-		}
-	}
+	s.Tokens[token] = tokenData
+	s.persist()
 
-	return errors.New("No such identity")
+	//for _, ident := range s.Identities {
+	//	if ident.Id == tokenData.IdentityId {
+	//		s.Tokens[token] = tokenData
+	//		s.persist()
+	//		return nil
+	//	}
+	//}
+
+	//return errors.New("No such identity")
+	return nil
 }
 func (s *JsonStorage) GetToken(token string) (*Token, error) {
 	s.mutex.Lock()

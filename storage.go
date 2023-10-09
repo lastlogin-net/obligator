@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
@@ -17,10 +18,11 @@ type Storage interface {
 	DeleteRequest(requestId string)
 	GetPublic() bool
 	GetLoginData(loginKey string) (LoginData, error)
-	AddLoginData() (string, error)
+	AddLoginData(string) error
 	EnsureIdentity(providerId, providerName, email string) (string, error)
 	EnsureLoginMapping(identityId, loginKey string)
 	GetSmtpConfig() (SmtpConfig, error)
+	GetJWKSet() jwk.Set
 }
 
 type Identity struct {

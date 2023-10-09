@@ -113,6 +113,9 @@ func main() {
 	rootUri := flag.String("root-uri", "", "Root URI")
 	flag.Parse()
 
+	var identsType []*Identity
+	jwt.RegisterCustomField("identities", identsType)
+
 	//storage, err := NewSqliteStorage("obligator_storage.sqlite3")
 	//if err != nil {
 	//	fmt.Fprintln(os.Stderr, err.Error())
@@ -349,7 +352,22 @@ func main() {
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
 			loginKey = Hash(loginKeyCookie.Value)
-			identities = storage.GetIdentitiesByLoginKey(loginKey)
+
+			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+			if err != nil {
+				w.WriteHeader(500)
+				io.WriteString(w, err.Error())
+				return
+			}
+
+			tokIdentsInterface, exists := parsed.Get("identities")
+			if exists {
+				if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
+					identities = tokIdents
+				}
+			}
+
+			//identities = storage.GetIdentitiesByLoginKey(loginKey)
 		}
 
 		req := OAuth2AuthRequest{
@@ -417,6 +435,13 @@ func main() {
 			return
 		}
 
+		parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+		if err != nil {
+			w.WriteHeader(401)
+			io.WriteString(w, err.Error())
+			return
+		}
+
 		loginKey := Hash(loginKeyCookie.Value)
 
 		requestId := r.Form.Get("request_id")
@@ -436,26 +461,48 @@ func main() {
 
 		identId := r.Form.Get("identity_id")
 
-		identity, err := storage.GetIdentityById(identId)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		owner := false
-		for _, mapping := range storage.GetLoginMap() {
-			if mapping.LoginKey == loginKey && mapping.IdentityId == identId {
-				owner = true
-				break
+		var identity *Identity
+		tokIdentsInterface, exists := parsed.Get("identities")
+		if exists {
+			if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
+				for _, ident := range tokIdents {
+					if ident.Id == identId {
+						identity = ident
+						break
+					}
+				}
 			}
 		}
 
-		if !owner {
+		fmt.Println("here")
+		printJson(identity)
+
+		if identity == nil {
 			w.WriteHeader(403)
 			io.WriteString(w, "You don't have permissions for this identity")
 			return
 		}
+
+		//identity, err := storage.GetIdentityById(identId)
+		//if err != nil {
+		//	w.WriteHeader(500)
+		//	io.WriteString(w, err.Error())
+		//	return
+		//}
+
+		//owner := false
+		//for _, mapping := range storage.GetLoginMap() {
+		//	if mapping.LoginKey == loginKey && mapping.IdentityId == identId {
+		//		owner = true
+		//		break
+		//	}
+		//}
+
+		//if !owner {
+		//	w.WriteHeader(403)
+		//	io.WriteString(w, "You don't have permissions for this identity")
+		//	return
+		//}
 
 		issuedAt := time.Now().UTC()
 		expiresAt := issuedAt.Add(10 * time.Minute)

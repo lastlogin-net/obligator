@@ -15,7 +15,9 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
@@ -191,6 +193,8 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 		if oauth2Provider.OpenIDConnect {
 			if oauth2Provider.ID == "facebook" {
 				// Facebook strangely appears to implement all of OIDC except the token endpoint...
+				// TODO: rather than special-casing this for facebook, maybe just check if
+				// oauth2Provider.TokenURI is blank
 				tokenEndpoint = oauth2Provider.TokenURI
 			} else {
 				tokenEndpoint = oidcConfigs[oauth2Provider.ID].TokenEndpoint
@@ -299,50 +303,114 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			return
 		}
 
-		loggedIn := false
+		key, exists := storage.GetJWKSet().Key(0)
+		if !exists {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "No keys available")
+			return
+		}
 
-		var loginKey string
+		newIdentId, err := genRandomKey()
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		newIdent := &Identity{
+			Id:           newIdentId,
+			ProviderId:   providerIdentityId,
+			ProviderName: oauth2Provider.Name,
+			Email:        email,
+		}
+
+		idents := []*Identity{newIdent}
 
 		loginKeyCookie, err := r.Cookie("login_key")
 		if err == nil {
-			loginKey = Hash(loginKeyCookie.Value)
-			_, err := storage.GetLoginData(loginKey)
-			if err == nil {
-				loggedIn = true
+			fmt.Println(loginKeyCookie.Value)
+			publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+				os.Exit(1)
+			}
+
+			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+			if err != nil {
+				fmt.Println("Parse error")
+				fmt.Println(err)
+			} else {
+				printJson(parsed)
+			}
+
+			tokIdentsInterface, exists := parsed.Get("identities")
+			if exists {
+				if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
+					for _, ident := range tokIdents {
+						if ident.Email != newIdent.Email {
+							idents = append(idents, ident)
+						}
+					}
+				}
 			}
 		}
 
-		// Since no identities exist for the user, create a new user
-		if !loggedIn {
-			unhashedLoginKey, err := storage.AddLoginData()
-			if err != nil {
-				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, err.Error())
-				return
-			}
-
-			cookieDomain, err := buildCookieDomain(rootUri)
-			if err != nil {
-				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, err.Error())
-				return
-			}
-
-			cookie := &http.Cookie{
-				Domain:   cookieDomain,
-				Name:     "login_key",
-				Value:    unhashedLoginKey,
-				Secure:   true,
-				HttpOnly: true,
-				MaxAge:   86400 * 365,
-				Path:     "/",
-				SameSite: http.SameSiteLaxMode,
-				//SameSite: http.SameSiteStrictMode,
-			}
-			http.SetCookie(w, cookie)
-
-			loginKey = Hash(unhashedLoginKey)
+		nonce, err := genRandomKey()
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
 		}
+
+		issuedAt := time.Now().UTC()
+		jot, err := jwt.NewBuilder().
+			IssuedAt(issuedAt).
+			Claim("nonce", nonce).
+			Claim("identities", idents).
+			Build()
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		signed, err := jwt.Sign(jot, jwt.WithKey(jwa.RS256, key))
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		unhashedLoginKey := string(signed)
+
+		err = storage.AddLoginData(unhashedLoginKey)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		cookieDomain, err := buildCookieDomain(rootUri)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		cookie := &http.Cookie{
+			Domain:   cookieDomain,
+			Name:     "login_key",
+			Value:    unhashedLoginKey,
+			Secure:   true,
+			HttpOnly: true,
+			MaxAge:   86400 * 365,
+			Path:     "/",
+			SameSite: http.SameSiteLaxMode,
+			//SameSite: http.SameSiteStrictMode,
+		}
+		http.SetCookie(w, cookie)
+
+		loginKey := Hash(unhashedLoginKey)
 
 		identId, err := storage.EnsureIdentity(providerIdentityId, oauth2Provider.Name, email)
 		if err != nil {
