@@ -19,7 +19,6 @@ type Storage interface {
 	GetPublic() bool
 	GetLoginData(loginKey string) (LoginData, error)
 	AddLoginData(string) error
-	EnsureIdentity(providerId, providerName, email string) (string, error)
 	EnsureLoginMapping(identityId, loginKey string)
 	GetSmtpConfig() (SmtpConfig, error)
 	GetJWKSet() jwk.Set
@@ -44,6 +43,7 @@ type PendingOAuth2Token struct {
 
 type Token struct {
 	IdentityId        string `json:"identity_id"`
+	Email             string `json:"email"`
 	CreatedAt         string `json:"created_at"`
 	ExpiresIn         int    `json:"expires_in"`
 	AuthorizationCode string `json:"authorization_code"`

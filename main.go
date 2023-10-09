@@ -192,26 +192,12 @@ func main() {
 			return
 		}
 
-		loginKey := Hash(loginKeyCookie.Value)
-
-		for _, mapping := range storage.GetLoginMap() {
-			if mapping.LoginKey == loginKey {
-
-				// found a valid user
-
-				ident, err := storage.GetIdentityById(mapping.IdentityId)
-				if err != nil {
-					w.WriteHeader(500)
-					io.WriteString(w, err.Error())
-					return
-				}
-
-				w.Header().Set("Remote-Email", ident.Email)
-				return
-			}
+		// TODO: add Remote-Email to header
+		_, err = jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+		if err != nil {
+			http.Redirect(w, r, url, 307)
+			return
 		}
-
-		http.Redirect(w, r, url, 307)
 	})
 
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
@@ -257,6 +243,7 @@ func main() {
 
 		unhashedToken := parts[1]
 
+		// TODO: maybe should be deleting token right after getting it
 		tokenData, err := storage.GetToken(Hash(unhashedToken))
 		if err != nil {
 			w.WriteHeader(500)
@@ -277,18 +264,11 @@ func main() {
 			return
 		}
 
-		ident, err := storage.GetIdentityById(tokenData.IdentityId)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 
 		userResponse := UserinfoResponse{
-			Sub:   ident.Id,
-			Email: ident.Email,
+			Sub:   tokenData.IdentityId,
+			Email: tokenData.Email,
 		}
 
 		enc := json.NewEncoder(w)
@@ -350,7 +330,7 @@ func main() {
 		var loginKey string
 
 		loginKeyCookie, err := r.Cookie("login_key")
-		if err == nil {
+		if err == nil && loginKeyCookie.Value != "" {
 			loginKey = Hash(loginKeyCookie.Value)
 
 			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
@@ -366,8 +346,6 @@ func main() {
 					identities = tokIdents
 				}
 			}
-
-			//identities = storage.GetIdentitiesByLoginKey(loginKey)
 		}
 
 		req := OAuth2AuthRequest{
@@ -473,9 +451,6 @@ func main() {
 				}
 			}
 		}
-
-		fmt.Println("here")
-		printJson(identity)
 
 		if identity == nil {
 			w.WriteHeader(403)
@@ -590,6 +565,7 @@ func main() {
 
 		tokenData := &Token{
 			IdentityId:        token.IdToken.Subject(),
+			Email:             token.IdToken.Email(),
 			CreatedAt:         time.Now().UTC().Format(time.RFC3339),
 			ExpiresIn:         10,
 			AuthorizationCode: code,

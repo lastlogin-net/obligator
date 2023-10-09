@@ -182,64 +182,15 @@ func NewEmailHander(storage Storage) *EmailHandler {
 			return
 		}
 
-		var loginKey string
-		loggedIn := false
-
-		loginKeyCookie, err := r.Cookie("login_key")
-		if err == nil {
-			loginKey = Hash(loginKeyCookie.Value)
-			_, err := storage.GetLoginData(loginKey)
-			if err == nil {
-				loggedIn = true
-			}
-		}
-
-		if !loggedIn {
-			unhashedLoginKey, err := genRandomKey()
-			if err != nil {
-				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, err.Error())
-				return
-			}
-
-			err = storage.AddLoginData(unhashedLoginKey)
-			if err != nil {
-				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, err.Error())
-				return
-			}
-
-			cookieDomain, err := buildCookieDomain(storage.GetRootUri())
-			if err != nil {
-				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, err.Error())
-				return
-			}
-
-			cookie := &http.Cookie{
-				Domain:   cookieDomain,
-				Name:     "login_key",
-				Value:    unhashedLoginKey,
-				Secure:   true,
-				HttpOnly: true,
-				MaxAge:   86400 * 365,
-				Path:     "/",
-				SameSite: http.SameSiteLaxMode,
-				//SameSite: http.SameSiteStrictMode,
-			}
-			http.SetCookie(w, cookie)
-
-			loginKey = Hash(unhashedLoginKey)
-		}
-
-		identId, err := storage.EnsureIdentity(email, "Email", email)
+		loginKeyCookie, _ := r.Cookie("login_key")
+		cookie, err := generateCookie(storage, email, "Email", email, loginKeyCookie.Value)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
 
-		storage.EnsureLoginMapping(identId, loginKey)
+		http.SetCookie(w, cookie)
 
 		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), request.RawQuery)
 

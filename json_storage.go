@@ -15,7 +15,6 @@ type JsonStorage struct {
 	OAuth2Providers []OAuth2Provider      `json:"oauth2_providers"`
 	Smtp            *SmtpConfig           `json:"smtp"`
 	Jwks            jwk.Set               `json:"jwks"`
-	Identities      []*Identity           `json:"identities"`
 	LoginData       map[string]*LoginData `json:"login_data"`
 	Tokens          map[string]*Token     `json:"tokens"`
 	LoginMap        []*LoginMapping       `json:"login_map"`
@@ -32,7 +31,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 	s := &JsonStorage{
 		OAuth2Providers: []OAuth2Provider{},
 		Jwks:            jwk.NewSet(),
-		Identities:      []*Identity{},
 		LoginData:       make(map[string]*LoginData),
 		Tokens:          make(map[string]*Token),
 		LoginMap:        []*LoginMapping{},
@@ -193,13 +191,6 @@ func (s *JsonStorage) GetOAuth2ProviderByID(id string) (OAuth2Provider, error) {
 	return OAuth2Provider{}, errors.New("No such provider")
 }
 
-func (s *JsonStorage) GetAllIdentities() []*Identity {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	return s.Identities
-}
-
 func (s *JsonStorage) AddLoginData(loginKey string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -245,72 +236,6 @@ func (s *JsonStorage) GetLoginData(loginKey string) (LoginData, error) {
 	}
 
 	return *data, nil
-}
-
-func (s *JsonStorage) EnsureIdentity(providerId, providerName, email string) (string, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	for _, ident := range s.Identities {
-		if ident.ProviderName == providerName && ident.ProviderId == providerId {
-			return ident.Id, nil
-		}
-	}
-
-	id, err := genRandomKey()
-	if err != nil {
-		return "", err
-	}
-
-	identity := &Identity{
-		Id:           id,
-		ProviderName: providerName,
-		ProviderId:   providerId,
-		Email:        email,
-	}
-
-	s.Identities = append(s.Identities, identity)
-
-	s.persist()
-
-	return id, nil
-}
-
-func (s *JsonStorage) GetIdentityById(identId string) (*Identity, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	return s.getIdentityById(identId)
-}
-func (s *JsonStorage) getIdentityById(identId string) (*Identity, error) {
-
-	for _, ident := range s.Identities {
-		if ident.Id == identId {
-			return ident, nil
-		}
-	}
-
-	return nil, errors.New("Identity not found")
-}
-
-func (s *JsonStorage) GetIdentitiesByLoginKey(loginKey string) []*Identity {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	idents := []*Identity{}
-
-	for _, mapping := range s.LoginMap {
-		if mapping.LoginKey == loginKey {
-			ident, err := s.getIdentityById(mapping.IdentityId)
-			if err != nil {
-				continue
-			} else {
-				idents = append(idents, ident)
-			}
-		}
-	}
-
-	return idents
 }
 
 func (s *JsonStorage) AddRequest(req OAuth2AuthRequest) (string, error) {
@@ -403,15 +328,6 @@ func (s *JsonStorage) SetToken(token string, tokenData *Token) error {
 	s.Tokens[token] = tokenData
 	s.persist()
 
-	//for _, ident := range s.Identities {
-	//	if ident.Id == tokenData.IdentityId {
-	//		s.Tokens[token] = tokenData
-	//		s.persist()
-	//		return nil
-	//	}
-	//}
-
-	//return errors.New("No such identity")
 	return nil
 }
 func (s *JsonStorage) GetToken(token string) (*Token, error) {

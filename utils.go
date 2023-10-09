@@ -8,10 +8,15 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/lestrrat-go/jwx/v2/jwa"
+	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
 func Hash(input string) string {
@@ -86,4 +91,94 @@ func validUser(email string, users []User) bool {
 		}
 	}
 	return false
+}
+
+func generateCookie(storage Storage, providerIdentityId, providerName, email, cookieValue string) (*http.Cookie, error) {
+	key, exists := storage.GetJWKSet().Key(0)
+	if !exists {
+		return nil, errors.New("No keys available")
+	}
+
+	newIdentId, err := genRandomKey()
+	if err != nil {
+		return nil, err
+	}
+
+	newIdent := &Identity{
+		Id:           newIdentId,
+		ProviderId:   providerIdentityId,
+		ProviderName: providerName,
+		Email:        email,
+	}
+
+	idents := []*Identity{newIdent}
+
+	if err == nil && cookieValue != "" {
+		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+		if err != nil {
+			return nil, err
+		}
+
+		parsed, err := jwt.Parse([]byte(cookieValue), jwt.WithKeySet(publicJwks))
+		if err != nil {
+			return nil, err
+		}
+
+		tokIdentsInterface, exists := parsed.Get("identities")
+		if exists {
+			if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
+				for _, ident := range tokIdents {
+					if ident.Email != newIdent.Email {
+						idents = append(idents, ident)
+					}
+				}
+			}
+		}
+	}
+
+	nonce, err := genRandomKey()
+	if err != nil {
+		return nil, err
+	}
+
+	issuedAt := time.Now().UTC()
+	jot, err := jwt.NewBuilder().
+		IssuedAt(issuedAt).
+		Claim("nonce", nonce).
+		Claim("identities", idents).
+		Build()
+	if err != nil {
+		return nil, err
+	}
+
+	signed, err := jwt.Sign(jot, jwt.WithKey(jwa.RS256, key))
+	if err != nil {
+		return nil, err
+	}
+
+	unhashedLoginKey := string(signed)
+
+	err = storage.AddLoginData(unhashedLoginKey)
+	if err != nil {
+		return nil, err
+	}
+
+	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+	if err != nil {
+		return nil, err
+	}
+
+	cookie := &http.Cookie{
+		Domain:   cookieDomain,
+		Name:     "login_key",
+		Value:    unhashedLoginKey,
+		Secure:   true,
+		HttpOnly: true,
+		MaxAge:   86400 * 365,
+		Path:     "/",
+		SameSite: http.SameSiteLaxMode,
+		//SameSite: http.SameSiteStrictMode,
+	}
+
+	return cookie, nil
 }
