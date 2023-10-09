@@ -109,7 +109,7 @@ var fs embed.FS
 
 func main() {
 
-	port := flag.Int("port", 9002, "Port")
+	port := flag.Int("port", 1616, "Port")
 	rootUri := flag.String("root-uri", "", "Root URI")
 	loginKeyName := flag.String("login-key-name", "obligator_login_key", "Login key name")
 	flag.Parse()
