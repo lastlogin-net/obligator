@@ -616,12 +616,6 @@ func main() {
 
 		r.ParseForm()
 
-		loginKeyCookie, err := r.Cookie("login_key")
-		if err == nil {
-			loginKey := Hash(loginKeyCookie.Value)
-			storage.DeleteLoginData(loginKey)
-		}
-
 		redirect := r.Form.Get("prev_page")
 
 		cookieDomain, err := buildCookieDomain(storage.GetRootUri())

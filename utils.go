@@ -158,11 +158,6 @@ func generateCookie(storage Storage, providerIdentityId, providerName, email, co
 
 	unhashedLoginKey := string(signed)
 
-	err = storage.AddLoginData(unhashedLoginKey)
-	if err != nil {
-		return nil, err
-	}
-
 	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
 	if err != nil {
 		return nil, err

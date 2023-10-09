@@ -17,9 +17,6 @@ type Storage interface {
 	SetRequest(requestId string, request OAuth2AuthRequest)
 	DeleteRequest(requestId string)
 	GetPublic() bool
-	GetLoginData(loginKey string) (LoginData, error)
-	AddLoginData(string) error
-	EnsureLoginMapping(identityId, loginKey string)
 	GetSmtpConfig() (SmtpConfig, error)
 	GetJWKSet() jwk.Set
 }

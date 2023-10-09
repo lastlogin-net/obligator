@@ -5,21 +5,18 @@ import (
 	"errors"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
 type JsonStorage struct {
-	RootUri         string                `json:"root_uri"`
-	OAuth2Providers []OAuth2Provider      `json:"oauth2_providers"`
-	Smtp            *SmtpConfig           `json:"smtp"`
-	Jwks            jwk.Set               `json:"jwks"`
-	LoginData       map[string]*LoginData `json:"login_data"`
-	Tokens          map[string]*Token     `json:"tokens"`
-	LoginMap        []*LoginMapping       `json:"login_map"`
-	Users           []User                `json:"users"`
-	Public          bool                  `json:"public"`
+	RootUri         string            `json:"root_uri"`
+	OAuth2Providers []OAuth2Provider  `json:"oauth2_providers"`
+	Smtp            *SmtpConfig       `json:"smtp"`
+	Jwks            jwk.Set           `json:"jwks"`
+	Tokens          map[string]*Token `json:"tokens"`
+	Users           []User            `json:"users"`
+	Public          bool              `json:"public"`
 	requests        map[string]*OAuth2AuthRequest
 	pendingTokens   map[string]*PendingOAuth2Token
 	mutex           *sync.Mutex
@@ -31,9 +28,7 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 	s := &JsonStorage{
 		OAuth2Providers: []OAuth2Provider{},
 		Jwks:            jwk.NewSet(),
-		LoginData:       make(map[string]*LoginData),
 		Tokens:          make(map[string]*Token),
-		LoginMap:        []*LoginMapping{},
 		Users:           []User{},
 		requests:        make(map[string]*OAuth2AuthRequest),
 		pendingTokens:   make(map[string]*PendingOAuth2Token),
@@ -134,33 +129,6 @@ func (s *JsonStorage) GetRootUri() string {
 	return s.RootUri
 }
 
-func (s *JsonStorage) GetLoginMap() []*LoginMapping {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	return s.LoginMap
-}
-
-func (s *JsonStorage) EnsureLoginMapping(identityId, loginKey string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	for _, mapping := range s.LoginMap {
-		if mapping.IdentityId == identityId && mapping.LoginKey == loginKey {
-			return
-		}
-	}
-
-	newMapping := &LoginMapping{
-		IdentityId: identityId,
-		LoginKey:   loginKey,
-	}
-
-	s.LoginMap = append(s.LoginMap, newMapping)
-
-	s.persist()
-}
-
 func (s *JsonStorage) AddJWKKey(key jwk.Key) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -189,53 +157,6 @@ func (s *JsonStorage) GetOAuth2ProviderByID(id string) (OAuth2Provider, error) {
 	}
 
 	return OAuth2Provider{}, errors.New("No such provider")
-}
-
-func (s *JsonStorage) AddLoginData(loginKey string) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	loginKeyHash := Hash(loginKey)
-
-	timestamp := time.Now().Format(time.RFC3339)
-
-	s.LoginData[loginKeyHash] = &LoginData{
-		Timestamp: timestamp,
-	}
-
-	s.persist()
-
-	return nil
-}
-
-func (s *JsonStorage) DeleteLoginData(loginKey string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	newLoginMap := []*LoginMapping{}
-
-	for _, mapping := range s.LoginMap {
-		if mapping.LoginKey != loginKey {
-			newLoginMap = append(newLoginMap, mapping)
-		}
-	}
-
-	delete(s.LoginData, loginKey)
-	s.LoginMap = newLoginMap
-
-	s.persist()
-}
-
-func (s *JsonStorage) GetLoginData(loginKey string) (LoginData, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	data, ok := s.LoginData[loginKey]
-	if !ok {
-		return LoginData{}, errors.New("No such login")
-	}
-
-	return *data, nil
 }
 
 func (s *JsonStorage) AddRequest(req OAuth2AuthRequest) (string, error) {
