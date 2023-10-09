@@ -182,8 +182,13 @@ func NewEmailHander(storage Storage) *EmailHandler {
 			return
 		}
 
-		loginKeyCookie, _ := r.Cookie("login_key")
-		cookie, err := generateCookie(storage, email, "Email", email, loginKeyCookie.Value)
+		cookieValue := ""
+		loginKeyCookie, err := r.Cookie("login_key")
+		if err == nil {
+			cookieValue = loginKeyCookie.Value
+		}
+
+		cookie, err := generateCookie(storage, email, "Email", email, cookieValue)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())

@@ -303,8 +303,13 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			return
 		}
 
-		loginKeyCookie, _ := r.Cookie("login_key")
-		cookie, err := generateCookie(storage, providerIdentityId, oauth2Provider.Name, email, loginKeyCookie.Value)
+		cookieValue := ""
+		loginKeyCookie, err := r.Cookie("login_key")
+		if err == nil {
+			cookieValue = loginKeyCookie.Value
+		}
+
+		cookie, err := generateCookie(storage, providerIdentityId, oauth2Provider.Name, email, cookieValue)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
