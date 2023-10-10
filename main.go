@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -112,6 +113,7 @@ func main() {
 	port := flag.Int("port", 1616, "Port")
 	rootUri := flag.String("root-uri", "", "Root URI")
 	loginKeyName := flag.String("login-key-name", "obligator_login_key", "Login key name")
+	storageDir := flag.String("storage-dir", "./", "Storage directory")
 	flag.Parse()
 
 	var identsType []*Identity
@@ -123,7 +125,8 @@ func main() {
 	//	os.Exit(1)
 	//}
 
-	storage, err := NewJsonStorage("obligator_storage.json")
+	storagePath := filepath.Join(*storageDir, "obligator_storage.json")
+	storage, err := NewJsonStorage(storagePath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
