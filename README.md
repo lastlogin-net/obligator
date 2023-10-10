@@ -6,6 +6,8 @@ security review, and I am not a security expert. The plan is to arrange for a
 security review before reaching 1.0.
 
 
+# Introduction
+
 obligator is a relatively simple and opinionated OpenID Connect (OIDC) Provider
 (OP) server designed for selfhosters.
 
@@ -42,7 +44,6 @@ through SMTP, or delegated to upstream OIDC (and some plain OAuth2) providers.
 If you're already using docker, it's the easiest way to get started with
 obligator:
 
-
 ```
 mkdir obligator_docker
 
@@ -53,8 +54,25 @@ You can also download static executables for various platforms from the
 [releases][2] page.
 
 
+# Using the API
+
+Currently the API is only offered through unix sockets. This reduces the
+chance that it accidentally gets exposed.
+
+There's not any documentation, and the API is in flux, so refer to the
+[source code][3] for usage.
+
+Here's an example assuming you ran the docker command above:
+
+```
+curl --unix obligator_docker/obligator_api.sock dummy-domain/oauth2-providers
+```
+
+
 [0]: https://doc.traefik.io/traefik/middlewares/http/forwardauth/
 
 [1]: https://www.authelia.com/integration/trusted-header-sso/introduction/
 
 [2]: https://github.com/anderspitman/obligator/releases
+
+[3]: ./api.go
