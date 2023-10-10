@@ -60,7 +60,8 @@ You can also download static executables for various platforms from the
 # Using the API
 
 Currently the API is only offered through unix sockets. This reduces the
-chance that it accidentally gets exposed.
+chance that it accidentally gets exposed, which is important because
+it's not authenticated in any way.
 
 There's not any documentation, and the API is in flux, so refer to the
 [source code][3] for usage.
