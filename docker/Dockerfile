@@ -6,6 +6,8 @@ COPY ./obligator /obligator/obligator
 
 VOLUME ["/data"]
 
+VOLUME ["/api"]
+
 EXPOSE 1616
 
 ENTRYPOINT ["/obligator/obligator"]

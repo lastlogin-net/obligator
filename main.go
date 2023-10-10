@@ -114,6 +114,7 @@ func main() {
 	rootUri := flag.String("root-uri", "", "Root URI")
 	loginKeyName := flag.String("login-key-name", "obligator_login_key", "Login key name")
 	storageDir := flag.String("storage-dir", "./", "Storage directory")
+	apiSocketDir := flag.String("api-socket-dir", "./", "API socket directory")
 	flag.Parse()
 
 	var identsType []*Identity
@@ -144,7 +145,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "WARNING: No root URI set")
 	}
 
-	_, err = NewApi(storage)
+	_, err = NewApi(storage, *apiSocketDir)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)

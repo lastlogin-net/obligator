@@ -7,13 +7,14 @@ import (
 	"net/http"
 	"net/mail"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 type Api struct {
 }
 
-func NewApi(storage Storage) (*Api, error) {
+func NewApi(storage Storage, dir string) (*Api, error) {
 
 	mux := http.NewServeMux()
 
@@ -153,7 +154,7 @@ func NewApi(storage Storage) (*Api, error) {
 		Handler: mux,
 	}
 
-	sockPath := "./obligator.sock"
+	sockPath := filepath.Join(dir, "obligator_api.sock")
 
 	os.Remove(sockPath)
 
