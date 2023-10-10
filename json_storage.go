@@ -50,6 +50,18 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 		for {
 			rawMessage := <-s.message_chan
 			switch msg := rawMessage.(type) {
+			case getRootUriMessage:
+				msg.resp <- s.RootUri
+			case setRootUriMessage:
+				s.RootUri = msg.rootUri
+				msg.resp <- nil
+				s.Persist()
+			case getLoginKeyNameMessage:
+				msg.resp <- s.LoginKeyName
+			case setLoginKeyNameMessage:
+				s.LoginKeyName = msg.loginKeyName
+				msg.resp <- nil
+				s.Persist()
 			case getPublicMessage:
 				msg.resp <- s.Public
 			case getUsersMessage:
@@ -73,14 +85,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 				}
 
 				msg.resp <- err
-			case setRootUriMessage:
-
-				s.mutex.Lock()
-				s.RootUri = msg.rootUri
-				s.persist()
-				s.mutex.Unlock()
-
-				msg.resp <- nil
 			case getOauth2ProvidersMessage:
 				providers := []OAuth2Provider{}
 				for _, prov := range s.OAuth2Providers {
@@ -124,22 +128,59 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 	return s, nil
 }
 
+type getRootUriMessage struct {
+	resp chan string
+}
+
 func (s *JsonStorage) GetRootUri() string {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s.RootUri
+	ch := make(chan string)
+	s.message_chan <- getRootUriMessage{
+		resp: ch,
+	}
+	result := <-ch
+	return result
+}
+
+type setRootUriMessage struct {
+	rootUri string
+	resp    chan error
+}
+
+func (s *JsonStorage) SetRootUri(rootUri string) error {
+	resp := make(chan error)
+	s.message_chan <- setRootUriMessage{
+		rootUri,
+		resp,
+	}
+	err := <-resp
+	return err
+}
+
+type getLoginKeyNameMessage struct {
+	resp chan string
 }
 
 func (s *JsonStorage) GetLoginKeyName() string {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s.LoginKeyName
+	ch := make(chan string)
+	s.message_chan <- getLoginKeyNameMessage{
+		resp: ch,
+	}
+	result := <-ch
+	return result
 }
+
+type setLoginKeyNameMessage struct {
+	loginKeyName string
+	resp         chan error
+}
+
 func (s *JsonStorage) SetLoginKeyName(loginKeyName string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.LoginKeyName = loginKeyName
-	s.persist()
+	resp := make(chan error)
+	s.message_chan <- setLoginKeyNameMessage{
+		loginKeyName,
+		resp,
+	}
+	<-resp
 }
 
 func (s *JsonStorage) AddJWKKey(key jwk.Key) {
@@ -322,21 +363,6 @@ func (s *JsonStorage) CreateUser(user User) error {
 	resp := make(chan error)
 	s.message_chan <- createUserMessage{
 		user,
-		resp,
-	}
-	err := <-resp
-	return err
-}
-
-type setRootUriMessage struct {
-	rootUri string
-	resp    chan error
-}
-
-func (s *JsonStorage) SetRootUri(rootUri string) error {
-	resp := make(chan error)
-	s.message_chan <- setRootUriMessage{
-		rootUri,
 		resp,
 	}
 	err := <-resp
