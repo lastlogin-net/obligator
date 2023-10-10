@@ -121,15 +121,15 @@ func generateCookie(storage Storage, providerIdentityId, providerName, email, co
 
 		parsed, err := jwt.Parse([]byte(cookieValue), jwt.WithKeySet(publicJwks))
 		if err != nil {
-			return nil, err
-		}
-
-		tokIdentsInterface, exists := parsed.Get("identities")
-		if exists {
-			if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
-				for _, ident := range tokIdents {
-					if ident.Email != newIdent.Email {
-						idents = append(idents, ident)
+			// Only add identities from current cookie if it's valid
+		} else {
+			tokIdentsInterface, exists := parsed.Get("identities")
+			if exists {
+				if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
+					for _, ident := range tokIdents {
+						if ident.Email != newIdent.Email {
+							idents = append(idents, ident)
+						}
 					}
 				}
 			}
@@ -176,4 +176,22 @@ func generateCookie(storage Storage, providerIdentityId, providerName, email, co
 	}
 
 	return cookie, nil
+}
+
+func deleteLoginKeyCookie(storage Storage, w http.ResponseWriter) error {
+	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+	if err != nil {
+		return err
+	}
+
+	cookie := &http.Cookie{
+		Domain:   cookieDomain,
+		Name:     storage.GetLoginKeyName(),
+		Value:    "",
+		Path:     "/",
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(w, cookie)
+
+	return nil
 }

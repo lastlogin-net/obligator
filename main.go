@@ -340,17 +340,16 @@ func main() {
 
 			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
 			if err != nil {
-				w.WriteHeader(500)
-				io.WriteString(w, err.Error())
-				return
-			}
-
-			tokIdentsInterface, exists := parsed.Get("identities")
-			if exists {
-				if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
-					identities = tokIdents
+				// Only add identities from current cookie if it's valid
+			} else {
+				tokIdentsInterface, exists := parsed.Get("identities")
+				if exists {
+					if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
+						identities = tokIdents
+					}
 				}
 			}
+
 		}
 
 		req := OAuth2AuthRequest{
@@ -623,25 +622,11 @@ func main() {
 
 		redirect := r.Form.Get("prev_page")
 
-		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+		err = deleteLoginKeyCookie(storage, w)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
-			return
 		}
-
-		cookie := &http.Cookie{
-			Domain:   cookieDomain,
-			Name:     storage.GetLoginKeyName(),
-			Value:    "",
-			Secure:   true,
-			HttpOnly: true,
-			MaxAge:   86400 * 365,
-			Path:     "/",
-			SameSite: http.SameSiteLaxMode,
-			//SameSite: http.SameSiteStrictMode,
-		}
-		http.SetCookie(w, cookie)
 
 		http.Redirect(w, r, redirect, http.StatusSeeOther)
 	})
