@@ -462,27 +462,6 @@ func main() {
 			return
 		}
 
-		//identity, err := storage.GetIdentityById(identId)
-		//if err != nil {
-		//	w.WriteHeader(500)
-		//	io.WriteString(w, err.Error())
-		//	return
-		//}
-
-		//owner := false
-		//for _, mapping := range storage.GetLoginMap() {
-		//	if mapping.LoginKey == loginKey && mapping.IdentityId == identId {
-		//		owner = true
-		//		break
-		//	}
-		//}
-
-		//if !owner {
-		//	w.WriteHeader(403)
-		//	io.WriteString(w, "You don't have permissions for this identity")
-		//	return
-		//}
-
 		issuedAt := time.Now().UTC()
 		expiresAt := issuedAt.Add(10 * time.Minute)
 
