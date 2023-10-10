@@ -5,6 +5,9 @@ production at the moment. It has not yet undergone any sort of official
 security review, and I am not a security expert. The plan is to arrange for a
 security review before reaching 1.0.
 
+That said, testing and feedback (especially with respect to security) would be
+greatly appreciated.
+
 
 # Introduction
 
