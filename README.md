@@ -72,6 +72,8 @@ Here's an example assuming you ran the docker command above:
 curl --unix obligator_docker/obligator_api.sock dummy-domain/oauth2-providers
 ```
 
+See [here][4] for more info on using curl over unix sockets.
+
 
 [0]: https://doc.traefik.io/traefik/middlewares/http/forwardauth/
 
@@ -80,3 +82,5 @@ curl --unix obligator_docker/obligator_api.sock dummy-domain/oauth2-providers
 [2]: https://github.com/anderspitman/obligator/releases
 
 [3]: ./api.go
+
+[4]: https://superuser.com/q/834307
