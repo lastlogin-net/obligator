@@ -175,6 +175,15 @@ passwords are relatively difficult to use securely, the way to add an email
 identity is to send a confirmation code to the email address.
 
 
+# Demo
+
+There's a public instance of obligator running at `https://lastlogin.io`. You
+can use it with any OIDC client. Just set the `client_id` to a prefix of the
+`redirect_uri` when making the authorization request. I like to use
+https://openidconnect.net/ for ad-hoc testing. The official [OpenID conformance
+suite][9] is also excellent.
+
+
 # Comparison is the thief of joy
 
 Software is rarely about right vs wrong, but rather tradeoffs. This table is
@@ -222,3 +231,5 @@ is where it's generated from.
 [7]: https://duo.com/blog/gmail-oauth-phishing-goes-viral
 
 [8]: https://stackoverflow.com/a/19929304/943814
+
+[9]: https://www.certification.openid.net/login.html
