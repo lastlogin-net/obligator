@@ -42,7 +42,7 @@ that works today.
 
 Thus the purpose of obligator is to validate that a user controls an email
 address as simply as possible, and communicate that to the application the
-user is attempted to log in to. Validation can either be done directly
+user is attempting to log in to. Validation can either be done directly
 through SMTP, or delegated to upstream OIDC (and some plain OAuth2) providers.
 
 
