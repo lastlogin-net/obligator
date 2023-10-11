@@ -23,8 +23,10 @@ others. Primarily:
 
 * Simple to deploy and manage. Static executable and either flat-file or sqlite
   storage
+* Support for anonymous authentication requests
+* Authenticate to multiple domains at once
+* Passwordless email login
 * Configurable at runtime with an API
-* Passwordless email login 
 * Support for [forward auth][0] 
 * Support for [trusted headers][1]
 * Support for upstream social login providers (GitLab, GitHub, Google, etc)
