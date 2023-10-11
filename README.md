@@ -177,7 +177,7 @@ identity is to send a confirmation code to the email address.
 
 # Demo
 
-There's a public instance of obligator running at `https://lastlogin.io`
+There's a public instance of obligator running at https://lastlogin.io
 (discovery doc at https://lastlogin.io/.well-known/openid-configuration). You
 can use it with any OIDC client. Just set the `client_id` to a prefix of the
 `redirect_uri` when making the authorization request. I like to use
