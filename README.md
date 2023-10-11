@@ -134,10 +134,10 @@ See [here][4] for more info on using curl over unix sockets.
 
 Normally in OAuth2 (and therefore OIDC), an app (client) is required to
 pre-register with the provider. This can create a lot of friction, especially
-if you're self-hosting an open source application. App developers are forced
-to either share a single client ID for all their users (which can lead to
-rate limiting as the app grows in popularity), or each user must separately
-register their instance.
+if you're self-hosting an open source application. App developers are forced to
+either share a single client ID for all their users (and share their
+`client secret`, which essentially makes it pointless), or each user must
+separately register their instance.
 
 Instead, obligator takes essentially the approach described [here][6]. Any
 OAuth2 client can anonymously authenticate with an obligator instance, with the
