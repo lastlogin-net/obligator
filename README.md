@@ -18,7 +18,7 @@ obligator is a relatively simple and opinionated OpenID Connect (OIDC) Provider
 # Motivation
 
 There are lots of great open source OIDC servers out there (see
-[comparison](#comparison-is-the-thief-of-joy). I made obligator because I
+[comparison](#comparison-is-the-thief-of-joy)). I made obligator because I
 needed a specific combination of features I didn't find in any of the others.
 Here's a brief list. See the [feature explanation](#feature-explanation)
 section for more detailed information.
@@ -48,9 +48,9 @@ through SMTP, or delegated to upstream OIDC (and some plain OAuth2) providers.
 
 # Running it
 
-Here's a fairly complete storage (`obligator_storage.json`). Note that I call
-it "storage" and note "config" because it's not static, and more like a
-simple database. obligator will update it at runtime if new values are
+Here's a fairly complete JSON storage file (`obligator_storage.json`). Note
+that I call it "storage" and not "config" because it's not static, and more
+like a simple database. obligator will update it at runtime if new values are
 provided through the API.
 
 ```json
@@ -58,6 +58,14 @@ provided through the API.
   "root_uri": "https://example.com",
   "login_key_name": "obligator_login_key",
   "oauth2_providers": [
+    {
+      "id": "google",
+      "name": "Google",
+      "uri": "https://accounts.google.com",
+      "client_id": "<google oauth2 client_id>",
+      "client_secret": "<google oauth2 client_secret>",
+      "openid_connect": true
+    },
     {
       "id": "lastlogin",
       "name": "LastLogin.io",
@@ -132,14 +140,15 @@ rate limiting as the app grows in popularity), or each user must separately
 register their instance.
 
 Instead, obligator takes essentially the approach described [here][6]. Any
-OAuth2 client can anonymously authenticate with an obligator instance.
+OAuth2 client can anonymously authenticate with an obligator instance, with the
+`client_id` equal to the domain of the client, and `client_secret` left blank.
 Security is maintained through the following means:
 
 * Only approved email addresses are permitted unless `public: true` is set in
   the config.
-* The OAuth2 `client_id` must be a URL, and a prefix of the `redirect_uri`,
-  and the `client_id` is displayed to the user when consenting to the login.
-  This guarantees that the user approves the ID token to be sent to the domain
+* The `client_id` URI must be a prefix of the `redirect_uri`, and the
+  `client_id` is displayed to the user when consenting to the login. This
+  guarantees that the user approves the ID token to be sent to the domain
   shown. Note that this can actually be more secure than pre-registration.
   There have been attacks in [the past][7] where users were tricked into
   authorizing apps because the pre-registered information looked convincing. By
@@ -162,8 +171,8 @@ server so I'm building it into obligator.
 ## Passwordless email login
 
 In line with the philosophy above, email reigns supreme in obligator. Since
-passwords are very insecure, the way to add an email identity is to send a
-confirmation code.
+passwords are relatively difficult to use securely, the way to add an email
+identity is to send a confirmation code to the email address.
 
 
 # Comparison is the thief of joy
