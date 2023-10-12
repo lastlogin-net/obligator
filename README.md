@@ -25,7 +25,7 @@ section for more detailed information.
 
 * Simple to deploy and manage. Static executable and either flat-file or sqlite
   storage
-* Support for anonymous OAuth2 clients
+* Support for anonymous OAuth2 client auth
 * Authenticate to multiple domains at once
 * Passwordless email login
 * Configurable at runtime with an API
@@ -130,7 +130,7 @@ See [here][4] for more info on using curl over unix sockets.
 
 # Feature explanation
 
-## Anonymous OAuth2 clients
+## Anonymous OAuth2 auth
 
 Normally in OAuth2 (and therefore OIDC), an app (client) is required to
 pre-register with the provider. This can create a lot of friction, especially
@@ -155,6 +155,14 @@ Security is maintained through the following means:
   forcing the user to decide whether they trust the actual domain where the ID
   token will be sent, and not displaying any sort of logo which can be faked,
   security is improved.
+
+Note that some servers implement OIDC [Dynamic Client Registration][10], which
+is an official specification to accomplish some of the same goals as anonymous
+auth. When an initial access token is not required (notably the case with Ory),
+this can result in a very similar experience from the user perspective. The
+main problem is that client apps must support dynamic client registration, and
+many don't. Anonymous auth does not require any special features on the client
+side.
 
 ## Multi-domain authentication
 
@@ -233,3 +241,5 @@ is where it's generated from.
 [8]: https://stackoverflow.com/a/19929304/943814
 
 [9]: https://www.certification.openid.net/login.html
+
+[10]: https://openid.net/specs/openid-connect-registration-1_0.html
