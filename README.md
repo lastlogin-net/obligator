@@ -201,6 +201,9 @@ incomplete and probably incorrect in many cases. If you have a correction,
 please submit an issue or leave a comment on the Google sheet [here][5] which
 is where it's generated from.
 
+It's generated using the excellent https://tabletomarkdown.com
+
+
 |                             | [obligator](https://github.com/anderspitman/obligator) | [Authelia](https://www.authelia.com/) | [Authentik](https://goauthentik.io/) | [KeyCloak](https://www.keycloak.org/) | [Vouch](https://github.com/vouch/vouch-proxy) | [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy) | [Dex](https://dexidp.io/) | [Ory Hydra](https://www.ory.sh/hydra/) | [Zitadel](https://zitadel.com/) | [Casdoor](https://casdoor.org/) |
 | --------------------------- | ------------------------------------------------------ | ------------------------------------- | ------------------------------------ | ------------------------------------- | --------------------------------------------- | ------------------------------------------------------------ | ------------------------- | -------------------------------------- | ------------------------------- | ------------------------------- |
 | Simple                      | ✅                                                      | ✅                                     | ❌                                    | ❌                                     | ❓                                             | ❓                                                            | ❓                         | ❌                                      | ❌                               | ❓                               |
