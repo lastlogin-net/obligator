@@ -193,9 +193,21 @@ identity is to send a confirmation code to the email address.
 There's a public instance of obligator running at https://lastlogin.io
 (discovery doc at https://lastlogin.io/.well-known/openid-configuration). You
 can use it with any OIDC client. Just set the `client_id` to a prefix of the
-`redirect_uri` when making the authorization request. I like to use
-https://openidconnect.net/ for ad-hoc testing. The official [OpenID conformance
-suite][9] is also excellent.
+`redirect_uri` the client application uses when making the authorization
+request. I like to use https://openidconnect.net/ for ad-hoc testing, like so:
+
+1. Click on "Configuration" on the right side
+2. Enter the discovery document URL, ie
+   https://lastlogin.io/.well-known/openid-configuration for LastLogin
+3. Click "Use Discovery Document". It should populate most of the fields
+4. Set the `client_id` to https://openidconnect.net/. This is a prefix of
+   the `redirect_uri` that openidconnect.net uses, which is
+   https://openidconnect.net/callback
+5. You can leave the `client_secret` as it is or remove it.
+6. Click "Save", then "Start" to begin the flow.
+
+The official [OpenID conformance suite][9] is also excellent for testing OIDC
+servers.
 
 
 # Comparison is the thief of joy
