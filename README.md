@@ -128,6 +128,11 @@ curl --unix obligator_docker/obligator_api.sock dummy-domain/oauth2-providers
 See [here][4] for more info on using curl over unix sockets.
 
 
+# Support
+
+Community support is provided on the [IndieBits forums][11].
+
+
 # Feature explanation
 
 ## Anonymous OAuth2 auth
@@ -246,3 +251,5 @@ It's generated using the excellent https://tabletomarkdown.com
 [9]: https://www.certification.openid.net/login.html
 
 [10]: https://openid.net/specs/openid-connect-registration-1_0.html
+
+[11]: https://forum.indiebits.io/c/obligator/11
