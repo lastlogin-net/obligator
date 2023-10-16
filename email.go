@@ -124,7 +124,10 @@ func NewEmailHander(storage Storage) *EmailHandler {
 		if storage.GetPublic() || validUser(email, users) {
 			// run in goroutine so the user can't use timing to determine whether the account exists
 			go func() {
-				_ = emailAuth.StartEmailValidation(email, emailRequestId)
+				err := emailAuth.StartEmailValidation(email, emailRequestId)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to send email: %s\n", err.Error())
+				}
 			}()
 		}
 
