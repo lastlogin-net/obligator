@@ -117,6 +117,17 @@ func main() {
 	apiSocketDir := flag.String("api-socket-dir", "./", "API socket directory")
 	flag.Parse()
 
+	flyIoId := os.Getenv("FLY_ALLOC_ID")
+	instanceId := flyIoId
+	if instanceId == "" {
+		var err error
+		instanceId, err = genRandomKey()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+	}
+
 	var identsType []*Identity
 	jwt.RegisterCustomField("identities", identsType)
 
@@ -501,7 +512,7 @@ func main() {
 			request.RedirectUri,
 			request.ClientId,
 			request.RedirectUri,
-			code,
+			instanceId+"-"+code,
 			request.State,
 			request.Scope)
 
@@ -512,7 +523,29 @@ func main() {
 
 		r.ParseForm()
 
-		code := r.Form.Get("code")
+		codeParam := r.Form.Get("code")
+
+		codeParts := strings.Split(codeParam, "-")
+		if len(codeParts) != 2 {
+			w.WriteHeader(400)
+			io.WriteString(w, "Invalid code")
+			return
+		}
+
+		reqInstanceId := codeParts[0]
+		if reqInstanceId != instanceId {
+			// If we're running on fly.io, we can have fly replay the request to the correct instance
+			if flyIoId != "" {
+				w.Header().Set("fly-replay", fmt.Sprintf("instance=%s", reqInstanceId))
+				return
+			} else {
+				w.WriteHeader(400)
+				io.WriteString(w, "Invalid code")
+				return
+			}
+		}
+
+		code := codeParts[1]
 		defer storage.DeletePendingToken(code)
 
 		token, err := storage.GetPendingToken(code)
