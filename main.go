@@ -33,10 +33,10 @@ type SmtpConfig struct {
 }
 
 type OAuth2ServerMetadata struct {
-	Issuer                           string   `json:"issuer,omitempty"`
-	AuthorizationEndpoint            string   `json:"authorization_endpoint,omitempty"`
-	TokenEndpoint                    string   `json:"token_endpoint,omitempty"`
-	UserinfoEndpoint                 string   `json:"userinfo_endpoint,omitempty"`
+	Issuer                string `json:"issuer,omitempty"`
+	AuthorizationEndpoint string `json:"authorization_endpoint,omitempty"`
+	TokenEndpoint         string `json:"token_endpoint,omitempty"`
+	//UserinfoEndpoint                 string   `json:"userinfo_endpoint,omitempty"`
 	JwksUri                          string   `json:"jwks_uri,omitempty"`
 	ScopesSupported                  []string `json:"scopes_supported,omitempty"`
 	ResponseTypesSupported           []string `json:"response_types_supported,omitempty"`
@@ -228,10 +228,10 @@ func main() {
 		rootUri := storage.GetRootUri()
 
 		doc := OAuth2ServerMetadata{
-			Issuer:                           rootUri,
-			AuthorizationEndpoint:            fmt.Sprintf("%s/auth", rootUri),
-			TokenEndpoint:                    fmt.Sprintf("%s/token", rootUri),
-			UserinfoEndpoint:                 fmt.Sprintf("%s/userinfo", rootUri),
+			Issuer:                rootUri,
+			AuthorizationEndpoint: fmt.Sprintf("%s/auth", rootUri),
+			TokenEndpoint:         fmt.Sprintf("%s/token", rootUri),
+			//UserinfoEndpoint:                 fmt.Sprintf("%s/userinfo", rootUri),
 			JwksUri:                          fmt.Sprintf("%s/jwks", rootUri),
 			ScopesSupported:                  []string{"openid", "email", "profile"},
 			ResponseTypesSupported:           []string{"code"},
@@ -249,51 +249,6 @@ func main() {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		enc.Encode(publicJwks)
-	})
-
-	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		parts := strings.Split(authHeader, " ")
-
-		if len(parts) != 2 {
-			w.WriteHeader(400)
-			io.WriteString(w, "Invalid Authorization header")
-			return
-		}
-
-		unhashedToken := parts[1]
-
-		// TODO: maybe should be deleting token right after getting it
-		tokenData, err := storage.GetToken(Hash(unhashedToken))
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		expired, err := tokenExpired(tokenData)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-		if expired {
-			storage.DeleteToken(Hash(unhashedToken))
-			w.WriteHeader(401)
-			io.WriteString(w, "Token expired")
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
-
-		userResponse := UserinfoResponse{
-			Sub:   tokenData.IdentityId,
-			Email: tokenData.Email,
-		}
-
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		enc.Encode(userResponse)
 	})
 
 	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
@@ -550,17 +505,6 @@ func main() {
 
 		token, err := storage.GetPendingToken(code)
 		if err != nil {
-
-			// Check if code has been used more than once
-			for token, tokenData := range storage.GetTokens() {
-				if code == tokenData.AuthorizationCode {
-					storage.DeleteToken(token)
-					w.WriteHeader(401)
-					io.WriteString(w, "Attempt to use authorization code multiple times. Someone may be trying to hack your account. Deleting access token as a precaution.")
-					return
-				}
-			}
-
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
 			return
@@ -581,21 +525,6 @@ func main() {
 				io.WriteString(w, "code_verifier provided for request that did not include code_challenge")
 				return
 			}
-		}
-
-		tokenData := &Token{
-			IdentityId:        token.IdToken.Subject(),
-			Email:             token.IdToken.Email(),
-			CreatedAt:         time.Now().UTC().Format(time.RFC3339),
-			ExpiresIn:         10,
-			AuthorizationCode: code,
-		}
-
-		err = storage.SetToken(Hash(token.AccessToken), tokenData)
-		if err != nil {
-			w.WriteHeader(400)
-			io.WriteString(w, err.Error())
-			return
 		}
 
 		key, exists := storage.GetJWKSet().Key(0)
@@ -670,24 +599,6 @@ func main() {
 		Addr:    fmt.Sprintf(":%d", *port),
 		Handler: mux,
 	}
-
-	// Clean up expired tokens occasionally
-	go func() {
-		for {
-			for token, tokenData := range storage.GetTokens() {
-				expired, err := tokenExpired(tokenData)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Failed to parse time\n")
-					continue
-				}
-				if expired {
-					storage.DeleteToken(token)
-				}
-			}
-
-			time.Sleep(1 * time.Hour)
-		}
-	}()
 
 	fmt.Println("Running")
 
