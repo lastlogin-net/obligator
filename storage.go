@@ -35,14 +35,6 @@ type PendingOAuth2Token struct {
 	PKCECodeChallenge string       `json:"pkce_code_challenge"`
 }
 
-type Token struct {
-	IdentityId        string `json:"identity_id"`
-	Email             string `json:"email"`
-	CreatedAt         string `json:"created_at"`
-	ExpiresIn         int    `json:"expires_in"`
-	AuthorizationCode string `json:"authorization_code"`
-}
-
 type OAuth2Provider struct {
 	ID               string `json:"id"`
 	Name             string `json:"name"`

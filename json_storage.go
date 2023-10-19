@@ -19,7 +19,6 @@ type JsonStorage struct {
 	Public          bool             `json:"public"`
 	requests        map[string]*OAuth2AuthRequest
 	pendingTokens   map[string]*PendingOAuth2Token
-	tokens          map[string]*Token
 	mutex           *sync.Mutex
 	path            string
 	message_chan    chan interface{}
@@ -29,7 +28,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 	s := &JsonStorage{
 		OAuth2Providers: []OAuth2Provider{},
 		Jwks:            jwk.NewSet(),
-		tokens:          make(map[string]*Token),
 		Users:           []User{},
 		requests:        make(map[string]*OAuth2AuthRequest),
 		pendingTokens:   make(map[string]*PendingOAuth2Token),
@@ -294,38 +292,6 @@ func (s *JsonStorage) DeletePendingToken(code string) {
 	defer s.mutex.Unlock()
 
 	delete(s.pendingTokens, code)
-}
-
-func (s *JsonStorage) SetToken(token string, tokenData *Token) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	s.tokens[token] = tokenData
-
-	return nil
-}
-func (s *JsonStorage) GetToken(token string) (*Token, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	tok, ok := s.tokens[token]
-	if ok {
-		return tok, nil
-	}
-
-	return nil, errors.New("Invalid token")
-}
-func (s *JsonStorage) GetTokens() map[string]*Token {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	return s.tokens
-}
-func (s *JsonStorage) DeleteToken(token string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	delete(s.tokens, token)
 }
 
 type getPublicMessage struct {

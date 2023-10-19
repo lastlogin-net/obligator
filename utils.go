@@ -56,18 +56,6 @@ func genRandomKey() (string, error) {
 	return id, nil
 }
 
-func tokenExpired(tokenData *Token) (bool, error) {
-	timeNow := time.Now().UTC()
-	createdAt, err := time.Parse("2006-01-02T15:04:05Z", tokenData.CreatedAt)
-	if err != nil {
-		return false, err
-	}
-
-	expiresAt := createdAt.Add(time.Duration(tokenData.ExpiresIn) * time.Second)
-
-	return timeNow.After(expiresAt), nil
-}
-
 func buildCookieDomain(fullUrl string) (string, error) {
 	rootUrlParsed, err := url.Parse(fullUrl)
 	if err != nil {
@@ -99,13 +87,9 @@ func generateCookie(storage Storage, providerIdentityId, providerName, email, co
 		return nil, errors.New("No keys available")
 	}
 
-	newIdentId, err := genRandomKey()
-	if err != nil {
-		return nil, err
-	}
-
 	newIdent := &Identity{
-		Id:           newIdentId,
+		// TODO: probably don't need Id now that it's the same as Email
+		Id:           email,
 		ProviderId:   providerIdentityId,
 		ProviderName: providerName,
 		Email:        email,
@@ -113,7 +97,7 @@ func generateCookie(storage Storage, providerIdentityId, providerName, email, co
 
 	idents := []*Identity{newIdent}
 
-	if err == nil && cookieValue != "" {
+	if cookieValue != "" {
 		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
 		if err != nil {
 			return nil, err

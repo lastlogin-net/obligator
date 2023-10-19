@@ -261,34 +261,21 @@ func main() {
 			return
 		}
 
-		unhashedToken := parts[1]
+		accessToken := parts[1]
 
-		// TODO: maybe should be deleting token right after getting it
-		tokenData, err := storage.GetToken(Hash(unhashedToken))
+		parsed, err := jwt.Parse([]byte(accessToken), jwt.WithKeySet(publicJwks))
 		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		expired, err := tokenExpired(tokenData)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-		if expired {
-			storage.DeleteToken(Hash(unhashedToken))
+			fmt.Println("parsing failed")
 			w.WriteHeader(401)
-			io.WriteString(w, "Token expired")
+			io.WriteString(w, err.Error())
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 
 		userResponse := UserinfoResponse{
-			Sub:   tokenData.IdentityId,
-			Email: tokenData.Email,
+			Sub:   parsed.Subject(),
+			Email: parsed.Subject(),
 		}
 
 		enc := json.NewEncoder(w)
@@ -550,17 +537,6 @@ func main() {
 
 		token, err := storage.GetPendingToken(code)
 		if err != nil {
-
-			// Check if code has been used more than once
-			for token, tokenData := range storage.GetTokens() {
-				if code == tokenData.AuthorizationCode {
-					storage.DeleteToken(token)
-					w.WriteHeader(401)
-					io.WriteString(w, "Attempt to use authorization code multiple times. Someone may be trying to hack your account. Deleting access token as a precaution.")
-					return
-				}
-			}
-
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
 			return
@@ -583,25 +559,29 @@ func main() {
 			}
 		}
 
-		tokenData := &Token{
-			IdentityId:        token.IdToken.Subject(),
-			Email:             token.IdToken.Email(),
-			CreatedAt:         time.Now().UTC().Format(time.RFC3339),
-			ExpiresIn:         10,
-			AuthorizationCode: code,
+		key, exists := storage.GetJWKSet().Key(0)
+		if !exists {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "No keys available")
+			return
 		}
 
-		err = storage.SetToken(Hash(token.AccessToken), tokenData)
+		issuedAt := time.Now().UTC()
+		accessTokenJwt, err := jwt.NewBuilder().
+			IssuedAt(issuedAt).
+			Expiration(issuedAt.Add(16 * time.Second)).
+			Subject(token.IdToken.Email()).
+			Build()
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		key, exists := storage.GetJWKSet().Key(0)
-		if !exists {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "No keys available")
+		signedAccessToken, err := jwt.Sign(accessTokenJwt, jwt.WithKey(jwa.RS256, key))
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
 			return
 		}
 
@@ -616,7 +596,7 @@ func main() {
 		w.Header().Set("Cache-Control", "no-store")
 
 		tokenRes := Oauth2TokenResponse{
-			AccessToken: token.AccessToken,
+			AccessToken: string(signedAccessToken),
 			ExpiresIn:   3600,
 			IdToken:     string(signed),
 			TokenType:   "bearer",
@@ -670,24 +650,6 @@ func main() {
 		Addr:    fmt.Sprintf(":%d", *port),
 		Handler: mux,
 	}
-
-	// Clean up expired tokens occasionally
-	go func() {
-		for {
-			for token, tokenData := range storage.GetTokens() {
-				expired, err := tokenExpired(tokenData)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Failed to parse time\n")
-					continue
-				}
-				if expired {
-					storage.DeleteToken(token)
-				}
-			}
-
-			time.Sleep(1 * time.Hour)
-		}
-	}()
 
 	fmt.Println("Running")
 
