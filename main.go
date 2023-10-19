@@ -65,7 +65,8 @@ type Oauth2TokenResponse struct {
 }
 
 type ObligatorMux struct {
-	mux *http.ServeMux
+	behindProxy bool
+	mux         *http.ServeMux
 }
 
 type UserinfoResponse struct {
@@ -73,9 +74,10 @@ type UserinfoResponse struct {
 	Email string `json:"email"`
 }
 
-func NewObligatorMux() *ObligatorMux {
+func NewObligatorMux(behindProxy bool) *ObligatorMux {
 	s := &ObligatorMux{
-		mux: http.NewServeMux(),
+		behindProxy: behindProxy,
+		mux:         http.NewServeMux(),
 	}
 
 	return s
@@ -93,6 +95,15 @@ func (s *ObligatorMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, err.Error())
 		return
 	}
+
+	if s.behindProxy {
+		xffHeader := r.Header.Get("X-Forwarded-For")
+		if xffHeader != "" {
+			parts := strings.Split(xffHeader, ",")
+			remoteIp = parts[0]
+		}
+	}
+
 	fmt.Println(fmt.Sprintf("%s\t%s\t%s\t%s\t%s", timestamp, remoteIp, r.Method, r.Host, r.URL.Path))
 	s.mux.ServeHTTP(w, r)
 }
@@ -115,6 +126,7 @@ func main() {
 	loginKeyName := flag.String("login-key-name", "obligator_login_key", "Login key name")
 	storageDir := flag.String("storage-dir", "./", "Storage directory")
 	apiSocketDir := flag.String("api-socket-dir", "./", "API socket directory")
+	behindProxy := flag.Bool("behind-proxy", false, "Whether we are behind a reverse proxy")
 	flag.Parse()
 
 	flyIoId := os.Getenv("FLY_ALLOC_ID")
@@ -185,7 +197,7 @@ func main() {
 	}
 
 	oauth2Handler := NewOauth2Handler(storage)
-	mux := NewObligatorMux()
+	mux := NewObligatorMux(*behindProxy)
 
 	mux.Handle("/login-oauth2", oauth2Handler)
 	mux.Handle("/callback", oauth2Handler)

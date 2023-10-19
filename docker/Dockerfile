@@ -12,4 +12,4 @@ EXPOSE 1616
 
 ENTRYPOINT ["/obligator/obligator"]
 
-CMD ["-storage-dir", "/data"]
+CMD ["-storage-dir", "/data", "-behind-proxy", "true"]
