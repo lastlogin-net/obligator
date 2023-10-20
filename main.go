@@ -347,11 +347,11 @@ func main() {
 
 		identities := []*Identity{}
 
-		var loginKey string
+		var hashedLoginKey string
 
 		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
 		if err == nil && loginKeyCookie.Value != "" {
-			loginKey = Hash(loginKeyCookie.Value)
+			hashedLoginKey = Hash(loginKeyCookie.Value)
 
 			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
 			if err != nil {
@@ -367,23 +367,53 @@ func main() {
 
 		}
 
-		req := OAuth2AuthRequest{
-			LoginKey:          loginKey,
-			RawQuery:          r.URL.RawQuery,
-			ClientId:          clientId,
-			RedirectUri:       redirectUri,
-			State:             state,
-			Scope:             r.Form.Get("scope"),
-			Nonce:             r.Form.Get("nonce"),
-			PKCECodeChallenge: r.Form.Get("code_challenge"),
-		}
-
-		requestId, err := storage.AddRequest(req)
+		issuedAt := time.Now().UTC()
+		authRequestJwt, err := jwt.NewBuilder().
+			IssuedAt(issuedAt).
+			Expiration(issuedAt.Add(8*time.Minute)).
+			Claim("login_key_hash", hashedLoginKey).
+			Claim("raw_query", r.URL.RawQuery).
+			Claim("client_id", clientId).
+			Claim("redirect_uri", redirectUri).
+			Claim("state", state).
+			Claim("scope", r.Form.Get("scope")).
+			Claim("nonce", r.Form.Get("nonce")).
+			Claim("pkce_code_challenge", r.Form.Get("code_challenge")).
+			Build()
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
+
+		key, exists := storage.GetJWKSet().Key(0)
+		if !exists {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "No keys available")
+			return
+		}
+
+		signedAuthRequest, err := jwt.Sign(authRequestJwt, jwt.WithKey(jwa.RS256, key))
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+		cookie := &http.Cookie{
+			Domain:   cookieDomain,
+			Name:     "obligator_auth_request",
+			Value:    string(signedAuthRequest),
+			Path:     "/",
+			SameSite: http.SameSiteLaxMode,
+		}
+		http.SetCookie(w, cookie)
 
 		providers, err := storage.GetOAuth2Providers()
 		if err != nil {
@@ -394,14 +424,12 @@ func main() {
 
 		data := struct {
 			ClientId        string
-			RequestId       string
 			Identities      []*Identity
 			OAuth2Providers []OAuth2Provider
 			LogoMap         map[string]template.HTML
 			URL             string
 		}{
 			ClientId:        clientIdUrl.Host,
-			RequestId:       requestId,
 			Identities:      identities,
 			OAuth2Providers: providers,
 			LogoMap:         providerLogoMap,
@@ -432,34 +460,40 @@ func main() {
 			return
 		}
 
-		parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+		parsedLoginKey, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		loginKey := Hash(loginKeyCookie.Value)
-
-		requestId := r.Form.Get("request_id")
-
-		request, err := storage.GetRequest(requestId)
+		// delete auth request cookie
+		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
+		cookie := &http.Cookie{
+			Domain:   cookieDomain,
+			Name:     "obligator_auth_request",
+			Value:    "",
+			Path:     "/",
+			SameSite: http.SameSiteLaxMode,
+		}
+		http.SetCookie(w, cookie)
 
-		if request.LoginKey != loginKey {
-			w.WriteHeader(403)
-			io.WriteString(w, "Not your request")
+		parsedAuthReq, err := getAuthRequest(storage, w, r)
+		if err != nil {
+			w.WriteHeader(401)
+			io.WriteString(w, err.Error())
 			return
 		}
 
 		identId := r.Form.Get("identity_id")
 
 		var identity *Identity
-		tokIdentsInterface, exists := parsed.Get("identities")
+		tokIdentsInterface, exists := parsedLoginKey.Get("identities")
 		if exists {
 			if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
 				for _, ident := range tokIdents {
@@ -478,17 +512,17 @@ func main() {
 		}
 
 		issuedAt := time.Now().UTC()
-		expiresAt := issuedAt.Add(10 * time.Minute)
+		expiresAt := issuedAt.Add(8 * time.Minute)
 
 		idToken, err := openid.NewBuilder().
 			Subject(identId).
-			Audience([]string{request.ClientId}).
+			Audience([]string{claimFromToken("client_id", parsedAuthReq)}).
 			Issuer(storage.GetRootUri()).
 			Email(identity.Email).
 			EmailVerified(true).
 			IssuedAt(issuedAt).
 			Expiration(expiresAt).
-			Claim("nonce", request.Nonce).
+			Claim("nonce", claimFromToken("nonce", parsedAuthReq)).
 			Build()
 		if err != nil {
 			w.WriteHeader(500)
@@ -515,7 +549,7 @@ func main() {
 			Expiration(issuedAt.Add(16*time.Second)).
 			Subject(idToken.Email()).
 			Claim("id_token", string(signedIdToken)).
-			Claim("pkce_code_challenge", request.PKCECodeChallenge).
+			Claim("pkce_code_challenge", claimFromToken("pkce_code_challenge", parsedAuthReq)).
 			Build()
 		if err != nil {
 			w.WriteHeader(500)
@@ -531,12 +565,12 @@ func main() {
 		}
 
 		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&code=%s&state=%s&scope=%s",
-			request.RedirectUri,
-			request.ClientId,
-			request.RedirectUri,
+			claimFromToken("redirect_uri", parsedAuthReq),
+			claimFromToken("client_id", parsedAuthReq),
+			claimFromToken("redirect_uri", parsedAuthReq),
 			instanceId+"?"+string(signedCode),
-			request.State,
-			request.Scope)
+			claimFromToken("state", parsedAuthReq),
+			claimFromToken("scope", parsedAuthReq))
 
 		http.Redirect(w, r, url, http.StatusSeeOther)
 	})

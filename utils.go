@@ -179,3 +179,49 @@ func deleteLoginKeyCookie(storage Storage, w http.ResponseWriter) error {
 
 	return nil
 }
+
+func claimFromToken(claim string, token jwt.Token) string {
+	valIface, exists := token.Get(claim)
+	if !exists {
+		return ""
+	}
+
+	val, ok := valIface.(string)
+	if !ok {
+		return ""
+	}
+
+	return val
+}
+
+func getAuthRequest(storage Storage, w http.ResponseWriter, r *http.Request) (jwt.Token, error) {
+	loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+	if err != nil {
+		return nil, err
+	}
+
+	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+	if err != nil {
+		return nil, err
+	}
+
+	hashedLoginKey := Hash(loginKeyCookie.Value)
+
+	authReqCookie, err := r.Cookie("obligator_auth_request")
+	if err != nil {
+		return nil, err
+	}
+
+	parsedAuthReq, err := jwt.Parse([]byte(authReqCookie.Value), jwt.WithKeySet(publicJwks))
+	if err != nil {
+		return nil, err
+	}
+
+	reqLoginKey := claimFromToken("login_key_hash", parsedAuthReq)
+
+	if reqLoginKey != hashedLoginKey {
+		return nil, errors.New("Not your request")
+	}
+
+	return parsedAuthReq, nil
+}

@@ -156,8 +156,7 @@ func NewEmailHander(storage Storage) *EmailHandler {
 
 		r.ParseForm()
 
-		requestId := r.Form.Get("request_id")
-		request, err := storage.GetRequest(requestId)
+		request, err := getAuthRequest(storage, w, r)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -200,7 +199,7 @@ func NewEmailHander(storage Storage) *EmailHandler {
 
 		http.SetCookie(w, cookie)
 
-		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), request.RawQuery)
+		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), claimFromToken("raw_query", request))
 
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})
