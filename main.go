@@ -142,6 +142,8 @@ func main() {
 
 	var identsType []*Identity
 	jwt.RegisterCustomField("identities", identsType)
+	var idTokenType string
+	jwt.RegisterCustomField("id_token", idTokenType)
 
 	//storage, err := NewSqliteStorage("obligator_storage.sqlite3")
 	//if err != nil {
@@ -277,7 +279,6 @@ func main() {
 
 		parsed, err := jwt.Parse([]byte(accessToken), jwt.WithKeySet(publicJwks))
 		if err != nil {
-			fmt.Println("parsing failed")
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
 			return
@@ -479,7 +480,7 @@ func main() {
 		issuedAt := time.Now().UTC()
 		expiresAt := issuedAt.Add(10 * time.Minute)
 
-		token, err := openid.NewBuilder().
+		idToken, err := openid.NewBuilder().
 			Subject(identId).
 			Audience([]string{request.ClientId}).
 			Issuer(storage.GetRootUri()).
@@ -495,15 +496,37 @@ func main() {
 			return
 		}
 
-		oauth2Token := &PendingOAuth2Token{
-			IdToken:           token,
-			PKCECodeChallenge: request.PKCECodeChallenge,
+		key, exists := storage.GetJWKSet().Key(0)
+		if !exists {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "No keys available")
+			return
 		}
 
-		code, err := storage.AddPendingToken(oauth2Token)
+		signedIdToken, err := jwt.Sign(idToken, jwt.WithKey(jwa.RS256, key))
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		codeJwt, err := jwt.NewBuilder().
+			IssuedAt(issuedAt).
+			Expiration(issuedAt.Add(16*time.Second)).
+			Subject(idToken.Email()).
+			Claim("id_token", string(signedIdToken)).
+			Claim("pkce_code_challenge", request.PKCECodeChallenge).
+			Build()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		signedCode, err := jwt.Sign(codeJwt, jwt.WithKey(jwa.RS256, key))
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
 			return
 		}
 
@@ -511,7 +534,7 @@ func main() {
 			request.RedirectUri,
 			request.ClientId,
 			request.RedirectUri,
-			instanceId+"-"+code,
+			instanceId+"?"+string(signedCode),
 			request.State,
 			request.Scope)
 
@@ -524,7 +547,7 @@ func main() {
 
 		codeParam := r.Form.Get("code")
 
-		codeParts := strings.Split(codeParam, "-")
+		codeParts := strings.Split(codeParam, "?")
 		if len(codeParts) != 2 {
 			w.WriteHeader(400)
 			io.WriteString(w, "Invalid code")
@@ -544,21 +567,42 @@ func main() {
 			}
 		}
 
-		code := codeParts[1]
-		defer storage.DeletePendingToken(code)
+		codeJwt := codeParts[1]
 
-		token, err := storage.GetPendingToken(code)
+		parsedCodeJwt, err := jwt.Parse([]byte(codeJwt), jwt.WithKeySet(publicJwks))
 		if err != nil {
-			w.WriteHeader(400)
+			fmt.Println(err.Error())
+			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
+			return
+		}
+
+		signedIdTokenIface, exists := parsedCodeJwt.Get("id_token")
+		if !exists {
+			w.WriteHeader(401)
+			io.WriteString(w, "Invalid id_token in code")
+			return
+		}
+
+		signedIdToken, ok := signedIdTokenIface.(string)
+		if !ok {
+			w.WriteHeader(401)
+			io.WriteString(w, "Invalid id_token in code")
+			return
+		}
+
+		pkceCodeChallenge, exists := parsedCodeJwt.Get("pkce_code_challenge")
+		if !exists {
+			w.WriteHeader(401)
+			io.WriteString(w, "Invalid pkce_code_challenge in code")
 			return
 		}
 
 		// https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics#section-4.8.2
 		pkceCodeVerifier := r.Form.Get("code_verifier")
-		if token.PKCECodeChallenge != "" {
+		if pkceCodeChallenge != "" {
 			challenge := GeneratePKCECodeChallenge(pkceCodeVerifier)
-			if challenge != token.PKCECodeChallenge {
+			if challenge != pkceCodeChallenge {
 				w.WriteHeader(401)
 				io.WriteString(w, "Invalid code_verifier")
 				return
@@ -582,7 +626,7 @@ func main() {
 		accessTokenJwt, err := jwt.NewBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(16 * time.Second)).
-			Subject(token.IdToken.Email()).
+			Subject(parsedCodeJwt.Subject()).
 			Build()
 		if err != nil {
 			w.WriteHeader(400)
@@ -597,20 +641,13 @@ func main() {
 			return
 		}
 
-		signed, err := jwt.Sign(token.IdToken, jwt.WithKey(jwa.RS256, key))
-		if err != nil {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, err.Error())
-			return
-		}
-
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 		w.Header().Set("Cache-Control", "no-store")
 
 		tokenRes := Oauth2TokenResponse{
 			AccessToken: string(signedAccessToken),
 			ExpiresIn:   3600,
-			IdToken:     string(signed),
+			IdToken:     string(signedIdToken),
 			TokenType:   "bearer",
 		}
 

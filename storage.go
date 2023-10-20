@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
 type Storage interface {
@@ -27,12 +26,6 @@ type Identity struct {
 	ProviderName string `json:"provider_name"`
 	ProviderId   string `json:"provider_id"`
 	Email        string `json:"email"`
-}
-
-type PendingOAuth2Token struct {
-	AccessToken       string       `json:"access_token"`
-	IdToken           openid.Token `json:"id_token"`
-	PKCECodeChallenge string       `json:"pkce_code_challenge"`
 }
 
 type OAuth2Provider struct {
