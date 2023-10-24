@@ -18,7 +18,6 @@ import (
 	"time"
 	//"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
@@ -175,34 +174,7 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			return
 		}
 
-		key, exists := storage.GetJWKSet().Key(0)
-		if !exists {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "No keys available")
-			return
-		}
-
-		signedReqJwt, err := jwt.Sign(reqJwt, jwt.WithKey(jwa.RS256, key))
-		if err != nil {
-			w.WriteHeader(400)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-		cookie := &http.Cookie{
-			Domain:   cookieDomain,
-			Name:     "obligator_upstream_oauth2_request",
-			Value:    string(signedReqJwt),
-			Path:     "/",
-			SameSite: http.SameSiteLaxMode,
-		}
-		http.SetCookie(w, cookie)
+		setJwtCookie(storage, reqJwt, "obligator_upstream_oauth2_request", w, r)
 
 		callbackUri := fmt.Sprintf("%s/callback", storage.GetRootUri())
 

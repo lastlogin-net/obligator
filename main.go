@@ -361,34 +361,7 @@ func main() {
 			return
 		}
 
-		key, exists := storage.GetJWKSet().Key(0)
-		if !exists {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "No keys available")
-			return
-		}
-
-		signedAuthRequest, err := jwt.Sign(authRequestJwt, jwt.WithKey(jwa.RS256, key))
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-		cookie := &http.Cookie{
-			Domain:   cookieDomain,
-			Name:     "obligator_auth_request",
-			Value:    string(signedAuthRequest),
-			Path:     "/",
-			SameSite: http.SameSiteLaxMode,
-		}
-		http.SetCookie(w, cookie)
+		setJwtCookie(storage, authRequestJwt, "obligator_auth_request", w, r)
 
 		providers, err := storage.GetOAuth2Providers()
 		if err != nil {

@@ -226,3 +226,34 @@ func getJwtFromCookie(cookieKey string, storage Storage, w http.ResponseWriter, 
 
 	return parsedAuthReq, nil
 }
+
+func setJwtCookie(storage Storage, jot jwt.Token, cookieKey string, w http.ResponseWriter, r *http.Request) {
+	key, exists := storage.GetJWKSet().Key(0)
+	if !exists {
+		w.WriteHeader(500)
+		fmt.Fprintf(os.Stderr, "No keys available")
+		return
+	}
+
+	signedReqJwt, err := jwt.Sign(jot, jwt.WithKey(jwa.RS256, key))
+	if err != nil {
+		w.WriteHeader(400)
+		io.WriteString(w, err.Error())
+		return
+	}
+
+	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+	if err != nil {
+		w.WriteHeader(500)
+		io.WriteString(w, err.Error())
+		return
+	}
+	cookie := &http.Cookie{
+		Domain:   cookieDomain,
+		Name:     cookieKey,
+		Value:    string(signedReqJwt),
+		Path:     "/",
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(w, cookie)
+}
