@@ -194,7 +194,7 @@ func claimFromToken(claim string, token jwt.Token) string {
 	return val
 }
 
-func getAuthRequest(storage Storage, w http.ResponseWriter, r *http.Request) (jwt.Token, error) {
+func getJwtFromCookie(cookieKey string, storage Storage, w http.ResponseWriter, r *http.Request) (jwt.Token, error) {
 	loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
 	if err != nil {
 		return nil, err
@@ -207,7 +207,7 @@ func getAuthRequest(storage Storage, w http.ResponseWriter, r *http.Request) (jw
 
 	hashedLoginKey := Hash(loginKeyCookie.Value)
 
-	authReqCookie, err := r.Cookie("obligator_auth_request")
+	authReqCookie, err := r.Cookie(cookieKey)
 	if err != nil {
 		return nil, err
 	}

@@ -57,7 +57,7 @@ type OAuth2AuthRequest struct {
 	PKCECodeChallenge string `json:"pkce_code_challenge"`
 }
 
-type Oauth2TokenResponse struct {
+type OIDCTokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int    `json:"expires_in"`
@@ -483,7 +483,7 @@ func main() {
 		}
 		http.SetCookie(w, cookie)
 
-		parsedAuthReq, err := getAuthRequest(storage, w, r)
+		parsedAuthReq, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
@@ -678,7 +678,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 		w.Header().Set("Cache-Control", "no-store")
 
-		tokenRes := Oauth2TokenResponse{
+		tokenRes := OIDCTokenResponse{
 			AccessToken: string(signedAccessToken),
 			ExpiresIn:   3600,
 			IdToken:     string(signedIdToken),

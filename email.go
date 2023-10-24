@@ -156,7 +156,7 @@ func NewEmailHander(storage Storage) *EmailHandler {
 
 		r.ParseForm()
 
-		request, err := getAuthRequest(storage, w, r)
+		request, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())

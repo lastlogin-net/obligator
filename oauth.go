@@ -15,9 +15,10 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 	//"time"
 
-	//"github.com/lestrrat-go/jwx/v2/jwa"
+	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
@@ -124,15 +125,6 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			return
 		}
 
-		request, err := storage.GetRequest(requestId)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		request.Provider = provider.ID
-
 		scope := "openid email"
 		if provider.Scope != "" {
 			scope = provider.Scope
@@ -145,6 +137,7 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			authURL = provider.AuthorizationURI
 		}
 
+		// TODO: replace GeneratePKCEData with offical oauth2 package
 		pkceCodeChallenge, pkceCodeVerifier, err := GeneratePKCEData()
 		if err != nil {
 			w.WriteHeader(500)
@@ -152,22 +145,64 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			return
 		}
 
-		request.PKCECodeVerifier = pkceCodeVerifier
-
-		request.ProviderNonce, err = genRandomKey()
+		nonce, err := genRandomKey()
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, "Failed to generate nonce")
 			return
 		}
 
-		storage.SetRequest(requestId, request)
+		// TODO: consider encrypting this JWT to keep the PKCE code
+		// verifier secret from the frontend, ie malicious browser
+		// extensions.
+		issuedAt := time.Now().UTC()
+		reqJwt, err := jwt.NewBuilder().
+			IssuedAt(issuedAt).
+			Expiration(issuedAt.Add(8*time.Minute)).
+			Claim("provider_id", provider.ID).
+			Claim("nonce", nonce).
+			Claim("pkce_code_verifier", pkceCodeVerifier).
+			Build()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		key, exists := storage.GetJWKSet().Key(0)
+		if !exists {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "No keys available")
+			return
+		}
+
+		signedReqJwt, err := jwt.Sign(reqJwt, jwt.WithKey(jwa.RS256, key))
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+		cookie := &http.Cookie{
+			Domain:   cookieDomain,
+			Name:     "obligator_upstream_oauth2_request",
+			Value:    string(signedReqJwt),
+			Path:     "/",
+			SameSite: http.SameSiteLaxMode,
+		}
+		http.SetCookie(w, cookie)
 
 		callbackUri := fmt.Sprintf("%s/callback", storage.GetRootUri())
 
 		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s&nonce=%s&prompt=consent",
 			authURL, provider.ClientID, callbackUri, requestId,
-			scope, pkceCodeChallenge, request.ProviderNonce)
+			scope, pkceCodeChallenge, nonce)
 
 		http.Redirect(w, r, url, http.StatusSeeOther)
 	})
@@ -176,17 +211,32 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 
 		r.ParseForm()
 
-		requestId := r.Form.Get("state")
-		request, err := storage.GetRequest(requestId)
+		upstreamAuthReqCookie, err := r.Cookie("obligator_upstream_oauth2_request")
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
 
+		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		parsedUpstreaAuthReq, err := jwt.Parse([]byte(upstreamAuthReqCookie.Value), jwt.WithKeySet(publicJwks))
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		requestId := r.Form.Get("state")
+
 		storage.DeleteRequest(requestId)
 
-		oauth2Provider, err := storage.GetOAuth2ProviderByID(request.Provider)
+		oauth2Provider, err := storage.GetOAuth2ProviderByID(claimFromToken("provider_id", parsedUpstreaAuthReq))
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -204,7 +254,7 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 		body.Set("client_secret", oauth2Provider.ClientSecret)
 		body.Set("redirect_uri", callbackUri)
 		body.Set("grant_type", "authorization_code")
-		body.Set("code_verifier", request.PKCECodeVerifier)
+		body.Set("code_verifier", claimFromToken("pkce_code_verifier", parsedUpstreaAuthReq))
 
 		var tokenEndpoint string
 		if oauth2Provider.OpenIDConnect {
@@ -247,7 +297,7 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			return
 		}
 
-		var tokenRes Oauth2TokenResponse
+		var tokenRes OIDCTokenResponse
 
 		err = json.NewDecoder(resp.Body).Decode(&tokenRes)
 		if err != nil {
@@ -295,7 +345,7 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 				return
 			}
 
-			if request.ProviderNonce != nonce {
+			if claimFromToken("nonce", parsedUpstreaAuthReq) != nonce {
 				w.WriteHeader(403)
 				fmt.Fprintf(os.Stderr, "Invalid nonce")
 				return
@@ -314,8 +364,17 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			return
 		}
 
+		parsedAuthReq, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		rawQuery := claimFromToken("raw_query", parsedAuthReq)
+
 		if !storage.GetPublic() && !validUser(email, users) {
-			redirUrl := fmt.Sprintf("%s/no-account?%s", rootUri, request.RawQuery)
+			redirUrl := fmt.Sprintf("%s/no-account?%s", rootUri, rawQuery)
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 			return
 		}
@@ -335,7 +394,7 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 
 		http.SetCookie(w, cookie)
 
-		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), request.RawQuery)
+		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), rawQuery)
 
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})
