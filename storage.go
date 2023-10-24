@@ -13,9 +13,6 @@ type Storage interface {
 	GetOAuth2Providers() ([]OAuth2Provider, error)
 	GetOAuth2ProviderByID(string) (OAuth2Provider, error)
 	SetOauth2Provider(OAuth2Provider) error
-	GetRequest(requestId string) (OAuth2AuthRequest, error)
-	SetRequest(requestId string, request OAuth2AuthRequest)
-	DeleteRequest(requestId string)
 	GetPublic() bool
 	GetSmtpConfig() (SmtpConfig, error)
 	GetJWKSet() jwk.Set

@@ -17,7 +17,6 @@ type JsonStorage struct {
 	Jwks            jwk.Set          `json:"jwks"`
 	Users           []User           `json:"users"`
 	Public          bool             `json:"public"`
-	requests        map[string]*OAuth2AuthRequest
 	mutex           *sync.Mutex
 	path            string
 	message_chan    chan interface{}
@@ -28,7 +27,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 		OAuth2Providers: []OAuth2Provider{},
 		Jwks:            jwk.NewSet(),
 		Users:           []User{},
-		requests:        make(map[string]*OAuth2AuthRequest),
 		mutex:           &sync.Mutex{},
 		path:            path,
 		message_chan:    make(chan interface{}),
@@ -207,49 +205,6 @@ func (s *JsonStorage) GetOAuth2ProviderByID(id string) (OAuth2Provider, error) {
 	}
 
 	return OAuth2Provider{}, errors.New("No such provider")
-}
-
-func (s *JsonStorage) AddRequest(req OAuth2AuthRequest) (string, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	requestId, err := genRandomKey()
-	if err != nil {
-		return "", err
-	}
-
-	s.requests[requestId] = &req
-
-	s.persist()
-
-	return requestId, nil
-}
-
-func (s *JsonStorage) GetRequest(requestId string) (OAuth2AuthRequest, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	req, ok := s.requests[requestId]
-	if !ok {
-		return OAuth2AuthRequest{}, errors.New("No such request")
-	}
-
-	return *req, nil
-}
-
-func (s *JsonStorage) SetRequest(requestId string, request OAuth2AuthRequest) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	s.requests[requestId] = &request
-
-	s.persist()
-}
-func (s *JsonStorage) DeleteRequest(requestId string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	delete(s.requests, requestId)
 }
 
 type getPublicMessage struct {

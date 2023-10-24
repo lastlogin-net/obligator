@@ -43,20 +43,6 @@ type OAuth2ServerMetadata struct {
 	IdTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported,omitempty"`
 }
 
-type OAuth2AuthRequest struct {
-	LoginKey          string `json:"login_key"`
-	RawQuery          string `json:"raw_query"`
-	ClientId          string `json:"client_id"`
-	RedirectUri       string `json:"redirect_uri"`
-	State             string `json:"state"`
-	Scope             string `json:"scope"`
-	Provider          string `json:"provider"`
-	Nonce             string `json:"nonce"`
-	ProviderNonce     string `json:"provider_nonce"`
-	PKCECodeVerifier  string `json:"pkce_code_verifier"`
-	PKCECodeChallenge string `json:"pkce_code_challenge"`
-}
-
 type OIDCTokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`

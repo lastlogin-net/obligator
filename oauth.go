@@ -114,8 +114,6 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 
 		r.ParseForm()
 
-		requestId := r.Form.Get("request_id")
-
 		oauth2ProviderId := r.Form.Get("oauth2_provider_id")
 
 		provider, err := storage.GetOAuth2ProviderByID(oauth2ProviderId)
@@ -145,6 +143,13 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			return
 		}
 
+		state, err := genRandomKey()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, "Failed to generate state")
+			return
+		}
+
 		nonce, err := genRandomKey()
 		if err != nil {
 			w.WriteHeader(500)
@@ -160,6 +165,7 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(8*time.Minute)).
 			Claim("provider_id", provider.ID).
+			Claim("state", state).
 			Claim("nonce", nonce).
 			Claim("pkce_code_verifier", pkceCodeVerifier).
 			Build()
@@ -201,7 +207,7 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 		callbackUri := fmt.Sprintf("%s/callback", storage.GetRootUri())
 
 		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s&nonce=%s&prompt=consent",
-			authURL, provider.ClientID, callbackUri, requestId,
+			authURL, provider.ClientID, callbackUri, state,
 			scope, pkceCodeChallenge, nonce)
 
 		http.Redirect(w, r, url, http.StatusSeeOther)
@@ -231,10 +237,6 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			io.WriteString(w, err.Error())
 			return
 		}
-
-		requestId := r.Form.Get("state")
-
-		storage.DeleteRequest(requestId)
 
 		oauth2Provider, err := storage.GetOAuth2ProviderByID(claimFromToken("provider_id", parsedUpstreaAuthReq))
 		if err != nil {
