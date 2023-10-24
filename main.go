@@ -115,17 +115,6 @@ func main() {
 	behindProxy := flag.Bool("behind-proxy", false, "Whether we are behind a reverse proxy")
 	flag.Parse()
 
-	flyIoId := os.Getenv("FLY_ALLOC_ID")
-	instanceId := flyIoId
-	if instanceId == "" {
-		var err error
-		instanceId, err = genRandomKey()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-	}
-
 	var identsType []*Identity
 	jwt.RegisterCustomField("identities", identsType)
 	var idTokenType string
@@ -554,7 +543,7 @@ func main() {
 			claimFromToken("redirect_uri", parsedAuthReq),
 			claimFromToken("client_id", parsedAuthReq),
 			claimFromToken("redirect_uri", parsedAuthReq),
-			instanceId+"?"+string(signedCode),
+			string(signedCode),
 			claimFromToken("state", parsedAuthReq),
 			claimFromToken("scope", parsedAuthReq))
 
@@ -565,29 +554,7 @@ func main() {
 
 		r.ParseForm()
 
-		codeParam := r.Form.Get("code")
-
-		codeParts := strings.Split(codeParam, "?")
-		if len(codeParts) != 2 {
-			w.WriteHeader(400)
-			io.WriteString(w, "Invalid code")
-			return
-		}
-
-		reqInstanceId := codeParts[0]
-		if reqInstanceId != instanceId {
-			// If we're running on fly.io, we can have fly replay the request to the correct instance
-			if flyIoId != "" {
-				w.Header().Set("fly-replay", fmt.Sprintf("instance=%s", reqInstanceId))
-				return
-			} else {
-				w.WriteHeader(400)
-				io.WriteString(w, "Invalid code")
-				return
-			}
-		}
-
-		codeJwt := codeParts[1]
+		codeJwt := r.Form.Get("code")
 
 		parsedCodeJwt, err := jwt.Parse([]byte(codeJwt), jwt.WithKeySet(publicJwks))
 		if err != nil {
