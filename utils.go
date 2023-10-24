@@ -195,17 +195,18 @@ func claimFromToken(claim string, token jwt.Token) string {
 }
 
 func getJwtFromCookie(cookieKey string, storage Storage, w http.ResponseWriter, r *http.Request) (jwt.Token, error) {
-	loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
-	if err != nil {
-		return nil, err
-	}
+	// TODO: would tying to login key increase security?
+	//loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+	//if err != nil {
+	//	return nil, err
+	//}
 
 	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
 	if err != nil {
 		return nil, err
 	}
 
-	hashedLoginKey := Hash(loginKeyCookie.Value)
+	//hashedLoginKey := Hash(loginKeyCookie.Value)
 
 	authReqCookie, err := r.Cookie(cookieKey)
 	if err != nil {
@@ -217,11 +218,11 @@ func getJwtFromCookie(cookieKey string, storage Storage, w http.ResponseWriter, 
 		return nil, err
 	}
 
-	reqLoginKey := claimFromToken("login_key_hash", parsedAuthReq)
+	//reqLoginKey := claimFromToken("login_key_hash", parsedAuthReq)
 
-	if reqLoginKey != hashedLoginKey {
-		return nil, errors.New("Not your request")
-	}
+	//if reqLoginKey != hashedLoginKey {
+	//	return nil, errors.New("Not your request")
+	//}
 
 	return parsedAuthReq, nil
 }
