@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -10,50 +9,28 @@ import (
 	"net/http"
 	"net/smtp"
 	"os"
-	"sync"
 	"time"
+
+	"github.com/lestrrat-go/jwx/v2/jwa"
+	"github.com/lestrrat-go/jwx/v2/jwe"
+	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jwt"
 )
-
-type Auth struct {
-	storage             Storage
-	pendingAuthRequests map[string]*PendingAuthRequest
-	mut                 *sync.Mutex
-}
-
-type AuthRequest struct {
-	Type  string `json:"type"`
-	Email string `json:"email"`
-}
-
-type PendingAuthRequest struct {
-	email string
-	code  string
-}
 
 func (h *EmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
-func NewEmailAuth(storage Storage) *Auth {
-
-	pendingAuthRequests := make(map[string]*PendingAuthRequest)
-	mut := &sync.Mutex{}
-
-	return &Auth{
-		storage,
-		pendingAuthRequests,
-		mut,
-	}
-}
-
 type EmailHandler struct {
-	mux *http.ServeMux
+	mux     *http.ServeMux
+	storage Storage
 }
 
 func NewEmailHander(storage Storage) *EmailHandler {
 	mux := http.NewServeMux()
 	h := &EmailHandler{
-		mux: mux,
+		mux:     mux,
+		storage: storage,
 	}
 
 	tmpl, err := template.ParseFS(fs, "templates/*.tmpl")
@@ -61,8 +38,6 @@ func NewEmailHander(storage Storage) *EmailHandler {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-
-	emailAuth := NewEmailAuth(storage)
 
 	mux.HandleFunc("/login-email", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
@@ -73,13 +48,8 @@ func NewEmailHander(storage Storage) *EmailHandler {
 			return
 		}
 
-		requestId := r.Form.Get("request_id")
-
 		templateData := struct {
-			RequestId string
-		}{
-			RequestId: requestId,
-		}
+		}{}
 
 		err := tmpl.ExecuteTemplate(w, "login-email.tmpl", templateData)
 		if err != nil {
@@ -105,15 +75,6 @@ func NewEmailHander(storage Storage) *EmailHandler {
 			return
 		}
 
-		requestId := r.Form.Get("request_id")
-
-		emailRequestId, err := genRandomKey()
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
 		users, err := storage.GetUsers()
 		if err != nil {
 			w.WriteHeader(500)
@@ -121,10 +82,79 @@ func NewEmailHander(storage Storage) *EmailHandler {
 			return
 		}
 
+		privateJwks := storage.GetJWKSet()
+
+		publicJwks, err := jwk.PublicSetOf(privateJwks)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		privKey, exists := privateJwks.Key(0)
+		if !exists {
+			w.WriteHeader(500)
+			io.WriteString(w, "Key doesn't exist")
+			return
+		}
+
+		pubKey, exists := publicJwks.Key(0)
+		if !exists {
+			w.WriteHeader(500)
+			io.WriteString(w, "Key doesn't exist")
+			return
+		}
+
+		code, err := genCode()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, "Key doesn't exist")
+			return
+		}
+
+		issuedAt := time.Now().UTC()
+		emailCodeJwt, err := jwt.NewBuilder().
+			IssuedAt(issuedAt).
+			Expiration(issuedAt.Add(2*time.Minute)).
+			Subject(email).
+			Claim("code", code).
+			Build()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		encryptedJwt, err := jwt.NewSerializer().
+			Sign(jwt.WithKey(jwa.RS256, privKey)).
+			Encrypt(jwt.WithKey(jwa.RSA_OAEP_256, pubKey)).
+			Serialize(emailCodeJwt)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+		cookie := &http.Cookie{
+			Domain:   cookieDomain,
+			Name:     "obligator_email_code",
+			Value:    string(encryptedJwt),
+			Path:     "/",
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   2 * 60,
+		}
+		http.SetCookie(w, cookie)
+
 		if storage.GetPublic() || validUser(email, users) {
 			// run in goroutine so the user can't use timing to determine whether the account exists
 			go func() {
-				err := emailAuth.StartEmailValidation(email, emailRequestId)
+				err := h.StartEmailValidation(email, code)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to send email: %s\n", err.Error())
 				}
@@ -132,12 +162,7 @@ func NewEmailHander(storage Storage) *EmailHandler {
 		}
 
 		data := struct {
-			RequestId      string
-			EmailRequestId string
-		}{
-			RequestId:      requestId,
-			EmailRequestId: emailRequestId,
-		}
+		}{}
 
 		err = tmpl.ExecuteTemplate(w, "email-code.tmpl", data)
 		if err != nil {
@@ -156,17 +181,52 @@ func NewEmailHander(storage Storage) *EmailHandler {
 
 		r.ParseForm()
 
-		request, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
+		emailCodeJwtCookie, err := r.Cookie("obligator_email_code")
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		privateJwks := storage.GetJWKSet()
+
+		publicJwks, err := jwk.PublicSetOf(privateJwks)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		emailRequestId := r.Form.Get("email_request_id")
-		if emailRequestId == "" {
-			w.WriteHeader(400)
-			io.WriteString(w, "email_request_id param missing")
+		privKey, exists := privateJwks.Key(0)
+		if !exists {
+			w.WriteHeader(500)
+			io.WriteString(w, "Key doesn't exist")
+			return
+		}
+
+		encryptedJwt := []byte(emailCodeJwtCookie.Value)
+		decryptedJwt, err := jwe.Decrypt(encryptedJwt, jwe.WithKey(jwa.RSA_OAEP_256, privKey))
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		parsedJwt, err := jwt.Parse(decryptedJwt, jwt.WithKeySet(publicJwks))
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		jwtCode := claimFromToken("code", parsedJwt)
+
+		email := parsedJwt.Subject()
+
+		request, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
 			return
 		}
 
@@ -177,10 +237,9 @@ func NewEmailHander(storage Storage) *EmailHandler {
 			return
 		}
 
-		_, email, err := emailAuth.CompleteEmailValidation(emailRequestId, code)
-		if err != nil {
-			w.WriteHeader(400)
-			io.WriteString(w, err.Error())
+		if code != jwtCode {
+			w.WriteHeader(401)
+			io.WriteString(w, "Bad code")
 			return
 		}
 
@@ -207,12 +266,7 @@ func NewEmailHander(storage Storage) *EmailHandler {
 	return h
 }
 
-func (a *Auth) StartEmailValidation(email, requestId string) error {
-
-	code, err := genCode()
-	if err != nil {
-		return err
-	}
+func (h *EmailHandler) StartEmailValidation(email, code string) error {
 
 	bodyTemplate := "From: %s <%s>\r\n" +
 		"To: %s\r\n" +
@@ -222,7 +276,7 @@ func (a *Auth) StartEmailValidation(email, requestId string) error {
 		"\r\n" +
 		"%s\r\n"
 
-	smtpConfig, err := a.storage.GetSmtpConfig()
+	smtpConfig, err := h.storage.GetSmtpConfig()
 	if err != nil {
 		return err
 	}
@@ -239,41 +293,7 @@ func (a *Auth) StartEmailValidation(email, requestId string) error {
 		return err
 	}
 
-	a.mut.Lock()
-	a.pendingAuthRequests[requestId] = &PendingAuthRequest{
-		email: email,
-		code:  code,
-	}
-	a.mut.Unlock()
-
-	// Requests expire after a certain time
-	go func() {
-		time.Sleep(60 * time.Second)
-		a.mut.Lock()
-		delete(a.pendingAuthRequests, requestId)
-		a.mut.Unlock()
-	}()
-
 	return nil
-}
-
-func (a *Auth) CompleteEmailValidation(requestId, code string) (string, string, error) {
-
-	a.mut.Lock()
-	req, exists := a.pendingAuthRequests[requestId]
-	delete(a.pendingAuthRequests, requestId)
-	a.mut.Unlock()
-
-	if exists && req.code == code {
-		token, err := genRandomKey()
-		if err != nil {
-			return "", "", err
-		}
-		//a.db.SetKeyring(token, req.keyring)
-		return token, req.email, nil
-	}
-
-	return "", "", errors.New("Failed email validation")
 }
 
 func genCode() (string, error) {
