@@ -98,7 +98,10 @@ func NewEmailHander(storage Storage) *EmailHandler {
 		}
 
 		templateData := struct {
-		}{}
+			DisplayName string
+		}{
+			DisplayName: storage.GetDisplayName(),
+		}
 
 		err := tmpl.ExecuteTemplate(w, "login-email.tmpl", templateData)
 		if err != nil {
@@ -189,7 +192,10 @@ func NewEmailHander(storage Storage) *EmailHandler {
 		}
 
 		data := struct {
-		}{}
+			DisplayName string
+		}{
+			DisplayName: storage.GetDisplayName(),
+		}
 
 		err = tmpl.ExecuteTemplate(w, "email-code.tmpl", data)
 		if err != nil {

@@ -18,6 +18,8 @@ type Storage interface {
 	GetJWKSet() jwk.Set
 	GetInstanceId() string
 	SetInstanceId(string)
+	GetDisplayName() string
+	SetDisplayName(string)
 }
 
 type Identity struct {

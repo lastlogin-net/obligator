@@ -9,7 +9,7 @@
   <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, minimum-scale=1, maximum-scale=1" />
   -->
   
-  <title>LastLogin.io</title>
+  <title>{{.DisplayName}}</title>
 
   <link rel="icon" href="/logo.png">
 
@@ -20,3 +20,8 @@
 
 <body>
   <div class='content'>
+
+  <div class='og-banner-container'>
+    <img src='/logo.png' width=64 height=64 />
+    <span>{{.DisplayName}}</span>
+  </div>

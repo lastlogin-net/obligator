@@ -113,6 +113,7 @@ func main() {
 	storageDir := flag.String("storage-dir", "./", "Storage directory")
 	apiSocketDir := flag.String("api-socket-dir", "./", "API socket directory")
 	behindProxy := flag.Bool("behind-proxy", false, "Whether we are behind a reverse proxy")
+	displayName := flag.String("display-name", "obligator", "Display name")
 	flag.Parse()
 
 	var identsType []*Identity
@@ -149,6 +150,10 @@ func main() {
 		}
 
 		storage.SetInstanceId(instanceId)
+	}
+
+	if *displayName != "obligator" {
+		storage.SetDisplayName(*displayName)
 	}
 
 	if *rootUri != "" {
@@ -387,12 +392,14 @@ func main() {
 		}
 
 		data := struct {
+			DisplayName     string
 			ClientId        string
 			Identities      []*Identity
 			OAuth2Providers []OAuth2Provider
 			LogoMap         map[string]template.HTML
 			URL             string
 		}{
+			DisplayName:     storage.GetDisplayName(),
 			ClientId:        clientIdUrl.Host,
 			Identities:      identities,
 			OAuth2Providers: providers,
@@ -699,8 +706,6 @@ func GenerateJWK() (jwk.Key, error) {
 	if _, ok := key.(jwk.RSAPrivateKey); !ok {
 		return nil, err
 	}
-
-	//key.Set(jwk.KeyIDKey, "lastlogin-key-1")
 
 	err = jwk.AssignKeyID(key)
 	if err != nil {

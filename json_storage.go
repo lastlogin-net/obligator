@@ -10,6 +10,7 @@ import (
 )
 
 type JsonStorage struct {
+	DisplayName     string           `json:"display_name"`
 	RootUri         string           `json:"root_uri"`
 	LoginKeyName    string           `json:"login_key_name"`
 	OAuth2Providers []OAuth2Provider `json:"oauth2_providers"`
@@ -25,6 +26,7 @@ type JsonStorage struct {
 
 func NewJsonStorage(path string) (*JsonStorage, error) {
 	s := &JsonStorage{
+		DisplayName:     "obligator",
 		OAuth2Providers: []OAuth2Provider{},
 		Jwks:            jwk.NewSet(),
 		Users:           []User{},
@@ -118,6 +120,12 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 				msg.resp <- s.InstanceId
 			case setInstanceIdMessage:
 				s.InstanceId = msg.value
+				msg.resp <- nil
+				s.Persist()
+			case getDisplayNameMessage:
+				msg.resp <- s.DisplayName
+			case setDisplayNameMessage:
+				s.DisplayName = msg.value
 				msg.resp <- nil
 				s.Persist()
 			}
@@ -320,6 +328,32 @@ type setInstanceIdMessage struct {
 func (s *JsonStorage) SetInstanceId(value string) {
 	resp := make(chan error)
 	s.message_chan <- setInstanceIdMessage{
+		value,
+		resp,
+	}
+	<-resp
+}
+
+type getDisplayNameMessage struct {
+	resp chan string
+}
+
+func (s *JsonStorage) GetDisplayName() string {
+	ch := make(chan string)
+	s.message_chan <- getDisplayNameMessage{
+		resp: ch,
+	}
+	return <-ch
+}
+
+type setDisplayNameMessage struct {
+	value string
+	resp  chan error
+}
+
+func (s *JsonStorage) SetDisplayName(value string) {
+	resp := make(chan error)
+	s.message_chan <- setDisplayNameMessage{
 		value,
 		resp,
 	}
