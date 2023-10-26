@@ -206,6 +206,19 @@ func main() {
 		w.Write([]byte("<h1>Welcome to LastLogin.io</h1>"))
 	})
 
+	mux.HandleFunc("/logo.png", func(w http.ResponseWriter, r *http.Request) {
+		bytes, err := os.ReadFile("./logo.png")
+		if err != nil {
+			w.WriteHeader(404)
+			return
+		}
+
+		w.Header()["Content-Type"] = []string{"image/png"}
+		w.Header()["Cache-Control"] = []string{"max-age=86400"}
+
+		w.Write(bytes)
+	})
+
 	mux.HandleFunc("/validate", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 
