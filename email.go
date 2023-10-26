@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/smtp"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v2/jwa"
@@ -22,15 +23,19 @@ func (h *EmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type EmailHandler struct {
-	mux     *http.ServeMux
-	storage Storage
+	mux           *http.ServeMux
+	storage       Storage
+	revokedTokens map[string]uint8
+	mut           *sync.Mutex
 }
 
 func NewEmailHander(storage Storage) *EmailHandler {
 	mux := http.NewServeMux()
 	h := &EmailHandler{
-		mux:     mux,
-		storage: storage,
+		mux:           mux,
+		storage:       storage,
+		mut:           &sync.Mutex{},
+		revokedTokens: make(map[string]uint8),
 	}
 
 	tmpl, err := template.ParseFS(fs, "templates/*.tmpl")
@@ -38,6 +43,50 @@ func NewEmailHander(storage Storage) *EmailHandler {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+
+	privateJwks := storage.GetJWKSet()
+
+	publicJwks, err := jwk.PublicSetOf(privateJwks)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	privKey, exists := privateJwks.Key(0)
+	if !exists {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	pubKey, exists := publicJwks.Key(0)
+	if !exists {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	const EmailTimeout = 2 * time.Minute
+
+	go func() {
+		for {
+			newMap := make(map[string]uint8)
+			h.mut.Lock()
+			for k, v := range h.revokedTokens {
+				newMap[k] = v
+			}
+			h.mut.Unlock()
+
+			for tok, _ := range newMap {
+				decryptedJwt, err := jwe.Decrypt([]byte(tok), jwe.WithKey(jwa.RSA_OAEP_256, privKey))
+				_, err = jwt.Parse(decryptedJwt, jwt.WithKeySet(publicJwks))
+				if err != nil {
+					h.mut.Lock()
+					delete(h.revokedTokens, tok)
+					h.mut.Unlock()
+				}
+			}
+			time.Sleep(EmailTimeout)
+		}
+	}()
 
 	mux.HandleFunc("/login-email", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
@@ -82,29 +131,6 @@ func NewEmailHander(storage Storage) *EmailHandler {
 			return
 		}
 
-		privateJwks := storage.GetJWKSet()
-
-		publicJwks, err := jwk.PublicSetOf(privateJwks)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		privKey, exists := privateJwks.Key(0)
-		if !exists {
-			w.WriteHeader(500)
-			io.WriteString(w, "Key doesn't exist")
-			return
-		}
-
-		pubKey, exists := publicJwks.Key(0)
-		if !exists {
-			w.WriteHeader(500)
-			io.WriteString(w, "Key doesn't exist")
-			return
-		}
-
 		code, err := genCode()
 		if err != nil {
 			w.WriteHeader(500)
@@ -115,9 +141,10 @@ func NewEmailHander(storage Storage) *EmailHandler {
 		issuedAt := time.Now().UTC()
 		emailCodeJwt, err := jwt.NewBuilder().
 			IssuedAt(issuedAt).
-			Expiration(issuedAt.Add(2*time.Minute)).
+			Expiration(issuedAt.Add(EmailTimeout)).
 			Subject(email).
 			Claim("code", code).
+			Claim("instance_id", storage.GetInstanceId()).
 			Build()
 		if err != nil {
 			w.WriteHeader(500)
@@ -188,19 +215,12 @@ func NewEmailHander(storage Storage) *EmailHandler {
 			return
 		}
 
-		privateJwks := storage.GetJWKSet()
-
-		publicJwks, err := jwk.PublicSetOf(privateJwks)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		privKey, exists := privateJwks.Key(0)
-		if !exists {
-			w.WriteHeader(500)
-			io.WriteString(w, "Key doesn't exist")
+		h.mut.Lock()
+		_, exists := h.revokedTokens[emailCodeJwtCookie.Value]
+		h.mut.Unlock()
+		if exists {
+			w.WriteHeader(401)
+			io.WriteString(w, "This token has been revoked")
 			return
 		}
 
@@ -216,6 +236,13 @@ func NewEmailHander(storage Storage) *EmailHandler {
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
+			return
+		}
+
+		ogInstanceId := claimFromToken("instance_id", parsedJwt)
+
+		if ogInstanceId != storage.GetInstanceId() {
+			w.Header().Set("fly-replay", fmt.Sprintf("instance=%s", ogInstanceId))
 			return
 		}
 
@@ -238,6 +265,11 @@ func NewEmailHander(storage Storage) *EmailHandler {
 		}
 
 		if code != jwtCode {
+
+			h.mut.Lock()
+			h.revokedTokens[emailCodeJwtCookie.Value] = 1
+			h.mut.Unlock()
+
 			w.WriteHeader(401)
 			io.WriteString(w, "Bad code")
 			return

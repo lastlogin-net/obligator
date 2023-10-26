@@ -133,6 +133,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	flyIoId := os.Getenv("FLY_ALLOC_ID")
+	if flyIoId != "" {
+		storage.SetInstanceId(flyIoId)
+	}
+
+	instanceId := storage.GetInstanceId()
+
+	if instanceId == "" {
+		var err error
+		instanceId, err = genRandomKey()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+
+		storage.SetInstanceId(instanceId)
+	}
+
 	if *rootUri != "" {
 		storage.SetRootUri(*rootUri)
 	}
