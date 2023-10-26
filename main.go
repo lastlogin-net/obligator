@@ -392,6 +392,7 @@ func main() {
 		}
 
 		data := struct {
+			RootUri         string
 			DisplayName     string
 			ClientId        string
 			Identities      []*Identity
@@ -399,6 +400,7 @@ func main() {
 			LogoMap         map[string]template.HTML
 			URL             string
 		}{
+			RootUri:         storage.GetRootUri(),
 			DisplayName:     storage.GetDisplayName(),
 			ClientId:        clientIdUrl.Host,
 			Identities:      identities,
