@@ -142,6 +142,8 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			return
 		}
 
+		// TODO: is state really doing anything now that it's just
+		// stored in a JWT? Maybe it should be encrypted
 		state, err := genRandomKey()
 		if err != nil {
 			w.WriteHeader(500)
@@ -203,14 +205,14 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 			return
 		}
 
-		parsedUpstreaAuthReq, err := jwt.Parse([]byte(upstreamAuthReqCookie.Value), jwt.WithKeySet(publicJwks))
+		parsedUpstreamAuthReq, err := jwt.Parse([]byte(upstreamAuthReqCookie.Value), jwt.WithKeySet(publicJwks))
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		oauth2Provider, err := storage.GetOAuth2ProviderByID(claimFromToken("provider_id", parsedUpstreaAuthReq))
+		oauth2Provider, err := storage.GetOAuth2ProviderByID(claimFromToken("provider_id", parsedUpstreamAuthReq))
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -228,7 +230,7 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 		body.Set("client_secret", oauth2Provider.ClientSecret)
 		body.Set("redirect_uri", callbackUri)
 		body.Set("grant_type", "authorization_code")
-		body.Set("code_verifier", claimFromToken("pkce_code_verifier", parsedUpstreaAuthReq))
+		body.Set("code_verifier", claimFromToken("pkce_code_verifier", parsedUpstreamAuthReq))
 
 		var tokenEndpoint string
 		if oauth2Provider.OpenIDConnect {
@@ -319,7 +321,7 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 				return
 			}
 
-			if claimFromToken("nonce", parsedUpstreaAuthReq) != nonce {
+			if claimFromToken("nonce", parsedUpstreamAuthReq) != nonce {
 				w.WriteHeader(403)
 				fmt.Fprintf(os.Stderr, "Invalid nonce")
 				return
