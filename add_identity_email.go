@@ -18,20 +18,20 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
-func (h *EmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *AddIdentityEmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
-type EmailHandler struct {
+type AddIdentityEmailHandler struct {
 	mux           *http.ServeMux
 	storage       Storage
 	revokedTokens map[string]uint8
 	mut           *sync.Mutex
 }
 
-func NewEmailHander(storage Storage) *EmailHandler {
+func NewAddIdentityEmailHandler(storage Storage) *AddIdentityEmailHandler {
 	mux := http.NewServeMux()
-	h := &EmailHandler{
+	h := &AddIdentityEmailHandler{
 		mux:           mux,
 		storage:       storage,
 		mut:           &sync.Mutex{},
@@ -308,7 +308,7 @@ func NewEmailHander(storage Storage) *EmailHandler {
 	return h
 }
 
-func (h *EmailHandler) StartEmailValidation(email, code string) error {
+func (h *AddIdentityEmailHandler) StartEmailValidation(email, code string) error {
 
 	bodyTemplate := "From: %s <%s>\r\n" +
 		"To: %s\r\n" +

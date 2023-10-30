@@ -23,7 +23,7 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
-type Oauth2Handler struct {
+type AddIdentityOauth2Handler struct {
 	mux *http.ServeMux
 }
 
@@ -91,10 +91,10 @@ func updateOidcConfigs(storage Storage) {
 	}
 }
 
-func NewOauth2Handler(storage Storage) *Oauth2Handler {
+func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 	mux := http.NewServeMux()
 
-	h := &Oauth2Handler{
+	h := &AddIdentityOauth2Handler{
 		mux: mux,
 	}
 
@@ -378,7 +378,7 @@ func NewOauth2Handler(storage Storage) *Oauth2Handler {
 	return h
 }
 
-func (h *Oauth2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *AddIdentityOauth2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
