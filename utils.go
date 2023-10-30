@@ -81,18 +81,16 @@ func validUser(email string, users []User) bool {
 	return false
 }
 
-func addIdentityToCookie(storage Storage, providerIdentityId, providerName, email, cookieValue string) (*http.Cookie, error) {
+func addIdentityToCookie(storage Storage, providerName, email, cookieValue string) (*http.Cookie, error) {
 	key, exists := storage.GetJWKSet().Key(0)
 	if !exists {
 		return nil, errors.New("No keys available")
 	}
 
 	newIdent := &Identity{
-		// TODO: probably don't need Id now that it's the same as Email
+		IdType:       "email",
 		Id:           email,
-		ProviderId:   providerIdentityId,
 		ProviderName: providerName,
-		Email:        email,
 	}
 
 	idents := []*Identity{newIdent}
@@ -114,7 +112,7 @@ func addIdentityToCookie(storage Storage, providerIdentityId, providerName, emai
 			if exists {
 				if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
 					for _, ident := range tokIdents {
-						if ident.Email != newIdent.Email {
+						if ident.Id != newIdent.Id {
 							idents = append(idents, ident)
 						}
 					}
@@ -171,7 +169,7 @@ func addIdentityToCookie(storage Storage, providerIdentityId, providerName, emai
 	return cookie, nil
 }
 
-func addLoginToCookie(storage Storage, clientId, idType, id, providerId, currentCookieValue string) (*http.Cookie, error) {
+func addLoginToCookie(storage Storage, clientId, idType, id, providerName, currentCookieValue string) (*http.Cookie, error) {
 	key, exists := storage.GetJWKSet().Key(0)
 	if !exists {
 		return nil, errors.New("No keys available")
@@ -180,10 +178,10 @@ func addLoginToCookie(storage Storage, clientId, idType, id, providerId, current
 	issuedAt := time.Now().UTC()
 
 	newLogin := &Login{
-		IdType:     idType,
-		Id:         id,
-		ProviderId: providerId,
-		Timestamp:  issuedAt.Format(time.RFC3339),
+		IdType:       idType,
+		Id:           id,
+		ProviderName: providerName,
+		Timestamp:    issuedAt.Format(time.RFC3339),
 	}
 
 	logins := make(map[string][]*Login)
@@ -215,7 +213,7 @@ func addLoginToCookie(storage Storage, clientId, idType, id, providerId, current
 		// Search for and update existing login, otherwise add a new entry
 		found := false
 		for _, login := range logins[clientId] {
-			if login.Id == newLogin.Id && login.ProviderId == newLogin.ProviderId {
+			if login.Id == newLogin.Id && login.ProviderName == newLogin.ProviderName {
 				login.Timestamp = newLogin.Timestamp
 				found = true
 			}

@@ -23,17 +23,16 @@ type Storage interface {
 }
 
 type Identity struct {
+	IdType       string `json:"id_type"`
 	Id           string `json:"id"`
 	ProviderName string `json:"provider_name"`
-	ProviderId   string `json:"provider_id"`
-	Email        string `json:"email"`
 }
 
 type Login struct {
-	IdType     string `json:"id_type"`
-	Id         string `json:"id"`
-	ProviderId string `json:"provider_id"`
-	Timestamp  string `json:"ts"`
+	IdType       string `json:"id_type"`
+	Id           string `json:"id"`
+	ProviderName string `json:"provider_name"`
+	Timestamp    string `json:"ts"`
 }
 
 type OAuth2Provider struct {

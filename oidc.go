@@ -195,7 +195,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		for _, ident := range identities {
 			found := false
 			for _, login := range previousLogins {
-				if login.Id == ident.Id && login.ProviderId == ident.ProviderName {
+				if login.Id == ident.Id && login.ProviderName == ident.ProviderName {
 					found = true
 					break
 				}
@@ -330,7 +330,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		clientId := claimFromToken("client_id", parsedAuthReq)
 
-		newLoginCookie, err := addLoginToCookie(storage, clientId, "email", identity.Email, identity.ProviderName, loginKeyCookie.Value)
+		newLoginCookie, err := addLoginToCookie(storage, clientId, "email", identity.Id, identity.ProviderName, loginKeyCookie.Value)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -345,7 +345,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			Subject(identId).
 			Audience([]string{clientId}).
 			Issuer(storage.GetRootUri()).
-			Email(identity.Email).
+			Email(identity.Id).
 			EmailVerified(true).
 			IssuedAt(issuedAt).
 			Expiration(expiresAt).
