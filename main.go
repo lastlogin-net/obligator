@@ -41,6 +41,7 @@ type OAuth2ServerMetadata struct {
 	ScopesSupported                  []string `json:"scopes_supported,omitempty"`
 	ResponseTypesSupported           []string `json:"response_types_supported,omitempty"`
 	IdTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported,omitempty"`
+	CodeChallengeMethodsSupported    []string `json:"code_challenge_methods_supported"`
 }
 
 type OIDCTokenResponse struct {
@@ -230,6 +231,7 @@ func main() {
 		}
 	})
 
+	// draft-ietf-oauth-security-topics-24 2.6
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -246,6 +248,8 @@ func main() {
 			ScopesSupported:                  []string{"openid", "email", "profile"},
 			ResponseTypesSupported:           []string{"code"},
 			IdTokenSigningAlgValuesSupported: []string{"RS256"},
+			// draft-ietf-oauth-security-topics-24 2.1.1
+			CodeChallengeMethodsSupported: []string{"S256"},
 		}
 
 		json.NewEncoder(w).Encode(doc)
@@ -317,6 +321,7 @@ func main() {
 			return
 		}
 
+		// draft-ietf-oauth-security-topics-24 4.1
 		if !strings.HasPrefix(redirectUri, clientId) {
 			w.WriteHeader(400)
 			io.WriteString(w, "redirect_uri must be on the same domain as client_id")
@@ -584,6 +589,7 @@ func main() {
 		}
 
 		// https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics#section-4.8.2
+		// draft-ietf-oauth-security-topics-24 2.1.1
 		pkceCodeVerifier := r.Form.Get("code_verifier")
 		if pkceCodeChallenge != "" {
 			challenge := GeneratePKCECodeChallenge(pkceCodeVerifier)
