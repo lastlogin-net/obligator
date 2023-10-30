@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -152,6 +153,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		}
 
 		identities := []*Identity{}
+		logins := make(map[string][]*Login)
 
 		var hashedLoginKey string
 
@@ -169,8 +171,38 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 						identities = tokIdents
 					}
 				}
+
+				tokLoginsInterface, exists := parsed.Get("logins")
+				if exists {
+					if tokLogins, ok := tokLoginsInterface.(map[string][]*Login); ok {
+						logins = tokLogins
+					}
+				}
 			}
 
+		}
+
+		previousLogins, ok := logins[clientId]
+		if !ok {
+			previousLogins = []*Login{}
+		}
+
+		sort.Slice(previousLogins, func(i, j int) bool {
+			return previousLogins[i].Timestamp > previousLogins[j].Timestamp
+		})
+
+		remainingIdents := []*Identity{}
+		for _, ident := range identities {
+			found := false
+			for _, login := range previousLogins {
+				if login.Id == ident.Id && login.ProviderId == ident.ProviderName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				remainingIdents = append(remainingIdents, ident)
+			}
 		}
 
 		issuedAt := time.Now().UTC()
@@ -206,6 +238,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			DisplayName     string
 			ClientId        string
 			Identities      []*Identity
+			PreviousLogins  []*Login
 			OAuth2Providers []OAuth2Provider
 			LogoMap         map[string]template.HTML
 			URL             string
@@ -213,7 +246,8 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			RootUri:         storage.GetRootUri(),
 			DisplayName:     storage.GetDisplayName(),
 			ClientId:        clientIdUrl.Host,
-			Identities:      identities,
+			Identities:      remainingIdents,
+			PreviousLogins:  previousLogins,
 			OAuth2Providers: providers,
 			LogoMap:         providerLogoMap,
 			URL:             fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
@@ -294,12 +328,22 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
+		clientId := claimFromToken("client_id", parsedAuthReq)
+
+		newLoginCookie, err := addLoginToCookie(storage, clientId, "email", identity.Email, identity.ProviderName, loginKeyCookie.Value)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+		http.SetCookie(w, newLoginCookie)
+
 		issuedAt := time.Now().UTC()
 		expiresAt := issuedAt.Add(8 * time.Minute)
 
 		idToken, err := openid.NewBuilder().
 			Subject(identId).
-			Audience([]string{claimFromToken("client_id", parsedAuthReq)}).
+			Audience([]string{clientId}).
 			Issuer(storage.GetRootUri()).
 			Email(identity.Email).
 			EmailVerified(true).

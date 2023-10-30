@@ -8,12 +8,42 @@
     </div>
 
     <p class='og-first-elem'>
-      <strong>{{$.ClientId}}</strong> wants to log you in.
+      <span class='og-auth-client-id'>{{$.ClientId}}</span> wants to log you in.
 
       {{if $.Identities}}
       To approve this action, select an identity below:
       {{end}}
     </p>
+
+    {{if $.PreviousLogins}}
+    <p>
+      You previously logged into this service with the following identities:
+    </p>
+
+    <div class='og-button-list'>
+      {{range $.PreviousLogins}}
+      <div>
+        <form action="/approve" method="POST">
+          <input type='hidden' name='identity_id' value='{{.Id}}' required>
+          <button class='og-formbutton' type="submit">
+            <div>
+              Log in as <strong>{{.Id}}</strong> ({{.ProviderId}})
+            </div>
+            <div class='og-last-used'>
+              Last used {{slice .Timestamp 0 10}}
+            </div>
+          </button>
+        </form>
+      </div>
+      {{end}}
+    </div>
+
+    {{if $.Identities}}
+    <p>
+      You can also use one of your other identities:
+    </p>
+    {{end}}
+    {{end}}
 
     <div class='og-button-list'>
       {{range $.Identities}}
@@ -28,16 +58,9 @@
       {{end}}
     </div>
 
-    {{if $.Identities}}
     <p>
-      You can also add additional identities using one of the following
-      providers:
+      Add an identity using a provider below:
     </p>
-    {{else}}
-    <p>
-      Add an identity using a provider below to get started:
-    </p>
-    {{end}}
 
     <div class='og-button-list'>
       <div>

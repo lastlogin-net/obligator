@@ -115,6 +115,8 @@ func main() {
 
 	var identsType []*Identity
 	jwt.RegisterCustomField("identities", identsType)
+	var loginsType map[string][]*Login
+	jwt.RegisterCustomField("logins", loginsType)
 	var idTokenType string
 	jwt.RegisterCustomField("id_token", idTokenType)
 

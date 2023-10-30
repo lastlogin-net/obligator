@@ -29,6 +29,13 @@ type Identity struct {
 	Email        string `json:"email"`
 }
 
+type Login struct {
+	IdType     string `json:"id_type"`
+	Id         string `json:"id"`
+	ProviderId string `json:"provider_id"`
+	Timestamp  string `json:"ts"`
+}
+
 type OAuth2Provider struct {
 	ID               string `json:"id"`
 	Name             string `json:"name"`

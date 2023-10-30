@@ -291,7 +291,7 @@ func NewAddIdentityEmailHandler(storage Storage) *AddIdentityEmailHandler {
 			cookieValue = loginKeyCookie.Value
 		}
 
-		cookie, err := generateCookie(storage, email, "Email", email, cookieValue)
+		cookie, err := addIdentityToCookie(storage, email, "Email", email, cookieValue)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())

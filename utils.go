@@ -81,7 +81,7 @@ func validUser(email string, users []User) bool {
 	return false
 }
 
-func generateCookie(storage Storage, providerIdentityId, providerName, email, cookieValue string) (*http.Cookie, error) {
+func addIdentityToCookie(storage Storage, providerIdentityId, providerName, email, cookieValue string) (*http.Cookie, error) {
 	key, exists := storage.GetJWKSet().Key(0)
 	if !exists {
 		return nil, errors.New("No keys available")
@@ -97,6 +97,8 @@ func generateCookie(storage Storage, providerIdentityId, providerName, email, co
 
 	idents := []*Identity{newIdent}
 
+	keyJwt := jwt.New()
+
 	if cookieValue != "" {
 		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
 		if err != nil {
@@ -107,6 +109,7 @@ func generateCookie(storage Storage, providerIdentityId, providerName, email, co
 		if err != nil {
 			// Only add identities from current cookie if it's valid
 		} else {
+			keyJwt = parsed
 			tokIdentsInterface, exists := parsed.Get("identities")
 			if exists {
 				if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
@@ -120,22 +123,28 @@ func generateCookie(storage Storage, providerIdentityId, providerName, email, co
 		}
 	}
 
+	issuedAt := time.Now().UTC()
+
+	err := keyJwt.Set("iat", issuedAt)
+	if err != nil {
+		return nil, err
+	}
+
 	nonce, err := genRandomKey()
 	if err != nil {
 		return nil, err
 	}
-
-	issuedAt := time.Now().UTC()
-	jot, err := jwt.NewBuilder().
-		IssuedAt(issuedAt).
-		Claim("nonce", nonce).
-		Claim("identities", idents).
-		Build()
+	err = keyJwt.Set("nonce", nonce)
 	if err != nil {
 		return nil, err
 	}
 
-	signed, err := jwt.Sign(jot, jwt.WithKey(jwa.RS256, key))
+	err = keyJwt.Set("identities", idents)
+	if err != nil {
+		return nil, err
+	}
+
+	signed, err := jwt.Sign(keyJwt, jwt.WithKey(jwa.RS256, key))
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +160,108 @@ func generateCookie(storage Storage, providerIdentityId, providerName, email, co
 		Domain:   cookieDomain,
 		Name:     storage.GetLoginKeyName(),
 		Value:    unhashedLoginKey,
+		Secure:   true,
+		HttpOnly: true,
+		MaxAge:   86400 * 365,
+		Path:     "/",
+		SameSite: http.SameSiteLaxMode,
+		//SameSite: http.SameSiteStrictMode,
+	}
+
+	return cookie, nil
+}
+
+func addLoginToCookie(storage Storage, clientId, idType, id, providerId, currentCookieValue string) (*http.Cookie, error) {
+	key, exists := storage.GetJWKSet().Key(0)
+	if !exists {
+		return nil, errors.New("No keys available")
+	}
+
+	issuedAt := time.Now().UTC()
+
+	newLogin := &Login{
+		IdType:     idType,
+		Id:         id,
+		ProviderId: providerId,
+		Timestamp:  issuedAt.Format(time.RFC3339),
+	}
+
+	logins := make(map[string][]*Login)
+
+	keyJwt := jwt.New()
+
+	if currentCookieValue != "" {
+		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+		if err != nil {
+			return nil, err
+		}
+
+		parsed, err := jwt.Parse([]byte(currentCookieValue), jwt.WithKeySet(publicJwks))
+		if err != nil {
+			// Only add identities from current cookie if it's valid
+		} else {
+			keyJwt = parsed
+			loginsInterface, exists := parsed.Get("logins")
+			if exists {
+				if tokLogins, ok := loginsInterface.(map[string][]*Login); ok {
+					logins = tokLogins
+				}
+			}
+		}
+	}
+
+	_, exists = logins[clientId]
+	if exists {
+		// Search for and update existing login, otherwise add a new entry
+		found := false
+		for _, login := range logins[clientId] {
+			if login.Id == newLogin.Id && login.ProviderId == newLogin.ProviderId {
+				login.Timestamp = newLogin.Timestamp
+				found = true
+			}
+		}
+		if !found {
+			logins[clientId] = append(logins[clientId], newLogin)
+		}
+	} else {
+		logins[clientId] = []*Login{newLogin}
+	}
+
+	err := keyJwt.Set("iat", issuedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce, err := genRandomKey()
+	if err != nil {
+		return nil, err
+	}
+	err = keyJwt.Set("nonce", nonce)
+	if err != nil {
+		return nil, err
+	}
+
+	err = keyJwt.Set("logins", logins)
+	if err != nil {
+		return nil, err
+	}
+
+	signed, err := jwt.Sign(keyJwt, jwt.WithKey(jwa.RS256, key))
+	if err != nil {
+		return nil, err
+	}
+
+	loginKey := string(signed)
+
+	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+	if err != nil {
+		return nil, err
+	}
+
+	cookie := &http.Cookie{
+		Domain:   cookieDomain,
+		Name:     storage.GetLoginKeyName(),
+		Value:    loginKey,
 		Secure:   true,
 		HttpOnly: true,
 		MaxAge:   86400 * 365,
