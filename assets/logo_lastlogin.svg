@@ -1,0 +1,19 @@
+<svg viewBox="0 0 7 7" version="1.1" baseProfile="full" width="100" height="100"
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+
+  <style>
+    .first-l {
+      stroke: #000;
+    }
+    .second-l {
+      stroke: #888;
+    }
+  </style>
+
+  <g transform='rotate(-45 3.5 3.5)'>
+    <path class='first-l' d="M 2.5 1 L 2.5 4.5 L 4 4.5" fill='none' stroke-width='1' />
+    <path class='second-l' d="M 3 2.5 L 4.5 2.5 L 4.5 6" fill='none' stroke-width='1' />
+  </g>
+
+</svg>

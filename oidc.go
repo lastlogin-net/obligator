@@ -345,6 +345,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			Subject(identId).
 			Audience([]string{clientId}).
 			Issuer(storage.GetRootUri()).
+                        // TODO: eventually we'll want to support non-email identities
 			Email(identity.Id).
 			EmailVerified(true).
 			IssuedAt(issuedAt).
