@@ -28,18 +28,6 @@ type SmtpConfig struct {
 	SenderName string `json:"sender_name,omitempty"`
 }
 
-type OAuth2ServerMetadata struct {
-	Issuer                           string   `json:"issuer,omitempty"`
-	AuthorizationEndpoint            string   `json:"authorization_endpoint,omitempty"`
-	TokenEndpoint                    string   `json:"token_endpoint,omitempty"`
-	UserinfoEndpoint                 string   `json:"userinfo_endpoint,omitempty"`
-	JwksUri                          string   `json:"jwks_uri,omitempty"`
-	ScopesSupported                  []string `json:"scopes_supported,omitempty"`
-	ResponseTypesSupported           []string `json:"response_types_supported,omitempty"`
-	IdTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported,omitempty"`
-	CodeChallengeMethodsSupported    []string `json:"code_challenge_methods_supported"`
-}
-
 type OIDCTokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`

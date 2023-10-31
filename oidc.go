@@ -18,6 +18,19 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
+type OAuth2ServerMetadata struct {
+	Issuer                           string   `json:"issuer,omitempty"`
+	AuthorizationEndpoint            string   `json:"authorization_endpoint,omitempty"`
+	TokenEndpoint                    string   `json:"token_endpoint,omitempty"`
+	UserinfoEndpoint                 string   `json:"userinfo_endpoint,omitempty"`
+	JwksUri                          string   `json:"jwks_uri,omitempty"`
+	ScopesSupported                  []string `json:"scopes_supported,omitempty"`
+	ResponseTypesSupported           []string `json:"response_types_supported,omitempty"`
+	IdTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported,omitempty"`
+	CodeChallengeMethodsSupported    []string `json:"code_challenge_methods_supported"`
+	SubjectTypesSupported            []string `json:"subject_types_supported"`
+}
+
 type OIDCHandler struct {
 	mux *http.ServeMux
 }
@@ -56,6 +69,8 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			IdTokenSigningAlgValuesSupported: []string{"RS256"},
 			// draft-ietf-oauth-security-topics-24 2.1.1
 			CodeChallengeMethodsSupported: []string{"S256"},
+			// https://openid.net/specs/openid-connect-core-1_0.html#SubjectIDTypes
+			SubjectTypesSupported: []string{"public"},
 		}
 
 		json.NewEncoder(w).Encode(doc)
@@ -345,7 +360,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			Subject(identId).
 			Audience([]string{clientId}).
 			Issuer(storage.GetRootUri()).
-                        // TODO: eventually we'll want to support non-email identities
+			// TODO: eventually we'll want to support non-email identities
 			Email(identity.Id).
 			EmailVerified(true).
 			IssuedAt(issuedAt).
