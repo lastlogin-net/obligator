@@ -314,7 +314,7 @@ func (h *AddIdentityEmailHandler) StartEmailValidation(email, code string) error
 		"To: %s\r\n" +
 		"Subject: Email Validation\r\n" +
 		"\r\n" +
-		"This is an email validation request from %s. Use the following code to prove you control %s:\r\n" +
+		"This is an email validation request from %s. Use the following code to prove you have access to %s:\r\n" +
 		"\r\n" +
 		"%s\r\n"
 
