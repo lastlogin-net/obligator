@@ -1,6 +1,5 @@
 package main
 
-//
 //import (
 //	"fmt"
 //	"os"
@@ -176,27 +175,9 @@ package main
 //	return nil
 //}
 //
-//func (s *SqliteStorage) GetRequest(requestId string) (OAuth2AuthRequest, error) {
-//	panic("not implemented")
-//	return OAuth2AuthRequest{}, nil
-//}
-//
-//func (s *SqliteStorage) SetRequest(requestId string, request OAuth2AuthRequest) {
-//	panic("not implemented")
-//}
-//
-//func (s *SqliteStorage) DeleteRequest(requestId string) {
-//	panic("not implemented")
-//}
-//
 //func (s *SqliteStorage) GetPublic() bool {
 //	panic("not implemented")
 //	return false
-//}
-//
-//func (s *SqliteStorage) GetLoginData(loginKey string) (LoginData, error) {
-//	panic("not implemented")
-//	return LoginData{}, nil
 //}
 //
 //func (s *SqliteStorage) AddLoginData() (string, error) {

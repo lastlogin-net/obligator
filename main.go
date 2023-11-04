@@ -108,18 +108,26 @@ func main() {
 	var idTokenType string
 	jwt.RegisterCustomField("id_token", idTokenType)
 
-	//storage, err := NewSqliteStorage("obligator_storage.sqlite3")
-	//if err != nil {
-	//	fmt.Fprintln(os.Stderr, err.Error())
-	//	os.Exit(1)
-	//}
-
 	storagePath := filepath.Join(*storageDir, "obligator_storage.json")
 	storage, err := NewJsonStorage(storagePath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+
+	//sqliteStorage, err := NewSqliteStorage("obligator_storage.sqlite")
+	//if err != nil {
+	//	fmt.Fprintln(os.Stderr, err.Error())
+	//	os.Exit(1)
+	//}
+
+	db, err := NewDatabase("obligator_db.sqlite")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	printJson(db)
 
 	flyIoId := os.Getenv("FLY_ALLOC_ID")
 	if flyIoId != "" {
