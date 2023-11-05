@@ -18,22 +18,24 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
-func (h *AddIdentityEmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.mux.ServeHTTP(w, r)
-}
-
 type AddIdentityEmailHandler struct {
 	mux           *http.ServeMux
 	storage       Storage
+	db            *Database
 	revokedTokens map[string]uint8
 	mut           *sync.Mutex
 }
 
-func NewAddIdentityEmailHandler(storage Storage) *AddIdentityEmailHandler {
+func (h *AddIdentityEmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.mux.ServeHTTP(w, r)
+}
+
+func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster) *AddIdentityEmailHandler {
 	mux := http.NewServeMux()
 	h := &AddIdentityEmailHandler{
 		mux:           mux,
 		storage:       storage,
+		db:            db,
 		mut:           &sync.Mutex{},
 		revokedTokens: make(map[string]uint8),
 	}
@@ -183,10 +185,58 @@ func NewAddIdentityEmailHandler(storage Storage) *AddIdentityEmailHandler {
 		}
 		http.SetCookie(w, cookie)
 
+		// TODO: this is duplicated. make a function
+		identities := []*Identity{}
+		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		if err == nil && loginKeyCookie.Value != "" {
+			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+			if err != nil {
+				// Only add identities from current cookie if it's valid
+			} else {
+				tokIdentsInterface, exists := parsed.Get("identities")
+				if exists {
+					if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
+						identities = tokIdents
+					}
+				}
+			}
+		}
+
+		since := time.Now().UTC().Add(-RateLimitTime)
+		counts, err := db.GetEmailValidationCounts(since)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			w.WriteHeader(400)
+			return
+		}
+
+		for _, ident := range identities {
+			hashedId := Hash(ident.Id)
+			for _, count := range counts {
+				if hashedId == count.HashedRequesterId && count.Count >= EmailValidationsPerTimeLimit {
+					w.WriteHeader(429)
+					io.WriteString(w, "Too many email validation attempts")
+					return
+				}
+			}
+		}
+
+		primaryHost, err := cluster.PrimaryHost()
+		if err != nil {
+			// I *am* the primary
+			fmt.Println("I *am* the primary")
+		} else {
+			done := cluster.RedirectOrForward(primaryHost, w, r)
+			if done {
+				fmt.Println("returning")
+				return
+			}
+		}
+
 		if storage.GetPublic() || validUser(email, users) {
 			// run in goroutine so the user can't use timing to determine whether the account exists
 			go func() {
-				err := h.StartEmailValidation(email, code)
+				err := h.StartEmailValidation(email, code, identities)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to send email: %s\n", err.Error())
 				}
@@ -308,7 +358,14 @@ func NewAddIdentityEmailHandler(storage Storage) *AddIdentityEmailHandler {
 	return h
 }
 
-func (h *AddIdentityEmailHandler) StartEmailValidation(email, code string) error {
+func (h *AddIdentityEmailHandler) StartEmailValidation(email, code string, identities []*Identity) error {
+
+	for _, ident := range identities {
+		err := h.db.AddEmailValidationRequest(ident.Id, email)
+		if err != nil {
+			return err
+		}
+	}
 
 	bodyTemplate := "From: %s <%s>\r\n" +
 		"To: %s\r\n" +

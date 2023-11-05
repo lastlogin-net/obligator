@@ -45,6 +45,11 @@ type UserinfoResponse struct {
 	Email string `json:"email"`
 }
 
+const RateLimitTime = 24 * time.Hour
+
+// const RateLimitTime = 10 * time.Minute
+const EmailValidationsPerTimeLimit = 12
+
 func NewObligatorMux(behindProxy bool) *ObligatorMux {
 	s := &ObligatorMux{
 		behindProxy: behindProxy,
@@ -127,7 +132,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	printJson(db)
+	cluster := NewCluster()
+
+	printJson(cluster)
 
 	flyIoId := os.Getenv("FLY_ALLOC_ID")
 	if flyIoId != "" {
@@ -200,7 +207,7 @@ func main() {
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)
 	mux.Handle("/callback", addIdentityOauth2Handler)
 
-	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage)
+	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster)
 	mux.Handle("/login-email", addIdentityEmailHandler)
 	mux.Handle("/email-code", addIdentityEmailHandler)
 	mux.Handle("/complete-email-login", addIdentityEmailHandler)
