@@ -18,7 +18,6 @@ type JsonStorage struct {
 	Jwks            jwk.Set          `json:"jwks"`
 	Users           []User           `json:"users"`
 	Public          bool             `json:"public"`
-	InstanceId      string           `json:"instance_id"`
 	mutex           *sync.Mutex
 	path            string
 	message_chan    chan interface{}
@@ -116,12 +115,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 				} else {
 					msg.resp <- &(*s.Smtp)
 				}
-			case getInstanceIdMessage:
-				msg.resp <- s.InstanceId
-			case setInstanceIdMessage:
-				s.InstanceId = msg.value
-				msg.resp <- nil
-				s.Persist()
 			case getDisplayNameMessage:
 				msg.resp <- s.DisplayName
 			case setDisplayNameMessage:
@@ -306,32 +299,6 @@ func (s *JsonStorage) GetSmtpConfig() (SmtpConfig, error) {
 	} else {
 		return *smtp, nil
 	}
-}
-
-type getInstanceIdMessage struct {
-	resp chan string
-}
-
-func (s *JsonStorage) GetInstanceId() string {
-	ch := make(chan string)
-	s.message_chan <- getInstanceIdMessage{
-		resp: ch,
-	}
-	return <-ch
-}
-
-type setInstanceIdMessage struct {
-	value string
-	resp  chan error
-}
-
-func (s *JsonStorage) SetInstanceId(value string) {
-	resp := make(chan error)
-	s.message_chan <- setInstanceIdMessage{
-		value,
-		resp,
-	}
-	<-resp
 }
 
 type getDisplayNameMessage struct {

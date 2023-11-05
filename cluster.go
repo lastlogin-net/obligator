@@ -7,15 +7,34 @@ import (
 )
 
 type Cluster struct {
+	onFly   bool
 	localId string
 }
 
 func NewCluster() *Cluster {
+
 	c := &Cluster{}
+
+	flyIoId := os.Getenv("FLY_ALLOC_ID")
+	if flyIoId != "" {
+		c.onFly = true
+		c.localId = flyIoId
+	} else {
+		var err error
+		c.localId, err = genRandomKey()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+		}
+	}
+
 	return c
 }
 
 func (c *Cluster) LocalId() string {
+	return c.localId
+}
+
+func (c *Cluster) GetLocalId() string {
 	return c.localId
 }
 
@@ -31,8 +50,7 @@ func (c *Cluster) PrimaryHost() (string, error) {
 }
 
 func (c *Cluster) RedirectOrForward(host string, w http.ResponseWriter, r *http.Request) bool {
-	flyIoId := os.Getenv("FLY_ALLOC_ID")
-	if flyIoId != "" {
+	if c.onFly {
 		// Running on fly.io. Set replay header and indicate we're done
 		w.Header().Set("fly-replay", fmt.Sprintf("instance=%s", host))
 		return true

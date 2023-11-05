@@ -151,7 +151,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 			Expiration(issuedAt.Add(EmailTimeout)).
 			Subject(email).
 			Claim("code", code).
-			Claim("instance_id", storage.GetInstanceId()).
+			Claim("instance_id", cluster.GetLocalId()).
 			Build()
 		if err != nil {
 			w.WriteHeader(500)
@@ -299,9 +299,11 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 
 		ogInstanceId := claimFromToken("instance_id", parsedJwt)
 
-		if ogInstanceId != storage.GetInstanceId() {
-			w.Header().Set("fly-replay", fmt.Sprintf("instance=%s", ogInstanceId))
-			return
+		if ogInstanceId != cluster.GetLocalId() {
+			done := cluster.RedirectOrForward(ogInstanceId, w, r)
+			if done {
+				return
+			}
 		}
 
 		jwtCode := claimFromToken("code", parsedJwt)

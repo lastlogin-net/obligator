@@ -16,8 +16,6 @@ type Storage interface {
 	GetPublic() bool
 	GetSmtpConfig() (SmtpConfig, error)
 	GetJWKSet() jwk.Set
-	GetInstanceId() string
-	SetInstanceId(string)
 	GetDisplayName() string
 	SetDisplayName(string)
 }
