@@ -224,11 +224,9 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 		primaryHost, err := cluster.PrimaryHost()
 		if err != nil {
 			// I *am* the primary
-			fmt.Println("I *am* the primary")
 		} else {
 			done := cluster.RedirectOrForward(primaryHost, w, r)
 			if done {
-				fmt.Println("returning")
 				return
 			}
 		}

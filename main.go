@@ -101,6 +101,7 @@ func main() {
 	rootUri := flag.String("root-uri", "", "Root URI")
 	loginKeyName := flag.String("login-key-name", "obligator_login_key", "Login key name")
 	storageDir := flag.String("storage-dir", "./", "Storage directory")
+	dbDir := flag.String("database-dir", "./", "Database directory")
 	apiSocketDir := flag.String("api-socket-dir", "./", "API socket directory")
 	behindProxy := flag.Bool("behind-proxy", false, "Whether we are behind a reverse proxy")
 	displayName := flag.String("display-name", "obligator", "Display name")
@@ -126,15 +127,14 @@ func main() {
 	//	os.Exit(1)
 	//}
 
-	db, err := NewDatabase("obligator_db.sqlite")
+	dbPath := filepath.Join(*dbDir, "obligator_db.sqlite")
+	db, err := NewDatabase(dbPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
 	cluster := NewCluster()
-
-	printJson(cluster)
 
 	flyIoId := os.Getenv("FLY_ALLOC_ID")
 	if flyIoId != "" {
