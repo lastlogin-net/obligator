@@ -220,10 +220,11 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			}
 		}
 
+		maxAge := 8 * time.Minute
 		issuedAt := time.Now().UTC()
 		authRequestJwt, err := jwt.NewBuilder().
 			IssuedAt(issuedAt).
-			Expiration(issuedAt.Add(8*time.Minute)).
+			Expiration(issuedAt.Add(maxAge)).
 			Claim("login_key_hash", hashedLoginKey).
 			Claim("raw_query", r.URL.RawQuery).
 			Claim("client_id", clientId).
@@ -239,7 +240,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		setJwtCookie(storage, authRequestJwt, "obligator_auth_request", w, r)
+		setJwtCookie(storage, authRequestJwt, "obligator_auth_request", maxAge, w, r)
 
 		providers, err := storage.GetOAuth2Providers()
 		if err != nil {
@@ -312,6 +313,9 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			Value:    "",
 			Path:     "/",
 			SameSite: http.SameSiteLaxMode,
+			Secure:   true,
+			HttpOnly: true,
+			MaxAge:   10 * 60,
 		}
 		http.SetCookie(w, cookie)
 

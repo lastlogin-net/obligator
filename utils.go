@@ -65,7 +65,7 @@ func buildCookieDomain(fullUrl string) (string, error) {
 
 	if len(hostParts) < 3 {
 		// apex domain
-		return fullUrl, nil
+		return rootUrlParsed.Host, nil
 	} else {
 		cookieDomain := strings.Join(hostParts[1:], ".")
 		return cookieDomain, nil
@@ -283,6 +283,8 @@ func deleteLoginKeyCookie(storage Storage, w http.ResponseWriter) error {
 		Value:    "",
 		Path:     "/",
 		SameSite: http.SameSiteLaxMode,
+		Secure:   true,
+		HttpOnly: true,
 	}
 	http.SetCookie(w, cookie)
 
@@ -336,7 +338,7 @@ func getJwtFromCookie(cookieKey string, storage Storage, w http.ResponseWriter, 
 	return parsedAuthReq, nil
 }
 
-func setJwtCookie(storage Storage, jot jwt.Token, cookieKey string, w http.ResponseWriter, r *http.Request) {
+func setJwtCookie(storage Storage, jot jwt.Token, cookieKey string, maxAge time.Duration, w http.ResponseWriter, r *http.Request) {
 	key, exists := storage.GetJWKSet().Key(0)
 	if !exists {
 		w.WriteHeader(500)
@@ -357,12 +359,16 @@ func setJwtCookie(storage Storage, jot jwt.Token, cookieKey string, w http.Respo
 		io.WriteString(w, err.Error())
 		return
 	}
+
 	cookie := &http.Cookie{
 		Domain:   cookieDomain,
 		Name:     cookieKey,
 		Value:    string(signedReqJwt),
 		Path:     "/",
 		SameSite: http.SameSiteLaxMode,
+		Secure:   true,
+		HttpOnly: true,
+		MaxAge:   int(maxAge.Seconds()),
 	}
 	http.SetCookie(w, cookie)
 }

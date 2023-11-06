@@ -162,9 +162,10 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 		// verifier secret from the frontend, ie malicious browser
 		// extensions.
 		issuedAt := time.Now().UTC()
+		maxAge := 8 * time.Minute
 		reqJwt, err := jwt.NewBuilder().
 			IssuedAt(issuedAt).
-			Expiration(issuedAt.Add(8*time.Minute)).
+			Expiration(issuedAt.Add(maxAge)).
 			Claim("provider_id", provider.ID).
 			Claim("state", state).
 			Claim("nonce", nonce).
@@ -176,7 +177,7 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 			return
 		}
 
-		setJwtCookie(storage, reqJwt, "obligator_upstream_oauth2_request", w, r)
+		setJwtCookie(storage, reqJwt, "obligator_upstream_oauth2_request", maxAge, w, r)
 
 		callbackUri := fmt.Sprintf("%s/callback", storage.GetRootUri())
 

@@ -181,6 +181,8 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 			Value:    string(encryptedJwt),
 			Path:     "/",
 			SameSite: http.SameSiteLaxMode,
+			Secure:   true,
+			HttpOnly: true,
 			MaxAge:   2 * 60,
 		}
 		http.SetCookie(w, cookie)
