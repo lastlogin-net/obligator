@@ -269,7 +269,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			URL:             fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
 		}
 
-		err = tmpl.ExecuteTemplate(w, "auth.tmpl", data)
+		err = tmpl.ExecuteTemplate(w, "auth.html", data)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())

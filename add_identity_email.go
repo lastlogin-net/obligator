@@ -30,7 +30,7 @@ func (h *AddIdentityEmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	h.mux.ServeHTTP(w, r)
 }
 
-func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster) *AddIdentityEmailHandler {
+func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster, tmpl *template.Template) *AddIdentityEmailHandler {
 	mux := http.NewServeMux()
 	h := &AddIdentityEmailHandler{
 		mux:           mux,
@@ -38,12 +38,6 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 		db:            db,
 		mut:           &sync.Mutex{},
 		revokedTokens: make(map[string]uint8),
-	}
-
-	tmpl, err := template.ParseFS(fs, "templates/*.tmpl")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
 	}
 
 	privateJwks := storage.GetJWKSet()
@@ -107,7 +101,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 			RootUri:     storage.GetRootUri(),
 		}
 
-		err := tmpl.ExecuteTemplate(w, "login-email.tmpl", templateData)
+		err := tmpl.ExecuteTemplate(w, "login-email.html", templateData)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
@@ -251,7 +245,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 			RootUri:     storage.GetRootUri(),
 		}
 
-		err = tmpl.ExecuteTemplate(w, "email-code.tmpl", data)
+		err = tmpl.ExecuteTemplate(w, "email-code.html", data)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
