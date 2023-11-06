@@ -146,6 +146,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 		}
 
 		issuedAt := time.Now().UTC()
+
 		emailCodeJwt, err := jwt.NewBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(EmailTimeout)).
@@ -159,6 +160,8 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 			return
 		}
 
+                // TODO: now that we're using magic links instead of codes,
+                // does it still add value for this to be encrypted?
 		encryptedJwt, err := jwt.NewSerializer().
 			Sign(jwt.WithKey(jwa.RS256, privKey)).
 			Encrypt(jwt.WithKey(jwa.RSA_OAEP_256, pubKey)).
@@ -167,7 +170,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
-		}
+		} 
 
 		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
 		if err != nil {
@@ -186,6 +189,25 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 			MaxAge:   2 * 60,
 		}
 		http.SetCookie(w, cookie)
+
+                hashedCookieJwt := Hash(string(encryptedJwt))
+                magicLinkJwt, err := jwt.NewBuilder().
+			IssuedAt(issuedAt).
+			Expiration(issuedAt.Add(EmailTimeout)).
+                        Claim("cookie_hash", hashedCookieJwt).
+			Build()
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+
+		signedMagicLinkJwt, err := jwt.Sign(magicLinkJwt, jwt.WithKey(jwa.RS256, privKey))
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
 
 		// TODO: this is duplicated. make a function
 		identities := []*Identity{}
@@ -233,10 +255,12 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 			}
 		}
 
+                magicLink := fmt.Sprintf("%s?key=%s", storage.GetRootUri(), signedMagicLinkJwt)
+
 		if storage.GetPublic() || validUser(email, users) {
 			// run in goroutine so the user can't use timing to determine whether the account exists
 			go func() {
-				err := h.StartEmailValidation(email, code, identities)
+				err := h.StartEmailValidation(email, code, magicLink, identities)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to send email: %s\n", err.Error())
 				}
@@ -360,7 +384,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster)
 	return h
 }
 
-func (h *AddIdentityEmailHandler) StartEmailValidation(email, code string, identities []*Identity) error {
+func (h *AddIdentityEmailHandler) StartEmailValidation(email, code, magicLink string, identities []*Identity) error {
 
 	for _, ident := range identities {
 		err := h.db.AddEmailValidationRequest(ident.Id, email)
@@ -375,7 +399,8 @@ func (h *AddIdentityEmailHandler) StartEmailValidation(email, code string, ident
 		"\r\n" +
 		"This is an email validation request from %s. Use the following code to prove you have access to %s:\r\n" +
 		"\r\n" +
-		"%s\r\n"
+		"%s\r\n" +
+                "%s"
 
 	smtpConfig, err := h.storage.GetSmtpConfig()
 	if err != nil {
@@ -384,7 +409,7 @@ func (h *AddIdentityEmailHandler) StartEmailValidation(email, code string, ident
 
 	fromText := fmt.Sprintf("%s email validator", smtpConfig.SenderName)
 	fromEmail := smtpConfig.Sender
-	emailBody := fmt.Sprintf(bodyTemplate, fromText, fromEmail, email, smtpConfig.SenderName, email, code)
+	emailBody := fmt.Sprintf(bodyTemplate, fromText, fromEmail, email, smtpConfig.SenderName, email, code, magicLink)
 
 	emailAuth := smtp.PlainAuth("", smtpConfig.Username, smtpConfig.Password, smtpConfig.Server)
 	srv := fmt.Sprintf("%s:%d", smtpConfig.Server, smtpConfig.Port)
