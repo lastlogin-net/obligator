@@ -14,6 +14,10 @@ body {
   display: flex;
   justify-content: center;
   margin: 0px;
+  /* Without this text in buttons is white-on-white on iOS Safari. No idea what
+   * the root cause is. Seems to only affect more recent versions of iOS. Found
+   * the fix here: https://stackoverflow.com/a/69888987/943814 */
+  -webkit-text-fill-color: var(--text-color); 
 }
 
 .content {
@@ -100,7 +104,6 @@ body {
   /*margin: 5px;*/
   border: 2px solid var(--button-main-color);
   border-radius: .5em;
-  color: #fff;
   background-color: var(--button-main-color);
   text-decoration: none;
   user-select: none;
