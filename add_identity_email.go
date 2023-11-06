@@ -367,7 +367,7 @@ func (h *AddIdentityEmailHandler) StartEmailValidation(email, code, rootUri stri
 		"To: %s\r\n" +
 		"Subject: Email Validation\r\n" +
 		"\r\n" +
-		"This is an email validation request from %s. Use the code below to prove you have access to %s.\r\n\r\nWARNING: Only enter the code on %s. We will never ask you to enter information on any other domain. If another domain asks you to enter a code from %s, it's probably a phishing attack." +
+		"This is an email validation request from %s. Use the code below to prove you have access to %s.\r\n\r\nWARNING: Make sure the website that requested the code is on %s before entering the code. We will never ask you to enter information on any other domain. If another domain asks you to enter a code from %s, it's probably a phishing attack." +
 		"\r\n\r\nCode:\r\n" +
 		"%s\r\n"
 
