@@ -230,7 +230,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		if storage.GetPublic() || validUser(email, users) {
 			// run in goroutine so the user can't use timing to determine whether the account exists
 			go func() {
-				err := h.StartEmailValidation(email, code, identities)
+				err := h.StartEmailValidation(email, code, storage.GetRootUri(), identities)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to send email: %s\n", err.Error())
 				}
@@ -354,7 +354,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 	return h
 }
 
-func (h *AddIdentityEmailHandler) StartEmailValidation(email, code string, identities []*Identity) error {
+func (h *AddIdentityEmailHandler) StartEmailValidation(email, code, rootUri string, identities []*Identity) error {
 
 	for _, ident := range identities {
 		err := h.db.AddEmailValidationRequest(ident.Id, email)
@@ -367,8 +367,8 @@ func (h *AddIdentityEmailHandler) StartEmailValidation(email, code string, ident
 		"To: %s\r\n" +
 		"Subject: Email Validation\r\n" +
 		"\r\n" +
-		"This is an email validation request from %s. Use the following code to prove you have access to %s:\r\n" +
-		"\r\n" +
+		"This is an email validation request from %s. Use the code below to prove you have access to %s.\r\n\r\nWARNING: Only enter the code on %s. We will never ask you to enter information on any other domain. If another domain asks you to enter a code from %s, it's probably a phishing attack." +
+		"\r\n\r\nCode:\r\n" +
 		"%s\r\n"
 
 	smtpConfig, err := h.storage.GetSmtpConfig()
@@ -378,7 +378,7 @@ func (h *AddIdentityEmailHandler) StartEmailValidation(email, code string, ident
 
 	fromText := fmt.Sprintf("%s email validator", smtpConfig.SenderName)
 	fromEmail := smtpConfig.Sender
-	emailBody := fmt.Sprintf(bodyTemplate, fromText, fromEmail, email, smtpConfig.SenderName, email, code)
+	emailBody := fmt.Sprintf(bodyTemplate, fromText, fromEmail, email, smtpConfig.SenderName, email, rootUri, smtpConfig.SenderName, code)
 
 	emailAuth := smtp.PlainAuth("", smtpConfig.Username, smtpConfig.Password, smtpConfig.Server)
 	srv := fmt.Sprintf("%s:%d", smtpConfig.Server, smtpConfig.Port)
