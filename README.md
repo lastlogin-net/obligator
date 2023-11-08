@@ -221,8 +221,7 @@ is where it's generated from.
 It's generated using the excellent https://tabletomarkdown.com
 
 
-
-|                             | [obligator](https://github.com/anderspitman/obligator) | [Portier](https://portier.github.io/) | [Authelia](https://www.authelia.com/) | [Authentik](https://goauthentik.io/) | [KeyCloak](https://www.keycloak.org/) | [Vouch](https://github.com/vouch/vouch-proxy) | [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy) | [Dex](https://dexidp.io/) | [Ory Hydra](https://www.ory.sh/hydra/) | [Zitadel](https://zitadel.com/) | [Casdoor](https://casdoor.org/) |
+|                             | [obligator](https://github.com/anderspitman/obligator) | [Portier](https://portier.github.io/) | [Authelia](https://www.authelia.com/) | [Authentik](https://goauthentik.io/) | [KeyCloak](https://www.keycloak.org/) | [Vouch](https://github.com/vouch/vouch-proxy) | [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy) | [Dex](https://dexidp.io/) | [Ory Stack](https://www.ory.sh/hydra/) | [Zitadel](https://zitadel.com/) | [Casdoor](https://casdoor.org/) |
 | --------------------------- | ------------------------------------------------------ | ------------------------------------- | ------------------------------------- | ------------------------------------ | ------------------------------------- | --------------------------------------------- | ------------------------------------------------------------ | ------------------------- | -------------------------------------- | ------------------------------- | ------------------------------- |
 | Simple                      | ✅                                                      | ✅                                     | ✅                                     | ❌                                    | ❌                                     | ❓                                             | ❓                                                            | ❓                         | ❌                                      | ❌                               | ❓                               |
 | Anonymous auth              | ✅                                                      | ✅                                     | ❌                                     | ❌                                    | ❌                                     | ❌                                             | ❌                                                            | ❌                         | ❌                                      | ❌                               | ❌                               |
@@ -240,7 +239,8 @@ It's generated using the excellent https://tabletomarkdown.com
 | Dyanmic client registration | ❌                                                      | ❌                                     | ❌                                     | ❌                                    | ❓                                     | ❌                                             | ❌                                                            | ❌                         | ✅                                      | ❌                               | ❓                               |
 | Language                    | Go                                                     | Rust                                  | Go                                    | Python                               | Java                                  | Go                                            | Go                                                           | Go                        | Go                                     | Go                              | Go                              |
 | Dependencies                | 4                                                      | 21                                    | 49                                    | 54                                   | ❓                                     | 16                                            | 36                                                           | 36                        | 58                                     | 81                              | 68                              |
-| Lines of code               | ~3500                                                  | ~10,000                               | ~124,000                              | ~144,000                             | ~1,145,000                            | ~6500                                         | ~42,000                                                      | ~76,000                   | ~68,000                                | ~452,000                        | ~77,000                         |
+| Lines of code               | ~3500                                                  | ~10,000                               | ~124,000                              | ~144,000                             | ~1,145,000                            | ~6500                                         | ~42,000                                                      | ~76,000                   | ~282,000                               | ~452,000                        | ~77,000                         |
+
 
 
 
@@ -250,6 +250,8 @@ Lines of code were generated using a similar command to this:
 ```bash
 find . -type f -name "*.go*" -o -name "*.ts*" -o -name "*.tsx" -o -name "*.html" -o -name "*.js" -o -name "*.scss" -o -name "*.py" -o -name "*.java" -o -name "*.xml" -o -name "*.rs" | xargs cat | wc
 ```
+
+Ory is calculated using Hyrda + Oathkeeper + Kratos, per [this][12]
 
 [0]: https://doc.traefik.io/traefik/middlewares/http/forwardauth/
 
@@ -274,3 +276,5 @@ find . -type f -name "*.go*" -o -name "*.ts*" -o -name "*.tsx" -o -name "*.html"
 [10]: https://openid.net/specs/openid-connect-registration-1_0.html
 
 [11]: https://forum.indiebits.io/c/obligator/11
+
+[12]: https://github.com/lastlogin-io/obligator/pull/2
