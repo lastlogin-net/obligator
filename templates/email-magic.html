@@ -64,6 +64,7 @@
 
     <form class='tn-form' id='complete-login-form' action="/confirm-magic" method="POST">
       <input type="hidden" id="key-input" name="magic_link_key" value="{{.Key}}" required>
+      <input type="hidden" id="instance-id-input" name="instance_id" value="{{.InstanceId}}" required>
       <button class='button' type="submit">Confirm Login</button>
     </form>
 

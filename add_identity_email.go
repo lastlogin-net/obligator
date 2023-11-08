@@ -346,6 +346,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			OgIpGeo      ip2location.IP2Locationrecord
 			MagicIp      string
 			MagicIpGeo   ip2location.IP2Locationrecord
+			InstanceId   string
 		}{
 			DisplayName:  storage.GetDisplayName(),
 			RootUri:      storage.GetRootUri(),
@@ -356,6 +357,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			OgIpGeo:      ogIpGeo,
 			MagicIp:      remoteIp,
 			MagicIpGeo:   magicIpGeo,
+			InstanceId:   ogInstanceId,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "email-magic.html", templateData)
@@ -376,6 +378,14 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		r.ParseForm()
 
 		key := r.Form.Get("magic_link_key")
+		ogInstanceId := r.Form.Get("instance_id")
+
+		if ogInstanceId != cluster.GetLocalId() {
+			done := cluster.RedirectOrForward(ogInstanceId, w, r)
+			if done {
+				return
+			}
+		}
 
 		h.mut.Lock()
 		defer h.mut.Unlock()
