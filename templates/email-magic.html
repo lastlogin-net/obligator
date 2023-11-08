@@ -4,6 +4,20 @@
       To confirm login, click the button below.
     </p>
 
+    <p>
+      WARNING: This device has a different IP address than the device that
+      initiated the login. Someone could be trying to phish you. Show extra
+      caution.
+    </p>
+
+    <div>
+      This device IP: {{.MagicIp}}
+    </div>
+
+    <div>
+      Original IP: {{.OgIp}}
+    </div>
+
     <form class='tn-form' id='complete-login-form' action="/confirm-magic" method="POST">
       <input type="hidden" id="key-input" name="magic_link_key" value="{{.Key}}" required>
       <button class='button' type="submit">Confirm Login</button>

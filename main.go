@@ -8,11 +8,9 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
@@ -65,19 +63,11 @@ func (s *ObligatorMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	timestamp := time.Now().Format(time.RFC3339)
 
-	remoteIp, _, err := net.SplitHostPort(r.RemoteAddr)
+	remoteIp, err := getRemoteIp(r, s.behindProxy)
 	if err != nil {
 		w.WriteHeader(500)
 		io.WriteString(w, err.Error())
 		return
-	}
-
-	if s.behindProxy {
-		xffHeader := r.Header.Get("X-Forwarded-For")
-		if xffHeader != "" {
-			parts := strings.Split(xffHeader, ",")
-			remoteIp = parts[0]
-		}
 	}
 
 	fmt.Println(fmt.Sprintf("%s\t%s\t%s\t%s\t%s", timestamp, remoteIp, r.Method, r.Host, r.URL.Path))
@@ -189,7 +179,7 @@ func main() {
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)
 	mux.Handle("/callback", addIdentityOauth2Handler)
 
-	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl)
+	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl, *behindProxy)
 	mux.Handle("/login-email", addIdentityEmailHandler)
 	mux.Handle("/email-code", addIdentityEmailHandler)
 	mux.Handle("/magic", addIdentityEmailHandler)

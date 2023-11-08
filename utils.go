@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -391,4 +392,21 @@ func setJwtCookie(storage Storage, jot jwt.Token, cookieKey string, maxAge time.
 		MaxAge:   int(maxAge.Seconds()),
 	}
 	http.SetCookie(w, cookie)
+}
+
+func getRemoteIp(r *http.Request, behindProxy bool) (string, error) {
+	remoteIp, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return "", err
+	}
+
+	if behindProxy {
+		xffHeader := r.Header.Get("X-Forwarded-For")
+		if xffHeader != "" {
+			parts := strings.Split(xffHeader, ",")
+			remoteIp = parts[0]
+		}
+	}
+
+	return remoteIp, nil
 }

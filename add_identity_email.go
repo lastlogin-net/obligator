@@ -29,13 +29,14 @@ type AddIdentityEmailHandler struct {
 type PendingLogin struct {
 	Confirmed bool
 	ExpiresAt time.Time
+	RemoteIp  string
 }
 
 func (h *AddIdentityEmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
-func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster, tmpl *template.Template) *AddIdentityEmailHandler {
+func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster, tmpl *template.Template, behindProxy bool) *AddIdentityEmailHandler {
 	mux := http.NewServeMux()
 	h := &AddIdentityEmailHandler{
 		mux:           mux,
@@ -144,10 +145,18 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 
 		magicLink := fmt.Sprintf("%s/magic?key=%s&instance_id=%s", storage.GetRootUri(), magicLinkKey, cluster.GetLocalId())
 
+		remoteIp, err := getRemoteIp(r, behindProxy)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
 		h.mut.Lock()
 		h.pendingLogins[magicLinkKey] = &PendingLogin{
 			Confirmed: false,
 			ExpiresAt: time.Now().UTC().Add(2 * time.Minute),
+			RemoteIp:  remoteIp,
 		}
 		h.mut.Unlock()
 
@@ -284,17 +293,44 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 
 		key := r.Form.Get("key")
 
-		templateData := struct {
-			DisplayName string
-			RootUri     string
-			Key         string
-		}{
-			DisplayName: storage.GetDisplayName(),
-			RootUri:     storage.GetRootUri(),
-			Key:         key,
+		h.mut.Lock()
+		defer h.mut.Unlock()
+		pendingLogin, exists := h.pendingLogins[key]
+		if !exists {
+			w.WriteHeader(500)
+			io.WriteString(w, "Invalid magic link")
+			return
 		}
 
-		err := tmpl.ExecuteTemplate(w, "email-magic.html", templateData)
+		remoteIp, err := getRemoteIp(r, behindProxy)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		differentIps := false
+		if pendingLogin.RemoteIp != remoteIp {
+			differentIps = true
+		}
+
+		templateData := struct {
+			DisplayName  string
+			RootUri      string
+			Key          string
+			DifferentIps bool
+			OgIp         string
+			MagicIp      string
+		}{
+			DisplayName:  storage.GetDisplayName(),
+			RootUri:      storage.GetRootUri(),
+			Key:          key,
+			DifferentIps: differentIps,
+			OgIp:         pendingLogin.RemoteIp,
+			MagicIp:      remoteIp,
+		}
+
+		err = tmpl.ExecuteTemplate(w, "email-magic.html", templateData)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
