@@ -14,6 +14,8 @@ greatly appreciated.
 obligator is a relatively simple and opinionated OpenID Connect (OIDC) Provider
 (OP) server designed for self-hosters.
 
+Hacker News discussion [here][13].
+
 
 # Motivation
 
@@ -278,3 +280,5 @@ Ory is calculated using Hyrda + Oathkeeper + Kratos, per [this][12]
 [11]: https://forum.indiebits.io/c/obligator/11
 
 [12]: https://github.com/lastlogin-io/obligator/pull/2
+
+[13]: https://news.ycombinator.com/item?id=37848793
