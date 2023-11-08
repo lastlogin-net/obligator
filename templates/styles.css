@@ -105,6 +105,7 @@ body {
   border: 2px solid var(--button-main-color);
   border-radius: .5em;
   color: #fff;
+  -webkit-text-fill-color: #fff; 
   background-color: var(--button-main-color);
   text-decoration: none;
   user-select: none;
@@ -117,6 +118,7 @@ body {
 
 .button:hover {
   color: var(--button-main-color);
+  -webkit-text-fill-color: var(--button-main-color); 
   background-color: var(--background-color);
   border: 2px solid var(--button-main-color);
 }

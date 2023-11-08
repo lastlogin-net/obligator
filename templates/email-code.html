@@ -1,0 +1,12 @@
+{{ template "header.html" . }}
+
+    <p>
+      If there is an account for the email address you provided, a code will
+      be sent. After you've clicked the link, return here to finish logging in.
+    </p>
+
+    <form class='tn-form' id='complete-login-form' action="/complete-email-login" method="POST">
+      <button class='button' type="submit">Log me in</button>
+    </form>
+
+{{ template "footer.html" . }}

@@ -269,7 +269,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			URL:             fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
 		}
 
-		err = tmpl.ExecuteTemplate(w, "auth.tmpl", data)
+		err = tmpl.ExecuteTemplate(w, "auth.html", data)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -364,9 +364,8 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			Subject(identId).
 			Audience([]string{clientId}).
 			Issuer(storage.GetRootUri()).
-			// TODO: eventually we'll want to support non-email identities
-			Email(identity.Id).
-			EmailVerified(true).
+			Email(identity.Email).
+			EmailVerified(identity.EmailVerified).
 			IssuedAt(issuedAt).
 			Expiration(expiresAt).
 			Claim("nonce", claimFromToken("nonce", parsedAuthReq)).
@@ -501,6 +500,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 		w.Header().Set("Cache-Control", "no-store")
 

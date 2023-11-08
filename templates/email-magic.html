@@ -1,0 +1,12 @@
+{{ template "header.html" . }}
+
+    <p>
+      To confirm login, click the button below.
+    </p>
+
+    <form class='tn-form' id='complete-login-form' action="/confirm-magic" method="POST">
+      <input type="hidden" id="key-input" name="magic_link_key" value="{{.Key}}" required>
+      <button class='button' type="submit">Confirm Login</button>
+    </form>
+
+{{ template "footer.html" . }}

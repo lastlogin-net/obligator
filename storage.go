@@ -21,9 +21,11 @@ type Storage interface {
 }
 
 type Identity struct {
-	IdType       string `json:"id_type"`
-	Id           string `json:"id"`
-	ProviderName string `json:"provider_name"`
+	IdType        string `json:"id_type"`
+	Id            string `json:"id"`
+	ProviderName  string `json:"provider_name"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
 }
 
 type Login struct {

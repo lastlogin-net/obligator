@@ -1,0 +1,14 @@
+{{ template "header.html" . }}
+
+    <p>
+      Use the form below to sign in with URL.
+    </p>
+
+    <form class='tn-form' id='login-form' action="/gaml-code" method="POST">
+      <label id='login-label' for="gaml-url-input">Enter your URL:</label>
+      <input type="text" id="gaml-url-input" name="url" required>
+      <button class='button' type="submit">Submit</button>
+    </form>
+
+
+{{ template "footer.html" . }}

@@ -174,7 +174,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	tmpl, err := template.ParseFS(fs, "templates/*.tmpl")
+	tmpl, err := template.ParseFS(fs, "templates/*")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -189,10 +189,17 @@ func main() {
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)
 	mux.Handle("/callback", addIdentityOauth2Handler)
 
-	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster)
+	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl)
 	mux.Handle("/login-email", addIdentityEmailHandler)
 	mux.Handle("/email-code", addIdentityEmailHandler)
+	mux.Handle("/magic", addIdentityEmailHandler)
+	mux.Handle("/confirm-magic", addIdentityEmailHandler)
 	mux.Handle("/complete-email-login", addIdentityEmailHandler)
+
+	addIdentityGamlHandler := NewAddIdentityGamlHandler(storage, cluster, tmpl)
+	mux.Handle("/login-gaml", addIdentityGamlHandler)
+	mux.Handle("/gaml-code", addIdentityGamlHandler)
+	mux.Handle("/complete-gaml-login", addIdentityGamlHandler)
 
 	mux.HandleFunc("/validate", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
@@ -242,7 +249,7 @@ func main() {
 			URL: fmt.Sprintf("/auth?%s", r.URL.RawQuery),
 		}
 
-		err = tmpl.ExecuteTemplate(w, "no-account.tmpl", data)
+		err = tmpl.ExecuteTemplate(w, "no-account.html", data)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
