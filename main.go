@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ip2location/ip2location-go/v9"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
@@ -95,6 +96,7 @@ func main() {
 	apiSocketDir := flag.String("api-socket-dir", "./", "API socket directory")
 	behindProxy := flag.Bool("behind-proxy", false, "Whether we are behind a reverse proxy")
 	displayName := flag.String("display-name", "obligator", "Display name")
+	geoDbPath := flag.String("geo-db-path", "", "IP2Location Geo DB file")
 	flag.Parse()
 
 	var identsType []*Identity
@@ -172,6 +174,15 @@ func main() {
 
 	mux := NewObligatorMux(*behindProxy)
 
+	var geoDb *ip2location.DB
+	if *geoDbPath != "" {
+		geoDb, err = ip2location.OpenDB(*geoDbPath)
+		if err != nil {
+			fmt.Print(err)
+			return
+		}
+	}
+
 	oidcHandler := NewOIDCHandler(storage, tmpl)
 	mux.Handle("/", oidcHandler)
 
@@ -179,7 +190,7 @@ func main() {
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)
 	mux.Handle("/callback", addIdentityOauth2Handler)
 
-	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl, *behindProxy)
+	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl, *behindProxy, geoDb)
 	mux.Handle("/login-email", addIdentityEmailHandler)
 	mux.Handle("/email-code", addIdentityEmailHandler)
 	mux.Handle("/magic", addIdentityEmailHandler)

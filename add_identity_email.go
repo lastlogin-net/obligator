@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ip2location/ip2location-go/v9"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwe"
 	"github.com/lestrrat-go/jwx/v2/jwk"
@@ -36,7 +37,7 @@ func (h *AddIdentityEmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	h.mux.ServeHTTP(w, r)
 }
 
-func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster, tmpl *template.Template, behindProxy bool) *AddIdentityEmailHandler {
+func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster, tmpl *template.Template, behindProxy bool, geoDb *ip2location.DB) *AddIdentityEmailHandler {
 	mux := http.NewServeMux()
 	h := &AddIdentityEmailHandler{
 		mux:           mux,
@@ -314,20 +315,47 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			differentIps = true
 		}
 
+		useGeoDb := false
+		var ogIpGeo ip2location.IP2Locationrecord
+		var magicIpGeo ip2location.IP2Locationrecord
+		if geoDb != nil {
+			useGeoDb = true
+
+			ogIpGeo, err = geoDb.Get_all(pendingLogin.RemoteIp)
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(w, err.Error())
+				return
+			}
+
+			magicIpGeo, err = geoDb.Get_all(remoteIp)
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(w, err.Error())
+				return
+			}
+		}
+
 		templateData := struct {
 			DisplayName  string
 			RootUri      string
 			Key          string
 			DifferentIps bool
+			UseGeoDb     bool
 			OgIp         string
+			OgIpGeo      ip2location.IP2Locationrecord
 			MagicIp      string
+			MagicIpGeo   ip2location.IP2Locationrecord
 		}{
 			DisplayName:  storage.GetDisplayName(),
 			RootUri:      storage.GetRootUri(),
 			Key:          key,
 			DifferentIps: differentIps,
+			UseGeoDb:     useGeoDb,
 			OgIp:         pendingLogin.RemoteIp,
+			OgIpGeo:      ogIpGeo,
 			MagicIp:      remoteIp,
+			MagicIpGeo:   magicIpGeo,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "email-magic.html", templateData)

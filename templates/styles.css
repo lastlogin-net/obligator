@@ -259,3 +259,19 @@ table, th, td {
 .og-last-used {
   font-size: .8em;
 }
+
+.og-ip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.og-ip-data {
+  padding: 10px;
+  border: 1px solid var(--line-color);
+  border-radius: var(--border-radius);
+}
+
+.og-ip-label {
+  font-weight: bold;
+}

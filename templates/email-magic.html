@@ -4,23 +4,62 @@
       To confirm login, click the button below.
     </p>
 
+    {{if .DifferentIps }}
     <p>
       WARNING: This device has a different IP address than the device that
       initiated the login. Someone could be trying to phish you. Show extra
       caution.
     </p>
 
-    <div>
-      This device IP: {{.MagicIp}}
-    </div>
+    <div class='og-ip-list'>
+      <div class='og-ip-data'>
+        <div>
+          <span class='og-ip-label'>This device IP:</span>
+          {{.MagicIp}}
+        </div>
+        {{if .UseGeoDb}}
+        <div>
+          <span class='og-ip-label'>Country:</span>
+          {{.MagicIpGeo.Country_long}}
+        </div>
+        <div>
+          <span class='og-ip-label'>City:</span>
+          {{.MagicIpGeo.City}}
+        </div>
+        {{end}}
+      </div>
 
-    <div>
-      Original IP: {{.OgIp}}
+      <div class='og-ip-data'>
+        <div>
+          <span class='og-ip-label'>Original IP:</span>
+          {{.OgIp}}
+        </div>
+        {{if .UseGeoDb}}
+        <div>
+          <span class='og-ip-label'>Country:</span>
+          {{.OgIpGeo.Country_long}}
+        </div>
+        <div>
+          <span class='og-ip-label'>City:</span>
+          {{.OgIpGeo.City}}
+        </div>
+        {{end}}
+      </div>
     </div>
+    {{end}}
 
     <form class='tn-form' id='complete-login-form' action="/confirm-magic" method="POST">
       <input type="hidden" id="key-input" name="magic_link_key" value="{{.Key}}" required>
       <button class='button' type="submit">Confirm Login</button>
     </form>
+
+    {{if .DifferentIps }}
+    {{if .UseGeoDb}}
+    <p>
+      This site includes IP2Location LITE data available from
+      <a href="https://lite.ip2location.com">https://lite.ip2location.com</a>.
+    </p>
+    {{end}}
+    {{end}}
 
 {{ template "footer.html" . }}
