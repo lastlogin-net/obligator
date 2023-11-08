@@ -178,7 +178,7 @@ func main() {
 	if *geoDbPath != "" {
 		geoDb, err = ip2location.OpenDB(*geoDbPath)
 		if err != nil {
-			fmt.Print(err)
+			fmt.Println(err.Error())
 			return
 		}
 	}
@@ -201,6 +201,32 @@ func main() {
 	mux.Handle("/login-gaml", addIdentityGamlHandler)
 	mux.Handle("/gaml-code", addIdentityGamlHandler)
 	mux.Handle("/complete-gaml-login", addIdentityGamlHandler)
+
+	mux.HandleFunc("/ip", func(w http.ResponseWriter, r *http.Request) {
+		remoteIp, err := getRemoteIp(r, *behindProxy)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		data := struct {
+			RootUri     string
+			DisplayName string
+			RemoteIp    string
+		}{
+			RootUri:     storage.GetRootUri(),
+			DisplayName: storage.GetDisplayName(),
+			RemoteIp:    remoteIp,
+		}
+
+		err = tmpl.ExecuteTemplate(w, "ip.html", data)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+	})
 
 	mux.HandleFunc("/validate", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()

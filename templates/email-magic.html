@@ -6,9 +6,9 @@
 
     {{if .DifferentIps }}
     <p>
-      WARNING: This device has a different IP address than the device that
-      initiated the login. Someone could be trying to phish you. Show extra
-      caution.
+      <strong>WARNING:</strong> This device has a different IP address than the
+      device that initiated the login. Someone could be trying to phish you.
+      Show extra caution.
     </p>
 
     <div class='og-ip-list'>
@@ -31,7 +31,7 @@
 
       <div class='og-ip-data'>
         <div>
-          <span class='og-ip-label'>Original IP:</span>
+          <span class='og-ip-label'>Original device IP:</span>
           {{.OgIp}}
         </div>
         {{if .UseGeoDb}}
@@ -46,6 +46,20 @@
         {{end}}
       </div>
     </div>
+
+    <p>
+      {{if .UseGeoDb}}
+      <strong>NOTE:</strong> Even if the IP addresses are from the same
+      location, that doesn't mean it's safe. Someone could be using a VPN to
+      appear to be near you.
+      {{end}}
+
+      We recommend verifying that the IP addresses above are the ones your
+      devices are using by visiting
+      <a href='{{.RootUri}}/ip'>{{.RootUri}}/ip</a>
+      on each device.
+    </p>
+
     {{end}}
 
     <form class='tn-form' id='complete-login-form' action="/confirm-magic" method="POST">
