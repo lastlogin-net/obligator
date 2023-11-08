@@ -194,6 +194,11 @@ func main() {
 	mux.Handle("/email-code", addIdentityEmailHandler)
 	mux.Handle("/complete-email-login", addIdentityEmailHandler)
 
+	addIdentityGamlHandler := NewAddIdentityGamlHandler(storage, cluster, tmpl)
+	mux.Handle("/login-gaml", addIdentityGamlHandler)
+	mux.Handle("/gaml-code", addIdentityGamlHandler)
+	mux.Handle("/complete-gaml-login", addIdentityGamlHandler)
+
 	mux.HandleFunc("/validate", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 

@@ -56,6 +56,19 @@ func genRandomKey() (string, error) {
 	return id, nil
 }
 
+func genRandomCode() (string, error) {
+	const chars string = "0123456789"
+	id := ""
+	for i := 0; i < 4; i++ {
+		randIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+		if err != nil {
+			return "", err
+		}
+		id += string(chars[randIndex.Int64()])
+	}
+	return id, nil
+}
+
 func buildCookieDomain(fullUrl string) (string, error) {
 	rootUrlParsed, err := url.Parse(fullUrl)
 	if err != nil {
@@ -81,16 +94,23 @@ func validUser(email string, users []User) bool {
 	return false
 }
 
-func addIdentityToCookie(storage Storage, providerName, email, cookieValue string) (*http.Cookie, error) {
+func addIdentityToCookie(storage Storage, providerName, id, email, cookieValue string, emailVerified bool) (*http.Cookie, error) {
 	key, exists := storage.GetJWKSet().Key(0)
 	if !exists {
 		return nil, errors.New("No keys available")
 	}
 
+	idType := "email"
+	if providerName == "URL" {
+		idType = "url"
+	}
+
 	newIdent := &Identity{
-		IdType:       "email",
-		Id:           email,
-		ProviderName: providerName,
+		IdType:        idType,
+		Id:            id,
+		ProviderName:  providerName,
+		Email:         email,
+		EmailVerified: emailVerified,
 	}
 
 	idents := []*Identity{newIdent}

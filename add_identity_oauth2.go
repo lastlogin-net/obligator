@@ -360,7 +360,7 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 			cookieValue = loginKeyCookie.Value
 		}
 
-		cookie, err := addIdentityToCookie(storage, oauth2Provider.Name, email, cookieValue)
+		cookie, err := addIdentityToCookie(storage, oauth2Provider.Name, email, email, cookieValue, true)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
