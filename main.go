@@ -204,7 +204,7 @@ func main() {
 
 	qrHandler := NewQrHandler(storage, cluster, tmpl)
 	mux.Handle("/login-qr", qrHandler)
-	mux.Handle("/qr/", qrHandler)
+	mux.Handle("/qr", qrHandler)
 	mux.Handle("/send", qrHandler)
 	mux.Handle("/receive", qrHandler)
 

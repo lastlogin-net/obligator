@@ -30,6 +30,7 @@
         {{end}}
 
         <input type='hidden' id='' name='qr_key' value='{{.QrKey}}' />
+        <input type='hidden' id='' name='instance_id' value='{{.InstanceId}}' />
         {{if .ErrorMessage}}
         <button class='button' type="submit">Retry</button>
         {{else}}

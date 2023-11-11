@@ -67,6 +67,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 
 	const EmailTimeout = 2 * time.Minute
 
+	// Periodically clean up expired shares
 	go func() {
 		for {
 			newMap := make(map[string]PendingLogin)
@@ -154,7 +155,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		h.mut.Lock()
 		h.pendingLogins[magicLinkKey] = &PendingLogin{
 			Email:     email,
-			ExpiresAt: time.Now().UTC().Add(2 * time.Minute),
+			ExpiresAt: time.Now().UTC().Add(EmailTimeout),
 			RemoteIp:  remoteIp,
 		}
 		h.mut.Unlock()

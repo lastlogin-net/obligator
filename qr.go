@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
@@ -21,6 +22,7 @@ type QrHandler struct {
 
 type PendingShare struct {
 	Identities []*Identity `json:"identities"`
+	ExpiresAt  time.Time
 }
 
 func (h *QrHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +48,29 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		os.Exit(1)
 	}
 
+	const ShareTimeout = 2 * time.Minute
+
+	// Periodically clean up expired shares
+	go func() {
+		for {
+			newMap := make(map[string]PendingShare)
+			mut.Lock()
+			for k, v := range pendingShares {
+				newMap[k] = v
+			}
+			mut.Unlock()
+
+			for key, pending := range newMap {
+				if time.Now().UTC().After(pending.ExpiresAt) {
+					mut.Lock()
+					delete(pendingShares, key)
+					mut.Unlock()
+				}
+			}
+			time.Sleep(ShareTimeout)
+		}
+	}()
+
 	mux.HandleFunc("/login-qr", func(w http.ResponseWriter, r *http.Request) {
 
 		qrKey, err := genRandomKey()
@@ -55,7 +80,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 			return
 		}
 
-		qrUrl := fmt.Sprintf("%s/qr/%s", storage.GetRootUri(), qrKey)
+		qrUrl := fmt.Sprintf("%s/qr?key=%s&instance_id=%s", storage.GetRootUri(), qrKey, cluster.GetLocalId())
 
 		qrCode, err := qrcode.Encode(qrUrl, qrcode.Medium, 256)
 		if err != nil {
@@ -89,10 +114,12 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		}
 	})
 
-	mux.HandleFunc("/qr/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/qr", func(w http.ResponseWriter, r *http.Request) {
 
-		pathParts := strings.Split(r.URL.Path, "/")
-		qrKey := pathParts[len(pathParts)-1]
+		r.ParseForm()
+
+		qrKey := r.Form.Get("key")
+		instanceId := r.Form.Get("instance_id")
 
 		identities := []*Identity{}
 
@@ -119,12 +146,14 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 			RootUri      string
 			Identities   []*Identity
 			QrKey        string
+			InstanceId   string
 			ErrorMessage string
 		}{
 			DisplayName:  storage.GetDisplayName(),
 			RootUri:      storage.GetRootUri(),
 			Identities:   identities,
 			QrKey:        qrKey,
+			InstanceId:   instanceId,
 			ErrorMessage: "",
 		}
 
@@ -140,6 +169,12 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		r.ParseForm()
 
 		qrKey := r.Form.Get("qr_key")
+		ogInstanceId := r.Form.Get("instance_id")
+
+		if ogInstanceId != cluster.GetLocalId() {
+			cluster.RedirectOrForward(ogInstanceId, w, r)
+			return
+		}
 
 		identities := []*Identity{}
 
@@ -163,6 +198,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 
 		share := PendingShare{
 			Identities: []*Identity{},
+			ExpiresAt:  time.Now().UTC().Add(ShareTimeout),
 		}
 
 		for key, value := range r.Form {
