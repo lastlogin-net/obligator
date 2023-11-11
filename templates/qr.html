@@ -15,26 +15,37 @@
       domain is <strong>{{.RootUri}}</strong>.
     </p>
 
-    <p>
-      Select identities to share:
-    </p>
 
     <div>
       <form action="/send" method="POST">
 
+        <p>
+          Select identities to share:
+        </p>
+
         {{range $.Identities}}
         <div>
-          <input type='checkbox' id='checkbox-{{.Id}}' name='checkbox_{{.Id}}' />
+          <input class='og-checkbox' type='checkbox' id='checkbox-{{.Id}}' name='checkbox_{{.Id}}' />
           <label for='checkbox-{{.Id}}'>{{.Id}}</label>
         </div>
         {{end}}
 
+        <p>
+          Select the checkbox below if you also want to share data about which
+          apps and sites you previously logged in to.
+        </p>
+
+        <div>
+          <input class='og-checkbox' type='checkbox' id='checkbox-share-logins' name='checkbox_share_logins' checked />
+          <label for='checkbox-share-logins'>Also share past login data</label>
+        </div>
+
         <input type='hidden' id='' name='qr_key' value='{{.QrKey}}' />
         <input type='hidden' id='' name='instance_id' value='{{.InstanceId}}' />
         {{if .ErrorMessage}}
-        <button class='button' type="submit">Retry</button>
+        <button class='button og-confirm-button' type="submit">Retry</button>
         {{else}}
-        <button class='button' type="submit">Confirm</button>
+        <button class='button og-confirm-button' type="submit">Confirm</button>
         {{end}}
       </form>
     </div>

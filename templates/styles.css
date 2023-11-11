@@ -275,3 +275,12 @@ table, th, td {
 .og-ip-label {
   font-weight: bold;
 }
+
+.og-checkbox {
+  transform: scale(1.5);
+  margin: 10px;
+}
+
+.og-confirm-button {
+  margin: 32px;
+}

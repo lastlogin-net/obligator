@@ -21,8 +21,18 @@ type QrHandler struct {
 }
 
 type PendingShare struct {
-	Identities []*Identity `json:"identities"`
+	Identities []*Identity         `json:"identities"`
+	Logins     map[string][]*Login `json:"logins"`
 	ExpiresAt  time.Time
+}
+
+type QrTemplateData struct {
+	DisplayName  string
+	RootUri      string
+	Identities   []*Identity
+	QrKey        string
+	InstanceId   string
+	ErrorMessage string
 }
 
 func (h *QrHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -141,14 +151,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 
 		}
 
-		templateData := struct {
-			DisplayName  string
-			RootUri      string
-			Identities   []*Identity
-			QrKey        string
-			InstanceId   string
-			ErrorMessage string
-		}{
+		templateData := QrTemplateData{
 			DisplayName:  storage.GetDisplayName(),
 			RootUri:      storage.GetRootUri(),
 			Identities:   identities,
@@ -177,6 +180,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		}
 
 		identities := []*Identity{}
+		logins := make(map[string][]*Login)
 
 		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
 		if err == nil && loginKeyCookie.Value != "" {
@@ -192,12 +196,20 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 						identities = tokIdents
 					}
 				}
+
+				tokLoginsInterface, exists := parsed.Get("logins")
+				if exists {
+					if tokLogins, ok := tokLoginsInterface.(map[string][]*Login); ok {
+						logins = tokLogins
+					}
+				}
 			}
 
 		}
 
 		share := PendingShare{
 			Identities: []*Identity{},
+			Logins:     map[string][]*Login{},
 			ExpiresAt:  time.Now().UTC().Add(ShareTimeout),
 		}
 
@@ -212,21 +224,30 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 			}
 		}
 
+		copyLogins := r.Form.Get("checkbox_share_logins") == "on"
+
+		if copyLogins {
+			for _, ident := range share.Identities {
+				for clientId, clientLogins := range logins {
+					for _, clientLogin := range clientLogins {
+						if clientLogin.Id == ident.Id {
+							share.Logins[clientId] = append(share.Logins[clientId], &(*clientLogin))
+						}
+					}
+				}
+			}
+		}
+
 		if len(share.Identities) == 0 {
 
 			w.WriteHeader(400)
 
-			templateData := struct {
-				DisplayName  string
-				RootUri      string
-				Identities   []*Identity
-				QrKey        string
-				ErrorMessage string
-			}{
+			templateData := QrTemplateData{
 				DisplayName:  storage.GetDisplayName(),
 				RootUri:      storage.GetRootUri(),
 				Identities:   identities,
 				QrKey:        qrKey,
+				InstanceId:   ogInstanceId,
 				ErrorMessage: "You must select at least one identity",
 			}
 
@@ -234,6 +255,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 			if err != nil {
 				w.WriteHeader(400)
 				io.WriteString(w, err.Error())
+				fmt.Println(err)
 				return
 			}
 
@@ -318,6 +340,17 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
 				return
+			}
+		}
+
+		for clientId, clientLogins := range share.Logins {
+			for _, login := range clientLogins {
+				cookie, err = addLoginToCookie(storage, cookie.Value, clientId, login)
+				if err != nil {
+					w.WriteHeader(500)
+					fmt.Fprintf(os.Stderr, err.Error())
+					return
+				}
 			}
 		}
 

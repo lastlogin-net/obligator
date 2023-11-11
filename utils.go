@@ -194,7 +194,7 @@ func addIdentityToCookie(storage Storage, providerName, id, email, cookieValue s
 	return cookie, nil
 }
 
-func addLoginToCookie(storage Storage, clientId, idType, id, providerName, currentCookieValue string) (*http.Cookie, error) {
+func addLoginToCookie(storage Storage, currentCookieValue, clientId string, newLogin *Login) (*http.Cookie, error) {
 	key, exists := storage.GetJWKSet().Key(0)
 	if !exists {
 		return nil, errors.New("No keys available")
@@ -202,12 +202,7 @@ func addLoginToCookie(storage Storage, clientId, idType, id, providerName, curre
 
 	issuedAt := time.Now().UTC()
 
-	newLogin := &Login{
-		IdType:       idType,
-		Id:           id,
-		ProviderName: providerName,
-		Timestamp:    issuedAt.Format(time.RFC3339),
-	}
+	newLogin.Timestamp = issuedAt.Format(time.RFC3339)
 
 	logins := make(map[string][]*Login)
 

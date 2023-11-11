@@ -398,7 +398,13 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		clientId := claimFromToken("client_id", parsedAuthReq)
 
-		newLoginCookie, err := addLoginToCookie(storage, clientId, "email", identity.Id, identity.ProviderName, loginKeyCookie.Value)
+		newLogin := &Login{
+			IdType:       "email",
+			Id:           identity.Id,
+			ProviderName: identity.ProviderName,
+		}
+
+		newLoginCookie, err := addLoginToCookie(storage, loginKeyCookie.Value, clientId, newLogin)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
