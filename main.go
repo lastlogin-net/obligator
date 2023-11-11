@@ -202,6 +202,12 @@ func main() {
 	mux.Handle("/gaml-code", addIdentityGamlHandler)
 	mux.Handle("/complete-gaml-login", addIdentityGamlHandler)
 
+	qrHandler := NewQrHandler(storage, cluster, tmpl)
+	mux.Handle("/login-qr", qrHandler)
+	mux.Handle("/qr/", qrHandler)
+	mux.Handle("/send", qrHandler)
+	mux.Handle("/receive", qrHandler)
+
 	mux.HandleFunc("/ip", func(w http.ResponseWriter, r *http.Request) {
 		remoteIp, err := getRemoteIp(r, *behindProxy)
 		if err != nil {

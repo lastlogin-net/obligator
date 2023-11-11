@@ -95,6 +95,10 @@ func validUser(email string, users []User) bool {
 	return false
 }
 
+func addIdentToCookie(storage Storage, cookieValue string, i *Identity) (*http.Cookie, error) {
+	return addIdentityToCookie(storage, i.ProviderName, i.Id, i.Email, cookieValue, i.EmailVerified)
+}
+
 func addIdentityToCookie(storage Storage, providerName, id, email, cookieValue string, emailVerified bool) (*http.Cookie, error) {
 	key, exists := storage.GetJWKSet().Key(0)
 	if !exists {

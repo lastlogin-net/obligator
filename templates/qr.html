@@ -1,0 +1,41 @@
+{{ template "header.html" . }}
+
+    {{if .ErrorMessage}}
+    <p>
+      <strong>ERROR:</strong> {{.ErrorMessage}}
+    </p>
+    {{end}}
+
+    <p>
+      <strong>WARNING:</strong> Always exercise caution when logging in with a
+      QR code. This process is easy to phish. You should only be here if you're
+      trying to log in. We will never reach out to you asking you to verify
+      or scan anything. The best defense is to be certain that the device
+      showing the QR code is using a standard web browser and the web site
+      domain is <strong>{{.RootUri}}</strong>.
+    </p>
+
+    <p>
+      Select identities to share:
+    </p>
+
+    <div>
+      <form action="/send" method="POST">
+
+        {{range $.Identities}}
+        <div>
+          <input type='checkbox' id='checkbox-{{.Id}}' name='checkbox_{{.Id}}' />
+          <label for='checkbox-{{.Id}}'>{{.Id}}</label>
+        </div>
+        {{end}}
+
+        <input type='hidden' id='' name='qr_key' value='{{.QrKey}}' />
+        {{if .ErrorMessage}}
+        <button class='button' type="submit">Retry</button>
+        {{else}}
+        <button class='button' type="submit">Confirm</button>
+        {{end}}
+      </form>
+    </div>
+
+{{ template "footer.html" . }}

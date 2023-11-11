@@ -390,6 +390,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
+		// TODO: should maybe be encrypting this
 		codeJwt, err := jwt.NewBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(16*time.Second)).
