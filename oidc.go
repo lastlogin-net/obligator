@@ -19,17 +19,18 @@ import (
 )
 
 type OAuth2ServerMetadata struct {
-	Issuer                           string   `json:"issuer,omitempty"`
-	AuthorizationEndpoint            string   `json:"authorization_endpoint,omitempty"`
-	TokenEndpoint                    string   `json:"token_endpoint,omitempty"`
-	UserinfoEndpoint                 string   `json:"userinfo_endpoint,omitempty"`
-	JwksUri                          string   `json:"jwks_uri,omitempty"`
-	ScopesSupported                  []string `json:"scopes_supported,omitempty"`
-	ResponseTypesSupported           []string `json:"response_types_supported,omitempty"`
-	IdTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported,omitempty"`
-	CodeChallengeMethodsSupported    []string `json:"code_challenge_methods_supported"`
-	SubjectTypesSupported            []string `json:"subject_types_supported"`
-	RegistrationEndpoint             string   `json:"registration_endpoint"`
+	Issuer                            string   `json:"issuer,omitempty"`
+	AuthorizationEndpoint             string   `json:"authorization_endpoint,omitempty"`
+	TokenEndpoint                     string   `json:"token_endpoint,omitempty"`
+	UserinfoEndpoint                  string   `json:"userinfo_endpoint,omitempty"`
+	JwksUri                           string   `json:"jwks_uri,omitempty"`
+	ScopesSupported                   []string `json:"scopes_supported,omitempty"`
+	ResponseTypesSupported            []string `json:"response_types_supported,omitempty"`
+	IdTokenSigningAlgValuesSupported  []string `json:"id_token_signing_alg_values_supported,omitempty"`
+	CodeChallengeMethodsSupported     []string `json:"code_challenge_methods_supported"`
+	SubjectTypesSupported             []string `json:"subject_types_supported"`
+	RegistrationEndpoint              string   `json:"registration_endpoint"`
+	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
 }
 
 type OIDCHandler struct {
@@ -79,8 +80,9 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			// draft-ietf-oauth-security-topics-24 2.1.1
 			CodeChallengeMethodsSupported: []string{"S256"},
 			// https://openid.net/specs/openid-connect-core-1_0.html#SubjectIDTypes
-			SubjectTypesSupported: []string{"public"},
-			RegistrationEndpoint:  fmt.Sprintf("%s/register", rootUri),
+			SubjectTypesSupported:             []string{"public"},
+			RegistrationEndpoint:              fmt.Sprintf("%s/register", rootUri),
+			TokenEndpointAuthMethodsSupported: []string{"none"},
 		}
 
 		json.NewEncoder(w).Encode(doc)
@@ -121,8 +123,8 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		clientId := fmt.Sprintf("https://%s", parsedClientIdUrl.Host)
 
+		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 		w.WriteHeader(201)
-		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 
@@ -404,19 +406,32 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		}
 		http.SetCookie(w, newLoginCookie)
 
+		scope := claimFromToken("scope", parsedAuthReq)
+		scopeParts := strings.Split(scope, " ")
+		emailRequested := false
+		for _, scopePart := range scopeParts {
+			if scopePart == "email" {
+				emailRequested = true
+			}
+		}
+
 		issuedAt := time.Now().UTC()
 		expiresAt := issuedAt.Add(8 * time.Minute)
 
-		idToken, err := openid.NewBuilder().
+		idTokenBuilder := openid.NewBuilder().
 			Subject(identId).
 			Audience([]string{clientId}).
 			Issuer(storage.GetRootUri()).
-			Email(identity.Email).
-			EmailVerified(identity.EmailVerified).
 			IssuedAt(issuedAt).
 			Expiration(expiresAt).
-			Claim("nonce", claimFromToken("nonce", parsedAuthReq)).
-			Build()
+			Claim("nonce", claimFromToken("nonce", parsedAuthReq))
+
+		if emailRequested {
+			idTokenBuilder.Email(identity.Email).
+				EmailVerified(identity.EmailVerified)
+		}
+
+		idToken, err := idTokenBuilder.Build()
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
