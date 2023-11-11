@@ -1,11 +1,9 @@
 package main
 
 import (
-	"crypto/rand"
 	"fmt"
 	"html/template"
 	"io"
-	"math/big"
 	"net/http"
 	"net/smtp"
 	"os"
@@ -28,7 +26,7 @@ type AddIdentityEmailHandler struct {
 }
 
 type PendingLogin struct {
-	Confirmed bool
+	Email     string
 	ExpiresAt time.Time
 	RemoteIp  string
 }
@@ -114,7 +112,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		}
 	})
 
-	mux.HandleFunc("/email-code", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/email-sent", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 
 		if r.Method != "POST" {
@@ -155,7 +153,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 
 		h.mut.Lock()
 		h.pendingLogins[magicLinkKey] = &PendingLogin{
-			Confirmed: false,
+			Email:     email,
 			ExpiresAt: time.Now().UTC().Add(2 * time.Minute),
 			RemoteIp:  remoteIp,
 		}
@@ -167,7 +165,6 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(EmailTimeout)).
 			Subject(email).
-			//Claim("code", code).
 			Claim("magic_link_key", magicLinkKey).
 			Claim("instance_id", cluster.GetLocalId()).
 			Build()
@@ -271,7 +268,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			RootUri:     storage.GetRootUri(),
 		}
 
-		err = tmpl.ExecuteTemplate(w, "email-code.html", data)
+		err = tmpl.ExecuteTemplate(w, "email-sent.html", data)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
@@ -336,79 +333,59 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			}
 		}
 
-		templateData := struct {
-			DisplayName  string
-			RootUri      string
-			Key          string
-			DifferentIps bool
-			UseGeoDb     bool
-			OgIp         string
-			OgIpGeo      ip2location.IP2Locationrecord
-			MagicIp      string
-			MagicIpGeo   ip2location.IP2Locationrecord
-			InstanceId   string
-		}{
-			DisplayName:  storage.GetDisplayName(),
-			RootUri:      storage.GetRootUri(),
-			Key:          key,
-			DifferentIps: differentIps,
-			UseGeoDb:     useGeoDb,
-			OgIp:         pendingLogin.RemoteIp,
-			OgIpGeo:      ogIpGeo,
-			MagicIp:      remoteIp,
-			MagicIpGeo:   magicIpGeo,
-			InstanceId:   ogInstanceId,
-		}
+		differentBrowsers := true
 
-		err = tmpl.ExecuteTemplate(w, "email-magic.html", templateData)
-		if err != nil {
-			w.WriteHeader(400)
-			io.WriteString(w, err.Error())
-			return
-		}
-	})
-
-	mux.HandleFunc("/confirm-magic", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			w.WriteHeader(405)
-			io.WriteString(w, "Invalid method")
-			return
-		}
-
-		r.ParseForm()
-
-		key := r.Form.Get("magic_link_key")
-		ogInstanceId := r.Form.Get("instance_id")
-
-		if ogInstanceId != cluster.GetLocalId() {
-			done := cluster.RedirectOrForward(ogInstanceId, w, r)
-			if done {
+		emailCodeJwtCookie, err := r.Cookie("obligator_email_login")
+		if err == nil {
+			encryptedJwt := []byte(emailCodeJwtCookie.Value)
+			decryptedJwt, err := jwe.Decrypt(encryptedJwt, jwe.WithKey(jwa.RSA_OAEP_256, privKey))
+			if err != nil {
+				w.WriteHeader(500)
+				io.WriteString(w, err.Error())
 				return
+			}
+
+			parsedJwt, err := jwt.Parse(decryptedJwt, jwt.WithKeySet(publicJwks))
+			if err != nil {
+				w.WriteHeader(500)
+				io.WriteString(w, err.Error())
+				return
+			}
+
+			ogMagicLinkKey := claimFromToken("magic_link_key", parsedJwt)
+
+			if key == ogMagicLinkKey {
+				differentBrowsers = false
 			}
 		}
 
-		h.mut.Lock()
-		defer h.mut.Unlock()
-		pendingLogin, exists := h.pendingLogins[key]
-		if !exists {
-			w.WriteHeader(500)
-			io.WriteString(w, "Invalid magic link")
-			return
-		}
-
-		pendingLogin.Confirmed = true
-
 		templateData := struct {
-			DisplayName string
-			RootUri     string
-			Key         string
+			DisplayName       string
+			RootUri           string
+			Key               string
+			DifferentIps      bool
+			DifferentBrowsers bool
+			UseGeoDb          bool
+			OgIp              string
+			OgIpGeo           ip2location.IP2Locationrecord
+			MagicIp           string
+			MagicIpGeo        ip2location.IP2Locationrecord
+			InstanceId        string
 		}{
-			DisplayName: storage.GetDisplayName(),
-			RootUri:     storage.GetRootUri(),
-			Key:         key,
+			DisplayName:       storage.GetDisplayName(),
+			RootUri:           storage.GetRootUri(),
+			Key:               key,
+			DifferentIps:      differentIps,
+			DifferentBrowsers: differentBrowsers,
+			UseGeoDb:          useGeoDb,
+			OgIp:              pendingLogin.RemoteIp,
+			OgIpGeo:           ogIpGeo,
+			MagicIp:           remoteIp,
+			MagicIpGeo:        magicIpGeo,
+			InstanceId:        ogInstanceId,
 		}
 
-		err := tmpl.ExecuteTemplate(w, "confirm-magic.html", templateData)
+		err = tmpl.ExecuteTemplate(w, "email-magic.html", templateData)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
@@ -425,29 +402,8 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 
 		r.ParseForm()
 
-		emailCodeJwtCookie, err := r.Cookie("obligator_email_login")
-		if err != nil {
-			w.WriteHeader(400)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		encryptedJwt := []byte(emailCodeJwtCookie.Value)
-		decryptedJwt, err := jwe.Decrypt(encryptedJwt, jwe.WithKey(jwa.RSA_OAEP_256, privKey))
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		parsedJwt, err := jwt.Parse(decryptedJwt, jwt.WithKeySet(publicJwks))
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		ogInstanceId := claimFromToken("instance_id", parsedJwt)
+		magicLinkKey := r.Form.Get("magic_link_key")
+		ogInstanceId := r.Form.Get("instance_id")
 
 		if ogInstanceId != cluster.GetLocalId() {
 			done := cluster.RedirectOrForward(ogInstanceId, w, r)
@@ -456,7 +412,6 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			}
 		}
 
-		magicLinkKey := claimFromToken("magic_link_key", parsedJwt)
 		h.mut.Lock()
 		defer h.mut.Unlock()
 		pendingLogin, exists := h.pendingLogins[magicLinkKey]
@@ -466,22 +421,9 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			return
 		}
 
-		if !pendingLogin.Confirmed {
-			w.WriteHeader(401)
-			io.WriteString(w, "Login not confirmed")
-			return
-		}
-
 		delete(h.pendingLogins, magicLinkKey)
 
-		email := parsedJwt.Subject()
-
-		request, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
+		email := pendingLogin.Email
 
 		cookieValue := ""
 		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
@@ -498,9 +440,27 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 
 		http.SetCookie(w, cookie)
 
-		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), claimFromToken("raw_query", request))
+		authRequest, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
+		if err == nil {
+			redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), claimFromToken("raw_query", authRequest))
+			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
+			return
+		} else {
+			templateData := struct {
+				DisplayName string
+				RootUri     string
+			}{
+				DisplayName: storage.GetDisplayName(),
+				RootUri:     storage.GetRootUri(),
+			}
 
-		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
+			err := tmpl.ExecuteTemplate(w, "confirm-magic.html", templateData)
+			if err != nil {
+				w.WriteHeader(400)
+				io.WriteString(w, err.Error())
+				return
+			}
+		}
 	})
 
 	return h
@@ -540,17 +500,4 @@ func (h *AddIdentityEmailHandler) StartEmailValidation(email, rootUri, magicLink
 	}
 
 	return nil
-}
-
-func genCode() (string, error) {
-	const chars string = "0123456789"
-	id := ""
-	for i := 0; i < 6; i++ {
-		randIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
-		if err != nil {
-			return "", err
-		}
-		id += string(chars[randIndex.Int64()])
-	}
-	return id, nil
 }

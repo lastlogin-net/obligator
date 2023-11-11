@@ -1,0 +1,26 @@
+{{ template "header.html" . }}
+
+    {{if .ErrorMessage}}
+    <p>
+      <strong>ERROR:</strong> {{.ErrorMessage}}
+    </p>
+    {{end}}
+
+    <p>
+      Scan the QR code from a logged-in device:
+    </p>
+
+    <div>
+      <img src='{{.QrDataUri}}' />
+    </div>
+
+    <form class='' id='login-form' action="/receive" method="POST">
+      <input type='hidden' name='qr_key' value='{{.QrKey}}' />
+      {{if .ErrorMessage}}
+      <button class='button' type="submit">Retry</button>
+      {{else}}
+      <button class='button' type="submit">Continue</button>
+      {{end}}
+    </form>
+    
+{{ template "footer.html" . }}

@@ -192,7 +192,7 @@ func main() {
 
 	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl, *behindProxy, geoDb)
 	mux.Handle("/login-email", addIdentityEmailHandler)
-	mux.Handle("/email-code", addIdentityEmailHandler)
+	mux.Handle("/email-sent", addIdentityEmailHandler)
 	mux.Handle("/magic", addIdentityEmailHandler)
 	mux.Handle("/confirm-magic", addIdentityEmailHandler)
 	mux.Handle("/complete-email-login", addIdentityEmailHandler)

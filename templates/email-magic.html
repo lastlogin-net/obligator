@@ -1,9 +1,6 @@
 {{ template "header.html" . }}
 
-    <p>
-      To confirm login, click the button below.
-    </p>
-
+    <!--
     {{if .DifferentIps }}
     <p>
       <strong>WARNING:</strong> This device has a different IP address than the
@@ -61,13 +58,26 @@
     </p>
 
     {{end}}
+    -->
 
-    <form class='tn-form' id='complete-login-form' action="/confirm-magic" method="POST">
-      <input type="hidden" id="key-input" name="magic_link_key" value="{{.Key}}" required>
-      <input type="hidden" id="instance-id-input" name="instance_id" value="{{.InstanceId}}" required>
+    {{if .DifferentBrowsers}}
+    <p>
+      The link opened in a different browser than was used to initiate the
+      login. This often happens when opening links from email apps. You can
+      copy the URL for this page and paste it into another browser. If you're
+      trying to log in on another device, you can select the QR code option on
+      that device and scan it from a device with a camera and a browser that's
+      already logged in.
+    </p>
+    {{end}}
+
+    <form class='' action="/complete-email-login" method="POST">
+      <input type="hidden" name="magic_link_key" value="{{.Key}}" required>
+      <input type="hidden" name="instance_id" value="{{.InstanceId}}" required>
       <button class='button' type="submit">Confirm Login</button>
     </form>
 
+    <!--
     {{if .DifferentIps }}
     {{if .UseGeoDb}}
     <p>
@@ -76,5 +86,6 @@
     </p>
     {{end}}
     {{end}}
+    -->
 
 {{ template "footer.html" . }}

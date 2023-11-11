@@ -1,0 +1,16 @@
+{{ template "header.html" . }}
+
+    <p>
+      If you provided a valid email address, a login link will be sent.
+    </p>
+
+    <p>
+      If you plan on opening the link on another device, you'll probably want
+      to display a QR code using the button below
+    </p>
+
+    <form class='' action="/login-qr" method="POST">
+      <button class='button' type="submit">Log in with QR Code</button>
+    </form>
+
+{{ template "footer.html" . }}
