@@ -29,10 +29,19 @@ type OAuth2ServerMetadata struct {
 	IdTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported,omitempty"`
 	CodeChallengeMethodsSupported    []string `json:"code_challenge_methods_supported"`
 	SubjectTypesSupported            []string `json:"subject_types_supported"`
+	RegistrationEndpoint             string   `json:"registration_endpoint"`
 }
 
 type OIDCHandler struct {
 	mux *http.ServeMux
+}
+
+type OIDCRegistrationResponse struct {
+	ClientId string `json:"client_id"`
+}
+
+type OIDCRegistrationRequest struct {
+	RedirectUris []string `json:"redirect_uris"`
 }
 
 func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
@@ -71,6 +80,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			CodeChallengeMethodsSupported: []string{"S256"},
 			// https://openid.net/specs/openid-connect-core-1_0.html#SubjectIDTypes
 			SubjectTypesSupported: []string{"public"},
+			RegistrationEndpoint:  fmt.Sprintf("%s/register", rootUri),
 		}
 
 		json.NewEncoder(w).Encode(doc)
@@ -84,6 +94,43 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		enc.Encode(publicJwks)
+	})
+
+	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
+
+		var regReq OIDCRegistrationRequest
+
+		err = json.NewDecoder(r.Body).Decode(&regReq)
+		if err != nil {
+			w.WriteHeader(400)
+			return
+		}
+
+		if len(regReq.RedirectUris) == 0 {
+			w.WriteHeader(400)
+			io.WriteString(w, "Need at least one redirect_uri")
+			return
+		}
+
+		parsedClientIdUrl, err := url.Parse(regReq.RedirectUris[0])
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		clientId := fmt.Sprintf("https://%s", parsedClientIdUrl.Host)
+
+		w.WriteHeader(201)
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+
+		resp := OIDCRegistrationResponse{
+			ClientId: clientId,
+		}
+
+		enc.Encode(resp)
 	})
 
 	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
@@ -128,7 +175,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		clientIdUrl, err := url.Parse(clientId)
+		parsedClientId, err := url.Parse(clientId)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
@@ -261,7 +308,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		}{
 			RootUri:         storage.GetRootUri(),
 			DisplayName:     storage.GetDisplayName(),
-			ClientId:        clientIdUrl.Host,
+			ClientId:        parsedClientId.Host,
 			Identities:      remainingIdents,
 			PreviousLogins:  previousLogins,
 			OAuth2Providers: providers,
