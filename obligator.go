@@ -1,10 +1,9 @@
-package main
+package obligator
 
 import (
 	"crypto/rand"
 	"crypto/rsa"
 	"embed"
-	"flag"
 	"fmt"
 	"html/template"
 	"io"
@@ -17,6 +16,23 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
+
+type Server struct {
+	Config ServerConfig
+	Mux    *ObligatorMux
+}
+
+type ServerConfig struct {
+	Port         int
+	RootUri      string
+	LoginKeyName string
+	StorageDir   string
+	DatabaseDir  string
+	ApiSocketDir string
+	BehindProxy  bool
+	DisplayName  string
+	GeoDbPath    string
+}
 
 type SmtpConfig struct {
 	Server     string `json:"server,omitempty"`
@@ -86,18 +102,19 @@ func (s *ObligatorMux) HandleFunc(p string, f func(w http.ResponseWriter, r *htt
 //go:embed templates assets
 var fs embed.FS
 
-func main() {
+func NewServer(conf ServerConfig) *Server {
 
-	port := flag.Int("port", 1616, "Port")
-	rootUri := flag.String("root-uri", "", "Root URI")
-	loginKeyName := flag.String("login-key-name", "obligator_login_key", "Login key name")
-	storageDir := flag.String("storage-dir", "./", "Storage directory")
-	dbDir := flag.String("database-dir", "./", "Database directory")
-	apiSocketDir := flag.String("api-socket-dir", "./", "API socket directory")
-	behindProxy := flag.Bool("behind-proxy", false, "Whether we are behind a reverse proxy")
-	displayName := flag.String("display-name", "obligator", "Display name")
-	geoDbPath := flag.String("geo-db-path", "", "IP2Location Geo DB file")
-	flag.Parse()
+	if conf.Port == 0 {
+		conf.Port = 1616
+	}
+
+	if conf.LoginKeyName == "" {
+		conf.LoginKeyName = "obligator_login_key"
+	}
+
+	if conf.DisplayName == "" {
+		conf.DisplayName = "obligator"
+	}
 
 	var identsType []*Identity
 	jwt.RegisterCustomField("identities", identsType)
@@ -106,7 +123,7 @@ func main() {
 	var idTokenType string
 	jwt.RegisterCustomField("id_token", idTokenType)
 
-	storagePath := filepath.Join(*storageDir, "obligator_storage.json")
+	storagePath := filepath.Join(conf.StorageDir, "obligator_storage.json")
 	storage, err := NewJsonStorage(storagePath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -119,7 +136,7 @@ func main() {
 	//	os.Exit(1)
 	//}
 
-	dbPath := filepath.Join(*dbDir, "obligator_db.sqlite")
+	dbPath := filepath.Join(conf.DatabaseDir, "obligator_db.sqlite")
 	db, err := NewDatabase(dbPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -128,23 +145,23 @@ func main() {
 
 	cluster := NewCluster()
 
-	if *displayName != "obligator" {
-		storage.SetDisplayName(*displayName)
+	if conf.DisplayName != "obligator" {
+		storage.SetDisplayName(conf.DisplayName)
 	}
 
-	if *rootUri != "" {
-		storage.SetRootUri(*rootUri)
+	if conf.RootUri != "" {
+		storage.SetRootUri(conf.RootUri)
 	}
 
-	if *loginKeyName != "obligator_login_key" || storage.GetLoginKeyName() == "" {
-		storage.SetLoginKeyName(*loginKeyName)
+	if conf.LoginKeyName != "obligator_login_key" || storage.GetLoginKeyName() == "" {
+		storage.SetLoginKeyName(conf.LoginKeyName)
 	}
 
 	if storage.GetRootUri() == "" {
 		fmt.Fprintln(os.Stderr, "WARNING: No root URI set")
 	}
 
-	_, err = NewApi(storage, *apiSocketDir)
+	_, err = NewApi(storage, conf.ApiSocketDir)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -172,14 +189,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	mux := NewObligatorMux(*behindProxy)
+	mux := NewObligatorMux(conf.BehindProxy)
 
 	var geoDb *ip2location.DB
-	if *geoDbPath != "" {
-		geoDb, err = ip2location.OpenDB(*geoDbPath)
+	if conf.GeoDbPath != "" {
+		geoDb, err = ip2location.OpenDB(conf.GeoDbPath)
 		if err != nil {
 			fmt.Println(err.Error())
-			return
+			return nil
 		}
 	}
 
@@ -190,7 +207,7 @@ func main() {
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)
 	mux.Handle("/callback", addIdentityOauth2Handler)
 
-	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl, *behindProxy, geoDb)
+	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl, conf.BehindProxy, geoDb)
 	mux.Handle("/login-email", addIdentityEmailHandler)
 	mux.Handle("/email-sent", addIdentityEmailHandler)
 	mux.Handle("/magic", addIdentityEmailHandler)
@@ -209,7 +226,7 @@ func main() {
 	mux.Handle("/receive", qrHandler)
 
 	mux.HandleFunc("/ip", func(w http.ResponseWriter, r *http.Request) {
-		remoteIp, err := getRemoteIp(r, *behindProxy)
+		remoteIp, err := getRemoteIp(r, conf.BehindProxy)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -294,18 +311,33 @@ func main() {
 		printJson(r.Header)
 	})
 
+	s := &Server{
+		Config: conf,
+		Mux:    mux,
+	}
+
+	return s
+}
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.Mux.ServeHTTP(w, r)
+}
+
+func (s *Server) Start() error {
 	server := http.Server{
-		Addr:    fmt.Sprintf(":%d", *port),
-		Handler: mux,
+		Addr:    fmt.Sprintf(":%d", s.Config.Port),
+		Handler: s.Mux,
 	}
 
 	fmt.Println("Running")
 
-	err = server.ListenAndServe()
+	err := server.ListenAndServe()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, err.Error())
-		os.Exit(1)
+		return err
 	}
+
+	return nil
 }
 
 func GenerateJWK() (jwk.Key, error) {
