@@ -18,8 +18,9 @@ import (
 )
 
 type Server struct {
-	Config ServerConfig
-	Mux    *ObligatorMux
+	Config  ServerConfig
+	Mux     *ObligatorMux
+	storage Storage
 }
 
 type ServerConfig struct {
@@ -58,6 +59,11 @@ type ObligatorMux struct {
 type UserinfoResponse struct {
 	Sub   string `json:"sub"`
 	Email string `json:"email"`
+}
+
+type Validation struct {
+	Id     string `json:"id"`
+	IdType string `json:"id_type"`
 }
 
 const RateLimitTime = 24 * time.Hour
@@ -312,8 +318,9 @@ func NewServer(conf ServerConfig) *Server {
 	})
 
 	s := &Server{
-		Config: conf,
-		Mux:    mux,
+		Config:  conf,
+		Mux:     mux,
+		storage: storage,
 	}
 
 	return s
@@ -338,6 +345,31 @@ func (s *Server) Start() error {
 	}
 
 	return nil
+}
+
+func (s *Server) Validate(r *http.Request) (*Validation, error) {
+	r.ParseForm()
+
+	loginKeyCookie, err := r.Cookie(s.storage.GetLoginKeyName())
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: don't generate publicJwks every time
+	publicJwks, err := jwk.PublicSetOf(s.storage.GetJWKSet())
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: add Remote-Email to header
+	_, err = jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+	if err != nil {
+		return nil, err
+	}
+
+	v := &Validation{}
+
+	return v, nil
 }
 
 func GenerateJWK() (jwk.Key, error) {
