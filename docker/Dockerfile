@@ -1,12 +1,37 @@
-FROM alpine:3.18
+FROM golang:1.21 as builder
 
-RUN apk add --no-cache curl
+# Set the working directory inside the container
+WORKDIR /app
 
-COPY ./obligator /obligator/obligator
+# Copy the Go Modules manifests
+COPY go.mod go.sum ./
+# Download Go module dependencies
+RUN go mod download
+
+# Copy the source code into the container
+COPY . .
+
+# Those linker flag enables us to statically link sqlite
+RUN CGO_ENABLED=1 GOOS=linux go build -a -ldflags '-linkmode external -extldflags "-static"' -o obligator/obligator .
+
+FROM debian:bullseye-slim
+
+WORKDIR /obligator
+
+RUN apt-get update && apt-get install -y ca-certificates
+
+COPY --from=builder /app/obligator /obligator
+
+COPY --from=builder /etc/passwd /etc/passwd
+
+RUN addgroup --gid 1001 --system appuser && adduser --system --uid 1001 --ingroup appuser appuser
+RUN chown -R appuser:appuser /obligator
 
 VOLUME ["/data"]
 
 VOLUME ["/api"]
+
+USER 1001
 
 EXPOSE 1616
 

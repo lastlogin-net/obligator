@@ -1,0 +1,4 @@
+docker/
+obligator
+obligator_db.sqlite
+obligator_storage.json
