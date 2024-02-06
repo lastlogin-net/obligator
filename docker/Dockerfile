@@ -14,15 +14,16 @@ COPY . .
 # Those linker flag enables us to statically link sqlite
 RUN CGO_ENABLED=1 GOOS=linux go build -a -ldflags '-linkmode external -extldflags "-static"' -o obligator/obligator .
 
-FROM docker.io/debian:bullseye-slim
+FROM docker.io/alpine:3.18
 
 WORKDIR /obligator
 
-RUN apt-get update && apt-get install -y ca-certificates
+RUN apk --no-cache add ca-certificates && \
+    addgroup -S appuser -g 1001 && \
+    adduser -S -G appuser -u 1001 appuser
 
 COPY --from=builder /app/obligator /obligator
 
-RUN addgroup --gid 1001 --system appuser && adduser --system --uid 1001 --ingroup appuser appuser
 RUN chown -R appuser:appuser /obligator
 
 VOLUME ["/data"]
