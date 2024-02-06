@@ -1,4 +1,4 @@
-FROM golang:1.21 as builder
+FROM docker.io/golang:1.21 as builder
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -14,15 +14,13 @@ COPY . .
 # Those linker flag enables us to statically link sqlite
 RUN CGO_ENABLED=1 GOOS=linux go build -a -ldflags '-linkmode external -extldflags "-static"' -o obligator/obligator .
 
-FROM debian:bullseye-slim
+FROM docker.io/debian:bullseye-slim
 
 WORKDIR /obligator
 
 RUN apt-get update && apt-get install -y ca-certificates
 
 COPY --from=builder /app/obligator /obligator
-
-COPY --from=builder /etc/passwd /etc/passwd
 
 RUN addgroup --gid 1001 --system appuser && adduser --system --uid 1001 --ingroup appuser appuser
 RUN chown -R appuser:appuser /obligator
