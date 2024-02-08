@@ -277,9 +277,13 @@ func main() {
 
 	mux.HandleFunc("/no-account", func(w http.ResponseWriter, r *http.Request) {
 		data := struct {
-			URL string
+			URL         string
+			RootUri     string
+			DisplayName string
 		}{
-			URL: fmt.Sprintf("/auth?%s", r.URL.RawQuery),
+			URL:         fmt.Sprintf("/auth?%s", r.URL.RawQuery),
+			RootUri:     storage.GetRootUri(),
+			DisplayName: storage.GetDisplayName(),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "no-account.html", data)
