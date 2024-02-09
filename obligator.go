@@ -362,8 +362,12 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) AuthUri(authReq *OAuth2AuthRequest) string {
-	uri := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=%s&state=%s&scope=%s",
-		s.Config.RootUri, authReq.ClientId, authReq.RedirectUri,
+	return AuthUri(s.Config.RootUri+"/auth", authReq)
+}
+
+func AuthUri(serverUri string, authReq *OAuth2AuthRequest) string {
+	uri := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&response_type=%s&state=%s&scope=%s",
+		serverUri, authReq.ClientId, authReq.RedirectUri,
 		authReq.ResponseType, authReq.State, authReq.Scope)
 	return uri
 }
