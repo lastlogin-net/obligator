@@ -34,10 +34,11 @@ type OAuth2ServerMetadata struct {
 }
 
 type OAuth2AuthRequest struct {
-	ClientId    string `json:"client_id"`
-	RedirectUri string `json:"redirect_uri"`
-	Scope       string `json:"scope"`
-	State       string `json:"state"`
+	ClientId     string `json:"client_id"`
+	RedirectUri  string `json:"redirect_uri"`
+	Scope        string `json:"scope"`
+	State        string `json:"state"`
+	ResponseType string `json:"response_type"`
 }
 
 type OIDCHandler struct {
@@ -289,6 +290,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			Claim("scope", r.Form.Get("scope")).
 			Claim("nonce", r.Form.Get("nonce")).
 			Claim("pkce_code_challenge", r.Form.Get("code_challenge")).
+			Claim("response_type", responseType).
 			Build()
 		if err != nil {
 			w.WriteHeader(500)
@@ -486,15 +488,22 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&code=%s&state=%s&scope=%s",
-			claimFromToken("redirect_uri", parsedAuthReq),
-			claimFromToken("client_id", parsedAuthReq),
-			claimFromToken("redirect_uri", parsedAuthReq),
-			string(signedCode),
-			claimFromToken("state", parsedAuthReq),
-			claimFromToken("scope", parsedAuthReq))
+		responseType := claimFromToken("response_type", parsedAuthReq)
 
-		http.Redirect(w, r, url, http.StatusSeeOther)
+		if responseType == "none" {
+			redirectUri := claimFromToken("redirect_uri", parsedAuthReq)
+			http.Redirect(w, r, redirectUri, http.StatusSeeOther)
+		} else {
+			url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&code=%s&state=%s&scope=%s",
+				claimFromToken("redirect_uri", parsedAuthReq),
+				claimFromToken("client_id", parsedAuthReq),
+				claimFromToken("redirect_uri", parsedAuthReq),
+				string(signedCode),
+				claimFromToken("state", parsedAuthReq),
+				claimFromToken("scope", parsedAuthReq))
+
+			http.Redirect(w, r, url, http.StatusSeeOther)
+		}
 	})
 
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
