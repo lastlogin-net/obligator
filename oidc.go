@@ -33,6 +33,13 @@ type OAuth2ServerMetadata struct {
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
 }
 
+type OAuth2AuthRequest struct {
+	ClientId    string `json:"client_id"`
+	RedirectUri string `json:"redirect_uri"`
+	Scope       string `json:"scope"`
+	State       string `json:"state"`
+}
+
 type OIDCHandler struct {
 	mux *http.ServeMux
 }

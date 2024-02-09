@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -26,6 +27,7 @@ type Server struct {
 type ServerConfig struct {
 	Port         int
 	RootUri      string
+	AuthDomains  []string
 	LoginKeyName string
 	StorageDir   string
 	DatabaseDir  string
@@ -158,6 +160,14 @@ func NewServer(conf ServerConfig) *Server {
 	if conf.RootUri != "" {
 		storage.SetRootUri(conf.RootUri)
 	}
+
+	rootUrl, err := url.Parse(conf.RootUri)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
 
 	if conf.LoginKeyName != "obligator_login_key" || storage.GetLoginKeyName() == "" {
 		storage.SetLoginKeyName(conf.LoginKeyName)
@@ -349,6 +359,17 @@ func (s *Server) Start() error {
 	}
 
 	return nil
+}
+
+func (s *Server) AuthUri(authReq *OAuth2AuthRequest) string {
+	uri := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=code&state=%s&scope=%s",
+		s.Config.RootUri, authReq.ClientId, authReq.RedirectUri,
+		authReq.State, authReq.Scope)
+	return uri
+}
+
+func (s *Server) AuthDomains() []string {
+	return s.Config.AuthDomains
 }
 
 func (s *Server) Validate(r *http.Request) (*Validation, error) {
