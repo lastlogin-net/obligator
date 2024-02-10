@@ -212,7 +212,6 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		state := r.Form.Get("state")
 
 		promptParam := r.Form.Get("prompt")
-		// https://openid.net/specs/oauth-v2-multiple-response-types-1_0.html#none
 		if promptParam == "none" {
 			errUrl := fmt.Sprintf("%s?error=interaction_required&state=%s",
 				redirectUri, state)
@@ -484,6 +483,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		responseType := claimFromToken("response_type", parsedAuthReq)
 
+		// https://openid.net/specs/oauth-v2-multiple-response-types-1_0.html#none
 		if responseType == "none" {
 			redirectUri := claimFromToken("redirect_uri", parsedAuthReq)
 			http.Redirect(w, r, redirectUri, http.StatusSeeOther)
