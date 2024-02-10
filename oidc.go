@@ -311,6 +311,11 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
+		canEmail := true
+		if _, err := storage.GetSmtpConfig(); err != nil {
+			canEmail = false
+		}
+
 		data := struct {
 			RootUri         string
 			DisplayName     string
@@ -320,6 +325,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			OAuth2Providers []OAuth2Provider
 			LogoMap         map[string]template.HTML
 			URL             string
+			CanEmail        bool
 		}{
 			RootUri:         storage.GetRootUri(),
 			DisplayName:     storage.GetDisplayName(),
@@ -329,6 +335,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			OAuth2Providers: providers,
 			LogoMap:         providerLogoMap,
 			URL:             fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
+			CanEmail:        canEmail,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "auth.html", data)
