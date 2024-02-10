@@ -28,7 +28,7 @@ type ServerConfig struct {
 	Port         int
 	RootUri      string
 	AuthDomains  []string
-	LoginKeyName string
+	Prefix       string
 	StorageDir   string
 	DatabaseDir  string
 	ApiSocketDir string
@@ -116,8 +116,8 @@ func NewServer(conf ServerConfig) *Server {
 		conf.Port = 1616
 	}
 
-	if conf.LoginKeyName == "" {
-		conf.LoginKeyName = "obligator_login_key"
+	if conf.Prefix == "" {
+		conf.Prefix = "obligator"
 	}
 
 	if conf.DisplayName == "" {
@@ -131,20 +131,27 @@ func NewServer(conf ServerConfig) *Server {
 	var idTokenType string
 	jwt.RegisterCustomField("id_token", idTokenType)
 
-	storagePath := filepath.Join(conf.StorageDir, "obligator_storage.json")
+	storagePath := filepath.Join(conf.StorageDir, conf.Prefix+"storage.json")
 	storage, err := NewJsonStorage(storagePath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
-	//sqliteStorage, err := NewSqliteStorage("obligator_storage.sqlite")
+	if conf.Prefix != "obligator" || storage.GetPrefix() == "" {
+		storage.SetPrefix(conf.Prefix)
+	}
+
+	prefix := storage.GetPrefix()
+	loginKeyName := prefix + "login_key"
+
+	//sqliteStorage, err := NewSqliteStorage(prefix + "storage.sqlite")
 	//if err != nil {
 	//	fmt.Fprintln(os.Stderr, err.Error())
 	//	os.Exit(1)
 	//}
 
-	dbPath := filepath.Join(conf.DatabaseDir, "obligator_db.sqlite")
+	dbPath := filepath.Join(conf.DatabaseDir, prefix+"db.sqlite")
 	db, err := NewDatabase(dbPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -168,10 +175,6 @@ func NewServer(conf ServerConfig) *Server {
 	}
 
 	conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
-
-	if conf.LoginKeyName != "obligator_login_key" || storage.GetLoginKeyName() == "" {
-		storage.SetLoginKeyName(conf.LoginKeyName)
-	}
 
 	if storage.GetRootUri() == "" {
 		fmt.Fprintln(os.Stderr, "WARNING: No root URI set")
@@ -274,7 +277,7 @@ func NewServer(conf ServerConfig) *Server {
 		url := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=code&state=&scope=",
 			storage.GetRootUri(), redirectUri, redirectUri)
 
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err != nil {
 			http.Redirect(w, r, url, 307)
 			return
@@ -379,7 +382,9 @@ func (s *Server) AuthDomains() []string {
 func (s *Server) Validate(r *http.Request) (*Validation, error) {
 	r.ParseForm()
 
-	loginKeyCookie, err := r.Cookie(s.storage.GetLoginKeyName())
+	loginKeyName := s.storage.GetPrefix() + "login_key"
+
+	loginKeyCookie, err := r.Cookie(loginKeyName)
 	if err != nil {
 		return nil, err
 	}

@@ -179,9 +179,11 @@ func addIdentityToCookie(storage Storage, providerName, id, email, cookieValue s
 		return nil, err
 	}
 
+	loginKeyName := storage.GetPrefix() + "login_key"
+
 	cookie := &http.Cookie{
 		Domain:   cookieDomain,
-		Name:     storage.GetLoginKeyName(),
+		Name:     loginKeyName,
 		Value:    unhashedLoginKey,
 		Secure:   true,
 		HttpOnly: true,
@@ -276,9 +278,11 @@ func addLoginToCookie(storage Storage, currentCookieValue, clientId string, newL
 		return nil, err
 	}
 
+	loginKeyName := storage.GetPrefix() + "login_key"
+
 	cookie := &http.Cookie{
 		Domain:   cookieDomain,
-		Name:     storage.GetLoginKeyName(),
+		Name:     loginKeyName,
 		Value:    loginKey,
 		Secure:   true,
 		HttpOnly: true,
@@ -297,9 +301,11 @@ func deleteLoginKeyCookie(storage Storage, w http.ResponseWriter) error {
 		return err
 	}
 
+	loginKeyName := storage.GetPrefix() + "login_key"
+
 	cookie := &http.Cookie{
 		Domain:   cookieDomain,
-		Name:     storage.GetLoginKeyName(),
+		Name:     loginKeyName,
 		Value:    "",
 		Path:     "/",
 		SameSite: http.SameSiteLaxMode,
@@ -389,6 +395,24 @@ func setJwtCookie(storage Storage, jot jwt.Token, cookieKey string, maxAge time.
 		Secure:   true,
 		HttpOnly: true,
 		MaxAge:   int(maxAge.Seconds()),
+	}
+	http.SetCookie(w, cookie)
+}
+
+func clearCookie(storage Storage, cookieKey string, w http.ResponseWriter) {
+	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+	if err != nil {
+		w.WriteHeader(500)
+		io.WriteString(w, err.Error())
+		return
+	}
+
+	cookie := &http.Cookie{
+		Domain: cookieDomain,
+		Name:   cookieKey,
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
 	}
 	http.SetCookie(w, cookie)
 }

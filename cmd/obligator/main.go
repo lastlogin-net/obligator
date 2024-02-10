@@ -10,7 +10,7 @@ func main() {
 
 	port := flag.Int("port", 1616, "Port")
 	rootUri := flag.String("root-uri", "", "Root URI")
-	loginKeyName := flag.String("login-key-name", "obligator_login_key", "Login key name")
+	prefix := flag.String("prefix", "obligator_", "Prefix for files and cookies")
 	storageDir := flag.String("storage-dir", "./", "Storage directory")
 	dbDir := flag.String("database-dir", "./", "Database directory")
 	apiSocketDir := flag.String("api-socket-dir", "./", "API socket directory")
@@ -22,7 +22,7 @@ func main() {
 	conf := obligator.ServerConfig{
 		Port:         *port,
 		RootUri:      *rootUri,
-		LoginKeyName: *loginKeyName,
+		Prefix:       *prefix,
 		StorageDir:   *storageDir,
 		DatabaseDir:  *dbDir,
 		ApiSocketDir: *apiSocketDir,

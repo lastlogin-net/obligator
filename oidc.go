@@ -68,6 +68,9 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		os.Exit(1)
 	}
 
+	prefix := storage.GetPrefix()
+	loginKeyName := prefix + "login_key"
+
 	// draft-ietf-oauth-security-topics-24 2.6
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 
@@ -209,6 +212,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		state := r.Form.Get("state")
 
 		promptParam := r.Form.Get("prompt")
+		// https://openid.net/specs/oauth-v2-multiple-response-types-1_0.html#none
 		if promptParam == "none" {
 			errUrl := fmt.Sprintf("%s?error=interaction_required&state=%s",
 				redirectUri, state)
@@ -229,7 +233,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		var hashedLoginKey string
 
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err == nil && loginKeyCookie.Value != "" {
 			hashedLoginKey = Hash(loginKeyCookie.Value)
 
@@ -298,7 +302,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		setJwtCookie(storage, authRequestJwt, "obligator_auth_request", maxAge, w, r)
+		setJwtCookie(storage, authRequestJwt, prefix+"auth_request", maxAge, w, r)
 
 		providers, err := storage.GetOAuth2Providers()
 		if err != nil {
@@ -344,7 +348,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, "Only logged-in users can access this endpoint")
@@ -358,26 +362,9 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		// delete auth request cookie
-		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-		cookie := &http.Cookie{
-			Domain:   cookieDomain,
-			Name:     "obligator_auth_request",
-			Value:    "",
-			Path:     "/",
-			SameSite: http.SameSiteLaxMode,
-			Secure:   true,
-			HttpOnly: true,
-			MaxAge:   10 * 60,
-		}
-		http.SetCookie(w, cookie)
+		clearCookie(storage, prefix+"auth_request", w)
 
-		parsedAuthReq, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
+		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())

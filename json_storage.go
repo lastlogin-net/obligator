@@ -12,7 +12,7 @@ import (
 type JsonStorage struct {
 	DisplayName     string           `json:"display_name"`
 	RootUri         string           `json:"root_uri"`
-	LoginKeyName    string           `json:"login_key_name"`
+	Prefix          string           `json:"prefix"`
 	OAuth2Providers []OAuth2Provider `json:"oauth2_providers"`
 	Smtp            *SmtpConfig      `json:"smtp"`
 	Jwks            jwk.Set          `json:"jwks"`
@@ -52,10 +52,10 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 				s.RootUri = msg.rootUri
 				msg.resp <- nil
 				s.Persist()
-			case getLoginKeyNameMessage:
-				msg.resp <- s.LoginKeyName
-			case setLoginKeyNameMessage:
-				s.LoginKeyName = msg.loginKeyName
+			case getPrefixMessage:
+				msg.resp <- s.Prefix
+			case setPrefixMessage:
+				s.Prefix = msg.prefix
 				msg.resp <- nil
 				s.Persist()
 			case getPublicMessage:
@@ -158,28 +158,28 @@ func (s *JsonStorage) SetRootUri(rootUri string) error {
 	return err
 }
 
-type getLoginKeyNameMessage struct {
+type getPrefixMessage struct {
 	resp chan string
 }
 
-func (s *JsonStorage) GetLoginKeyName() string {
+func (s *JsonStorage) GetPrefix() string {
 	ch := make(chan string)
-	s.message_chan <- getLoginKeyNameMessage{
+	s.message_chan <- getPrefixMessage{
 		resp: ch,
 	}
 	result := <-ch
 	return result
 }
 
-type setLoginKeyNameMessage struct {
-	loginKeyName string
-	resp         chan error
+type setPrefixMessage struct {
+	prefix string
+	resp   chan error
 }
 
-func (s *JsonStorage) SetLoginKeyName(loginKeyName string) {
+func (s *JsonStorage) SetPrefix(prefix string) {
 	resp := make(chan error)
-	s.message_chan <- setLoginKeyNameMessage{
-		loginKeyName,
+	s.message_chan <- setPrefixMessage{
+		prefix,
 		resp,
 	}
 	<-resp
