@@ -11,8 +11,13 @@ RUN go mod download
 # Copy the source code into the container
 COPY . .
 
-# Those linker flag enables us to statically link sqlite
-RUN CGO_ENABLED=1 GOOS=linux go build -a -ldflags '-linkmode external -extldflags "-static"' -o obligator/obligator .
+# Those linker flags statically link sqlite.
+# Check out https://www.arp242.net/static-go.html to understand these build parameters.
+RUN CGO_ENABLED=1 GOOS=linux go build \
+  -a \
+  -ldflags '-linkmode external -extldflags "-static"' \
+  -tags sqlite_omit_load_extension,netgo \
+  -o obligator/obligator .
 
 FROM docker.io/alpine:3.18
 
