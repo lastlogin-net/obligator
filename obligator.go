@@ -50,7 +50,7 @@ type OAuth2TokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int    `json:"expires_in"`
-	IdToken     string `json:"id_token"`
+	IdToken     string `json:"id_token,omitempty"`
 }
 
 type ObligatorMux struct {
