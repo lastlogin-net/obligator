@@ -277,7 +277,7 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 			return
 		}
 
-		var tokenRes OIDCTokenResponse
+		var tokenRes OAuth2TokenResponse
 
 		err = json.NewDecoder(resp.Body).Decode(&tokenRes)
 		if err != nil {

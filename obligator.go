@@ -46,7 +46,7 @@ type SmtpConfig struct {
 	SenderName string `json:"sender_name,omitempty"`
 }
 
-type OIDCTokenResponse struct {
+type OAuth2TokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int    `json:"expires_in"`

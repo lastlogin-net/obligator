@@ -35,11 +35,12 @@ type OAuth2ServerMetadata struct {
 }
 
 type OAuth2AuthRequest struct {
-	ClientId     string `json:"client_id"`
-	RedirectUri  string `json:"redirect_uri"`
-	Scope        string `json:"scope"`
-	State        string `json:"state"`
-	ResponseType string `json:"response_type"`
+	ClientId      string `json:"client_id"`
+	RedirectUri   string `json:"redirect_uri"`
+	Scope         string `json:"scope"`
+	State         string `json:"state"`
+	ResponseType  string `json:"response_type"`
+	CodeChallenge string `json:"code_challenge"`
 }
 
 type OIDCHandler struct {
@@ -550,7 +551,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 		w.Header().Set("Cache-Control", "no-store")
 
-		tokenRes := OIDCTokenResponse{
+		tokenRes := OAuth2TokenResponse{
 			AccessToken: string(signedAccessToken),
 			ExpiresIn:   3600,
 			IdToken:     string(signedIdToken),
@@ -589,6 +590,7 @@ func ParseAuthRequest(w http.ResponseWriter, r *http.Request) (*OAuth2AuthReques
 		return nil, errors.New("redirect_uri must be on the same domain as client_id")
 	}
 
+	scope := r.Form.Get("scope")
 	state := r.Form.Get("state")
 
 	promptParam := r.Form.Get("prompt")
@@ -611,6 +613,7 @@ func ParseAuthRequest(w http.ResponseWriter, r *http.Request) (*OAuth2AuthReques
 		ClientId:     clientId,
 		RedirectUri:  redirectUri,
 		ResponseType: responseType,
+		Scope:        scope,
 		State:        state,
 	}, nil
 }
