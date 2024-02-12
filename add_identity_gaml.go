@@ -1,4 +1,4 @@
-package main
+package obligator
 
 import (
 	"errors"
@@ -30,6 +30,9 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 	// TODO: clean up old codes
 	pendingCodes := make(map[string]string)
 	mut := &sync.Mutex{}
+
+	prefix := storage.GetPrefix()
+	loginKeyName := prefix + "login_key"
 
 	mux.HandleFunc("/login-gaml", func(w http.ResponseWriter, r *http.Request) {
 
@@ -117,7 +120,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			return
 		}
 
-		setJwtCookie(storage, reqJwt, "obligator_gaml_login_state", maxAge, w, r)
+		setJwtCookie(storage, reqJwt, prefix+"_gaml_login_state", maxAge, w, r)
 
 		templateData := struct {
 			DisplayName string
@@ -143,7 +146,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 
 	mux.HandleFunc("/complete-gaml-login", func(w http.ResponseWriter, r *http.Request) {
 
-		upstreamAuthReqCookie, err := r.Cookie("obligator_gaml_login_state")
+		upstreamAuthReqCookie, err := r.Cookie(prefix + "_gaml_login_state")
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -194,7 +197,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			return
 		}
 
-		request, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
+		request, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -202,7 +205,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 		}
 
 		cookieValue := ""
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err == nil {
 			cookieValue = loginKeyCookie.Value
 		}

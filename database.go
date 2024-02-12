@@ -1,4 +1,4 @@
-package main
+package obligator
 
 import (
 	"github.com/jmoiron/sqlx"

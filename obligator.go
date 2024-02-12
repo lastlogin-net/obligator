@@ -1,14 +1,14 @@
-package main
+package obligator
 
 import (
 	"crypto/rand"
 	"crypto/rsa"
 	"embed"
-	"flag"
 	"fmt"
 	"html/template"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,6 +17,25 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
+
+type Server struct {
+	Config  ServerConfig
+	Mux     *ObligatorMux
+	storage Storage
+}
+
+type ServerConfig struct {
+	Port         int
+	RootUri      string
+	AuthDomains  []string
+	Prefix       string
+	StorageDir   string
+	DatabaseDir  string
+	ApiSocketDir string
+	BehindProxy  bool
+	DisplayName  string
+	GeoDbPath    string
+}
 
 type SmtpConfig struct {
 	Server     string `json:"server,omitempty"`
@@ -27,7 +46,7 @@ type SmtpConfig struct {
 	SenderName string `json:"sender_name,omitempty"`
 }
 
-type OIDCTokenResponse struct {
+type OAuth2TokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int    `json:"expires_in"`
@@ -42,6 +61,11 @@ type ObligatorMux struct {
 type UserinfoResponse struct {
 	Sub   string `json:"sub"`
 	Email string `json:"email"`
+}
+
+type Validation struct {
+	Id     string `json:"id"`
+	IdType string `json:"id_type"`
 }
 
 const RateLimitTime = 24 * time.Hour
@@ -86,18 +110,19 @@ func (s *ObligatorMux) HandleFunc(p string, f func(w http.ResponseWriter, r *htt
 //go:embed templates assets
 var fs embed.FS
 
-func main() {
+func NewServer(conf ServerConfig) *Server {
 
-	port := flag.Int("port", 1616, "Port")
-	rootUri := flag.String("root-uri", "", "Root URI")
-	loginKeyName := flag.String("login-key-name", "obligator_login_key", "Login key name")
-	storageDir := flag.String("storage-dir", "./", "Storage directory")
-	dbDir := flag.String("database-dir", "./", "Database directory")
-	apiSocketDir := flag.String("api-socket-dir", "./", "API socket directory")
-	behindProxy := flag.Bool("behind-proxy", false, "Whether we are behind a reverse proxy")
-	displayName := flag.String("display-name", "obligator", "Display name")
-	geoDbPath := flag.String("geo-db-path", "", "IP2Location Geo DB file")
-	flag.Parse()
+	if conf.Port == 0 {
+		conf.Port = 1616
+	}
+
+	if conf.Prefix == "" {
+		conf.Prefix = "obligator"
+	}
+
+	if conf.DisplayName == "" {
+		conf.DisplayName = "obligator"
+	}
 
 	var identsType []*Identity
 	jwt.RegisterCustomField("identities", identsType)
@@ -106,20 +131,27 @@ func main() {
 	var idTokenType string
 	jwt.RegisterCustomField("id_token", idTokenType)
 
-	storagePath := filepath.Join(*storageDir, "obligator_storage.json")
+	storagePath := filepath.Join(conf.StorageDir, conf.Prefix+"storage.json")
 	storage, err := NewJsonStorage(storagePath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
-	//sqliteStorage, err := NewSqliteStorage("obligator_storage.sqlite")
+	if conf.Prefix != "obligator" || storage.GetPrefix() == "" {
+		storage.SetPrefix(conf.Prefix)
+	}
+
+	prefix := storage.GetPrefix()
+	loginKeyName := prefix + "login_key"
+
+	//sqliteStorage, err := NewSqliteStorage(prefix + "storage.sqlite")
 	//if err != nil {
 	//	fmt.Fprintln(os.Stderr, err.Error())
 	//	os.Exit(1)
 	//}
 
-	dbPath := filepath.Join(*dbDir, "obligator_db.sqlite")
+	dbPath := filepath.Join(conf.DatabaseDir, prefix+"db.sqlite")
 	db, err := NewDatabase(dbPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -128,23 +160,27 @@ func main() {
 
 	cluster := NewCluster()
 
-	if *displayName != "obligator" {
-		storage.SetDisplayName(*displayName)
+	if conf.DisplayName != "obligator" {
+		storage.SetDisplayName(conf.DisplayName)
 	}
 
-	if *rootUri != "" {
-		storage.SetRootUri(*rootUri)
+	if conf.RootUri != "" {
+		storage.SetRootUri(conf.RootUri)
 	}
 
-	if *loginKeyName != "obligator_login_key" || storage.GetLoginKeyName() == "" {
-		storage.SetLoginKeyName(*loginKeyName)
+	rootUrl, err := url.Parse(conf.RootUri)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
 	}
+
+	conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
 
 	if storage.GetRootUri() == "" {
 		fmt.Fprintln(os.Stderr, "WARNING: No root URI set")
 	}
 
-	_, err = NewApi(storage, *apiSocketDir)
+	_, err = NewApi(storage, conf.ApiSocketDir)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -172,14 +208,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	mux := NewObligatorMux(*behindProxy)
+	mux := NewObligatorMux(conf.BehindProxy)
 
 	var geoDb *ip2location.DB
-	if *geoDbPath != "" {
-		geoDb, err = ip2location.OpenDB(*geoDbPath)
+	if conf.GeoDbPath != "" {
+		geoDb, err = ip2location.OpenDB(conf.GeoDbPath)
 		if err != nil {
 			fmt.Println(err.Error())
-			return
+			return nil
 		}
 	}
 
@@ -190,7 +226,7 @@ func main() {
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)
 	mux.Handle("/callback", addIdentityOauth2Handler)
 
-	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl, *behindProxy, geoDb)
+	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl, conf.BehindProxy, geoDb)
 	mux.Handle("/login-email", addIdentityEmailHandler)
 	mux.Handle("/email-sent", addIdentityEmailHandler)
 	mux.Handle("/magic", addIdentityEmailHandler)
@@ -209,7 +245,7 @@ func main() {
 	mux.Handle("/receive", qrHandler)
 
 	mux.HandleFunc("/ip", func(w http.ResponseWriter, r *http.Request) {
-		remoteIp, err := getRemoteIp(r, *behindProxy)
+		remoteIp, err := getRemoteIp(r, conf.BehindProxy)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -241,7 +277,7 @@ func main() {
 		url := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=code&state=&scope=",
 			storage.GetRootUri(), redirectUri, redirectUri)
 
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err != nil {
 			http.Redirect(w, r, url, 307)
 			return
@@ -277,9 +313,13 @@ func main() {
 
 	mux.HandleFunc("/no-account", func(w http.ResponseWriter, r *http.Request) {
 		data := struct {
-			URL string
+			URL         string
+			RootUri     string
+			DisplayName string
 		}{
-			URL: fmt.Sprintf("/auth?%s", r.URL.RawQuery),
+			URL:         fmt.Sprintf("/auth?%s", r.URL.RawQuery),
+			RootUri:     storage.GetRootUri(),
+			DisplayName: storage.GetDisplayName(),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "no-account.html", data)
@@ -294,18 +334,76 @@ func main() {
 		printJson(r.Header)
 	})
 
+	s := &Server{
+		Config:  conf,
+		Mux:     mux,
+		storage: storage,
+	}
+
+	return s
+}
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.Mux.ServeHTTP(w, r)
+}
+
+func (s *Server) Start() error {
 	server := http.Server{
-		Addr:    fmt.Sprintf(":%d", *port),
-		Handler: mux,
+		Addr:    fmt.Sprintf(":%d", s.Config.Port),
+		Handler: s.Mux,
 	}
 
 	fmt.Println("Running")
 
-	err = server.ListenAndServe()
+	err := server.ListenAndServe()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, err.Error())
-		os.Exit(1)
+		return err
 	}
+
+	return nil
+}
+
+func (s *Server) AuthUri(authReq *OAuth2AuthRequest) string {
+	return AuthUri(s.Config.RootUri+"/auth", authReq)
+}
+
+func AuthUri(serverUri string, authReq *OAuth2AuthRequest) string {
+	uri := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&response_type=%s&state=%s&scope=%s",
+		serverUri, authReq.ClientId, authReq.RedirectUri,
+		authReq.ResponseType, authReq.State, authReq.Scope)
+	return uri
+}
+
+func (s *Server) AuthDomains() []string {
+	return s.Config.AuthDomains
+}
+
+func (s *Server) Validate(r *http.Request) (*Validation, error) {
+	r.ParseForm()
+
+	loginKeyName := s.storage.GetPrefix() + "login_key"
+
+	loginKeyCookie, err := r.Cookie(loginKeyName)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: don't generate publicJwks every time
+	publicJwks, err := jwk.PublicSetOf(s.storage.GetJWKSet())
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: add Remote-Email to header
+	_, err = jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+	if err != nil {
+		return nil, err
+	}
+
+	v := &Validation{}
+
+	return v, nil
 }
 
 func GenerateJWK() (jwk.Key, error) {

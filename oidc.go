@@ -1,7 +1,8 @@
-package main
+package obligator
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -33,6 +34,15 @@ type OAuth2ServerMetadata struct {
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
 }
 
+type OAuth2AuthRequest struct {
+	ClientId      string `json:"client_id"`
+	RedirectUri   string `json:"redirect_uri"`
+	Scope         string `json:"scope"`
+	State         string `json:"state"`
+	ResponseType  string `json:"response_type"`
+	CodeChallenge string `json:"code_challenge"`
+}
+
 type OIDCHandler struct {
 	mux *http.ServeMux
 }
@@ -59,6 +69,9 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+
+	prefix := storage.GetPrefix()
+	loginKeyName := prefix + "login_key"
 
 	// draft-ietf-oauth-security-topics-24 2.6
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
@@ -170,49 +183,8 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		r.ParseForm()
 
-		clientId := r.Form.Get("client_id")
-		if clientId == "" {
-			w.WriteHeader(400)
-			io.WriteString(w, "client_id missing")
-			return
-		}
-
-		parsedClientId, err := url.Parse(clientId)
+		ar, err := ParseAuthRequest(w, r)
 		if err != nil {
-			w.WriteHeader(400)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		redirectUri := r.Form.Get("redirect_uri")
-		if redirectUri == "" {
-			w.WriteHeader(400)
-			io.WriteString(w, "redirect_uri missing")
-			return
-		}
-
-		// draft-ietf-oauth-security-topics-24 4.1
-		if !strings.HasPrefix(redirectUri, clientId) {
-			w.WriteHeader(400)
-			io.WriteString(w, "redirect_uri must be on the same domain as client_id")
-			return
-		}
-
-		state := r.Form.Get("state")
-
-		promptParam := r.Form.Get("prompt")
-		if promptParam == "none" {
-			errUrl := fmt.Sprintf("%s?error=interaction_required&state=%s",
-				redirectUri, state)
-			http.Redirect(w, r, errUrl, http.StatusSeeOther)
-			return
-		}
-
-		responseType := r.Form.Get("response_type")
-		if responseType == "" {
-			errUrl := fmt.Sprintf("%s?error=unsupported_response_type&state=%s",
-				redirectUri, state)
-			http.Redirect(w, r, errUrl, http.StatusSeeOther)
 			return
 		}
 
@@ -221,7 +193,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		var hashedLoginKey string
 
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err == nil && loginKeyCookie.Value != "" {
 			hashedLoginKey = Hash(loginKeyCookie.Value)
 
@@ -246,7 +218,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		}
 
-		previousLogins, ok := logins[clientId]
+		previousLogins, ok := logins[ar.ClientId]
 		if !ok {
 			previousLogins = []*Login{}
 		}
@@ -276,12 +248,13 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			Expiration(issuedAt.Add(maxAge)).
 			Claim("login_key_hash", hashedLoginKey).
 			Claim("raw_query", r.URL.RawQuery).
-			Claim("client_id", clientId).
-			Claim("redirect_uri", redirectUri).
-			Claim("state", state).
+			Claim("client_id", ar.ClientId).
+			Claim("redirect_uri", ar.RedirectUri).
+			Claim("state", ar.State).
 			Claim("scope", r.Form.Get("scope")).
 			Claim("nonce", r.Form.Get("nonce")).
 			Claim("pkce_code_challenge", r.Form.Get("code_challenge")).
+			Claim("response_type", ar.ResponseType).
 			Build()
 		if err != nil {
 			w.WriteHeader(500)
@@ -289,11 +262,23 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		setJwtCookie(storage, authRequestJwt, "obligator_auth_request", maxAge, w, r)
+		setJwtCookie(storage, authRequestJwt, prefix+"auth_request", maxAge, w, r)
 
 		providers, err := storage.GetOAuth2Providers()
 		if err != nil {
 			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		canEmail := true
+		if _, err := storage.GetSmtpConfig(); err != nil {
+			canEmail = false
+		}
+
+		parsedClientId, err := url.Parse(ar.ClientId)
+		if err != nil {
+			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
 			return
 		}
@@ -307,6 +292,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			OAuth2Providers []OAuth2Provider
 			LogoMap         map[string]template.HTML
 			URL             string
+			CanEmail        bool
 		}{
 			RootUri:         storage.GetRootUri(),
 			DisplayName:     storage.GetDisplayName(),
@@ -316,6 +302,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			OAuth2Providers: providers,
 			LogoMap:         providerLogoMap,
 			URL:             fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
+			CanEmail:        canEmail,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "auth.html", data)
@@ -335,7 +322,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, "Only logged-in users can access this endpoint")
@@ -349,26 +336,9 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		// delete auth request cookie
-		cookieDomain, err := buildCookieDomain(storage.GetRootUri())
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-		cookie := &http.Cookie{
-			Domain:   cookieDomain,
-			Name:     "obligator_auth_request",
-			Value:    "",
-			Path:     "/",
-			SameSite: http.SameSiteLaxMode,
-			Secure:   true,
-			HttpOnly: true,
-			MaxAge:   10 * 60,
-		}
-		http.SetCookie(w, cookie)
+		clearCookie(storage, prefix+"auth_request", w)
 
-		parsedAuthReq, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
+		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
@@ -479,15 +449,23 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&code=%s&state=%s&scope=%s",
-			claimFromToken("redirect_uri", parsedAuthReq),
-			claimFromToken("client_id", parsedAuthReq),
-			claimFromToken("redirect_uri", parsedAuthReq),
-			string(signedCode),
-			claimFromToken("state", parsedAuthReq),
-			claimFromToken("scope", parsedAuthReq))
+		responseType := claimFromToken("response_type", parsedAuthReq)
 
-		http.Redirect(w, r, url, http.StatusSeeOther)
+		// https://openid.net/specs/oauth-v2-multiple-response-types-1_0.html#none
+		if responseType == "none" {
+			redirectUri := claimFromToken("redirect_uri", parsedAuthReq)
+			http.Redirect(w, r, redirectUri, http.StatusSeeOther)
+		} else {
+			url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&code=%s&state=%s&scope=%s",
+				claimFromToken("redirect_uri", parsedAuthReq),
+				claimFromToken("client_id", parsedAuthReq),
+				claimFromToken("redirect_uri", parsedAuthReq),
+				string(signedCode),
+				claimFromToken("state", parsedAuthReq),
+				claimFromToken("scope", parsedAuthReq))
+
+			http.Redirect(w, r, url, http.StatusSeeOther)
+		}
 	})
 
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
@@ -573,7 +551,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 		w.Header().Set("Cache-Control", "no-store")
 
-		tokenRes := OIDCTokenResponse{
+		tokenRes := OAuth2TokenResponse{
 			AccessToken: string(signedAccessToken),
 			ExpiresIn:   3600,
 			IdToken:     string(signedIdToken),
@@ -586,6 +564,58 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 	})
 
 	return h
+}
+
+func ParseAuthRequest(w http.ResponseWriter, r *http.Request) (*OAuth2AuthRequest, error) {
+	r.ParseForm()
+
+	clientId := r.Form.Get("client_id")
+	if clientId == "" {
+		w.WriteHeader(400)
+		io.WriteString(w, "client_id missing")
+		return nil, errors.New("client_id missing")
+	}
+
+	redirectUri := r.Form.Get("redirect_uri")
+	if redirectUri == "" {
+		w.WriteHeader(400)
+		io.WriteString(w, "redirect_uri missing")
+		return nil, errors.New("redirect_uri missing")
+	}
+
+	// draft-ietf-oauth-security-topics-24 4.1
+	if !strings.HasPrefix(redirectUri, clientId) {
+		w.WriteHeader(400)
+		io.WriteString(w, "redirect_uri must be on the same domain as client_id")
+		return nil, errors.New("redirect_uri must be on the same domain as client_id")
+	}
+
+	scope := r.Form.Get("scope")
+	state := r.Form.Get("state")
+
+	promptParam := r.Form.Get("prompt")
+	if promptParam == "none" {
+		errUrl := fmt.Sprintf("%s?error=interaction_required&state=%s",
+			redirectUri, state)
+		http.Redirect(w, r, errUrl, http.StatusSeeOther)
+		return nil, errors.New("interaction required")
+	}
+
+	responseType := r.Form.Get("response_type")
+	if responseType == "" {
+		errUrl := fmt.Sprintf("%s?error=unsupported_response_type&state=%s",
+			redirectUri, state)
+		http.Redirect(w, r, errUrl, http.StatusSeeOther)
+		return nil, errors.New("unsupported_response_type")
+	}
+
+	return &OAuth2AuthRequest{
+		ClientId:     clientId,
+		RedirectUri:  redirectUri,
+		ResponseType: responseType,
+		Scope:        scope,
+		State:        state,
+	}, nil
 }
 
 func (h *OIDCHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

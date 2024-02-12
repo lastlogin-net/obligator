@@ -1,4 +1,4 @@
-package main
+package obligator
 
 import (
 	"encoding/json"
@@ -154,7 +154,7 @@ func NewApi(storage Storage, dir string) (*Api, error) {
 		Handler: mux,
 	}
 
-	sockPath := filepath.Join(dir, "obligator_api.sock")
+	sockPath := filepath.Join(dir, storage.GetPrefix()+"api.sock")
 
 	os.Remove(sockPath)
 

@@ -1,4 +1,4 @@
-package main
+package obligator
 
 import (
 	"fmt"
@@ -66,6 +66,8 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 	}
 
 	const EmailTimeout = 2 * time.Minute
+	prefix := storage.GetPrefix()
+	loginKeyName := prefix + "login_key"
 
 	// Periodically clean up expired shares
 	go func() {
@@ -195,7 +197,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		}
 		cookie := &http.Cookie{
 			Domain:   cookieDomain,
-			Name:     "obligator_email_login",
+			Name:     prefix + "email_login",
 			Value:    string(encryptedJwt),
 			Path:     "/",
 			SameSite: http.SameSiteLaxMode,
@@ -207,7 +209,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 
 		// TODO: this is duplicated. make a function
 		identities := []*Identity{}
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err == nil && loginKeyCookie.Value != "" {
 			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
 			if err != nil {
@@ -259,6 +261,8 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 					fmt.Fprintf(os.Stderr, "Failed to send email: %s\n", err.Error())
 				}
 			}()
+		} else {
+			fmt.Fprintf(os.Stderr, "Email validation attempted for non-existing user: %s\n", email)
 		}
 
 		data := struct {
@@ -336,7 +340,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 
 		differentBrowsers := true
 
-		emailCodeJwtCookie, err := r.Cookie("obligator_email_login")
+		emailCodeJwtCookie, err := r.Cookie(prefix + "email_login")
 		if err == nil {
 			encryptedJwt := []byte(emailCodeJwtCookie.Value)
 			decryptedJwt, err := jwe.Decrypt(encryptedJwt, jwe.WithKey(jwa.RSA_OAEP_256, privKey))
@@ -427,7 +431,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		email := pendingLogin.Email
 
 		cookieValue := ""
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err == nil {
 			cookieValue = loginKeyCookie.Value
 		}
@@ -441,7 +445,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 
 		http.SetCookie(w, cookie)
 
-		authRequest, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
+		authRequest, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
 		if err == nil {
 			redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), claimFromToken("raw_query", authRequest))
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)

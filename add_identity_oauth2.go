@@ -1,4 +1,4 @@
-package main
+package obligator
 
 import (
 	"context"
@@ -104,6 +104,9 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 
 	buildProviderLogoMap(storage)
 
+	prefix := storage.GetPrefix()
+	loginKeyName := prefix + "login_key"
+
 	// TODO: This is not thread-safe to run in a goroutine. It creates a
 	// race condition with any incoming requests. But this speeds up
 	// startup for development.
@@ -177,7 +180,7 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 			return
 		}
 
-		setJwtCookie(storage, reqJwt, "obligator_upstream_oauth2_request", maxAge, w, r)
+		setJwtCookie(storage, reqJwt, prefix+"upstream_oauth2_request", maxAge, w, r)
 
 		callbackUri := fmt.Sprintf("%s/callback", storage.GetRootUri())
 
@@ -192,7 +195,7 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 
 		r.ParseForm()
 
-		upstreamAuthReqCookie, err := r.Cookie("obligator_upstream_oauth2_request")
+		upstreamAuthReqCookie, err := r.Cookie(prefix + "upstream_oauth2_request")
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -274,7 +277,7 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 			return
 		}
 
-		var tokenRes OIDCTokenResponse
+		var tokenRes OAuth2TokenResponse
 
 		err = json.NewDecoder(resp.Body).Decode(&tokenRes)
 		if err != nil {
@@ -339,7 +342,7 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 			return
 		}
 
-		parsedAuthReq, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
+		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -355,7 +358,7 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 		}
 
 		cookieValue := ""
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err == nil {
 			cookieValue = loginKeyCookie.Value
 		}
@@ -370,6 +373,8 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 		http.SetCookie(w, cookie)
 
 		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), rawQuery)
+
+		clearCookie(storage, prefix+"upstream_oauth2_request", w)
 
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})

@@ -63,6 +63,7 @@
     </p>
 
     <div class='og-button-list'>
+      {{if .CanEmail}}
       <div>
         <form action="/login-email" method="POST">
           <button class='og-formbutton' type="submit">
@@ -73,6 +74,7 @@
           </button>
         </form>
       </div>
+      {{end}}
 
       <!--
       <div>

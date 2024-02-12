@@ -1,4 +1,4 @@
-package main
+package obligator
 
 import (
 	"encoding/base64"
@@ -59,6 +59,9 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 	}
 
 	const ShareTimeout = 2 * time.Minute
+
+	prefix := storage.GetPrefix()
+	loginKeyName := prefix + "login_key"
 
 	// Periodically clean up expired shares
 	go func() {
@@ -133,7 +136,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 
 		identities := []*Identity{}
 
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err == nil && loginKeyCookie.Value != "" {
 			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
 			if err != nil {
@@ -182,7 +185,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		identities := []*Identity{}
 		logins := make(map[string][]*Login)
 
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err == nil && loginKeyCookie.Value != "" {
 			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
 			if err != nil {
@@ -329,7 +332,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		}
 
 		cookie := &http.Cookie{}
-		loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
+		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err == nil {
 			cookie = loginKeyCookie
 		}
@@ -356,7 +359,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 
 		http.SetCookie(w, cookie)
 
-		authRequest, err := getJwtFromCookie("obligator_auth_request", storage, w, r)
+		authRequest, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())

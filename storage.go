@@ -1,4 +1,4 @@
-package main
+package obligator
 
 import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
@@ -6,7 +6,7 @@ import (
 
 type Storage interface {
 	GetRootUri() string
-	GetLoginKeyName() string
+	GetPrefix() string
 	SetRootUri(string) error
 	GetUsers() ([]User, error)
 	CreateUser(User) error
