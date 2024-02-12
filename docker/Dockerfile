@@ -17,7 +17,8 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
   -a \
   -ldflags '-linkmode external -extldflags "-static"' \
   -tags sqlite_omit_load_extension,netgo \
-  -o obligator/obligator .
+  -o obligator/obligator \
+  ./cmd/obligator/
 
 FROM docker.io/alpine:3.18
 
