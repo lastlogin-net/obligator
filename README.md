@@ -242,7 +242,7 @@ Lines of code were generated using a similar command to this:
 find . -type f -name "*.go*" -o -name "*.ts*" -o -name "*.tsx" -o -name "*.html" -o -name "*.js" -o -name "*.scss" -o -name "*.py" -o -name "*.java" -o -name "*.xml" -o -name "*.rs" | xargs cat | wc
 ```
 
-Ory is calculated using Hyrda + Oathkeeper + Kratos, per [this][12]
+Ory is calculated using Hydra + Oathkeeper + Kratos, per [this][12]
 
 [0]: https://doc.traefik.io/traefik/middlewares/http/forwardauth/
 
