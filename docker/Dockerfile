@@ -20,6 +20,8 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
   -o obligator/obligator \
   ./cmd/obligator/
 
+RUN strip obligator/obligator
+
 FROM docker.io/alpine:3.18
 
 WORKDIR /obligator
