@@ -2,6 +2,7 @@ package obligator
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -12,11 +13,16 @@ import (
 )
 
 type Api struct {
+	storage Storage
 }
 
 func NewApi(storage Storage, dir string) (*Api, error) {
 
 	mux := http.NewServeMux()
+
+	a := &Api{
+		storage,
+	}
 
 	mux.HandleFunc("/oauth2-providers", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -59,38 +65,13 @@ func NewApi(storage Storage, dir string) (*Api, error) {
 				return
 			}
 
-			if prov.ID == "" {
-				w.WriteHeader(400)
-				io.WriteString(w, "Missing ID")
-				return
-			}
-
-			if prov.Name == "" {
-				w.WriteHeader(400)
-				io.WriteString(w, "Missing name")
-				return
-			}
-
-			if prov.URI == "" {
-				w.WriteHeader(400)
-				io.WriteString(w, "Missing URI")
-				return
-			}
-
-			if prov.ClientID == "" {
-				w.WriteHeader(400)
-				io.WriteString(w, "Missing client_id")
-				return
-			}
-
-			err = storage.SetOauth2Provider(prov)
+			err = a.SetOAuth2Provider(prov)
 			if err != nil {
-				w.WriteHeader(400)
+				w.WriteHeader(500)
 				io.WriteString(w, err.Error())
 				return
 			}
 
-			updateOidcConfigs(storage)
 		}
 	})
 
@@ -134,16 +115,9 @@ func NewApi(storage Storage, dir string) (*Api, error) {
 				return
 			}
 
-			_, err = mail.ParseAddress(user.Email)
+			err = a.AddUser(user)
 			if err != nil {
-				w.WriteHeader(400)
-				io.WriteString(w, err.Error())
-				return
-			}
-
-			err = storage.CreateUser(user)
-			if err != nil {
-				w.WriteHeader(400)
+				w.WriteHeader(500)
 				io.WriteString(w, err.Error())
 				return
 			}
@@ -167,6 +141,45 @@ func NewApi(storage Storage, dir string) (*Api, error) {
 		server.Serve(listener)
 	}()
 
-	a := &Api{}
 	return a, nil
+}
+
+func (a *Api) SetOAuth2Provider(prov OAuth2Provider) error {
+	if prov.ID == "" {
+		return errors.New("Missing ID")
+	}
+
+	if prov.Name == "" {
+		return errors.New("Missing name")
+	}
+
+	if prov.URI == "" {
+		return errors.New("Missing URI")
+	}
+
+	if prov.ClientID == "" {
+		return errors.New("Missing client_id")
+	}
+
+	err := a.storage.SetOauth2Provider(prov)
+	if err != nil {
+		return err
+	}
+
+	updateOidcConfigs(a.storage)
+
+	return nil
+}
+
+func (a *Api) AddUser(user User) error {
+	_, err := mail.ParseAddress(user.Email)
+	if err != nil {
+		return err
+	}
+
+	err = a.storage.CreateUser(user)
+	if err != nil {
+		return err
+	}
+	return nil
 }

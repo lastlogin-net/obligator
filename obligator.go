@@ -19,6 +19,7 @@ import (
 )
 
 type Server struct {
+	api     *Api
 	Config  ServerConfig
 	Mux     *ObligatorMux
 	storage Storage
@@ -180,7 +181,7 @@ func NewServer(conf ServerConfig) *Server {
 		fmt.Fprintln(os.Stderr, "WARNING: No root URI set")
 	}
 
-	_, err = NewApi(storage, conf.ApiSocketDir)
+	api, err := NewApi(storage, conf.ApiSocketDir)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -337,6 +338,7 @@ func NewServer(conf ServerConfig) *Server {
 	s := &Server{
 		Config:  conf,
 		Mux:     mux,
+		api:     api,
 		storage: storage,
 	}
 
@@ -377,6 +379,14 @@ func AuthUri(serverUri string, authReq *OAuth2AuthRequest) string {
 
 func (s *Server) AuthDomains() []string {
 	return s.Config.AuthDomains
+}
+
+func (s *Server) SetOAuth2Provider(prov OAuth2Provider) error {
+	return s.api.SetOAuth2Provider(prov)
+}
+
+func (s *Server) AddUser(user User) error {
+	return s.api.AddUser(user)
 }
 
 func (s *Server) Validate(r *http.Request) (*Validation, error) {
