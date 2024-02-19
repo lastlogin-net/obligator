@@ -98,9 +98,9 @@ func NewApi(storage Storage, dir string) (*Api, error) {
 	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			users, err := storage.GetUsers()
+			users, err := a.GetUsers()
 			if err != nil {
-				w.WriteHeader(400)
+				w.WriteHeader(500)
 				io.WriteString(w, err.Error())
 				return
 			}
@@ -182,4 +182,14 @@ func (a *Api) AddUser(user User) error {
 		return err
 	}
 	return nil
+}
+
+func (a *Api) GetUsers() ([]User, error) {
+
+	users, err := a.storage.GetUsers()
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }

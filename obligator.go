@@ -389,6 +389,10 @@ func (s *Server) AddUser(user User) error {
 	return s.api.AddUser(user)
 }
 
+func (s *Server) GetUsers() ([]User, error) {
+	return s.api.GetUsers()
+}
+
 func (s *Server) Validate(r *http.Request) (*Validation, error) {
 	r.ParseForm()
 
