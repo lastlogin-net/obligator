@@ -13,15 +13,17 @@ import (
 )
 
 type Api struct {
-	storage Storage
+	storage       Storage
+	oauth2MetaMan *OAuth2MetadataManager
 }
 
-func NewApi(storage Storage, dir string) (*Api, error) {
+func NewApi(storage Storage, dir string, oauth2MetaMan *OAuth2MetadataManager) (*Api, error) {
 
 	mux := http.NewServeMux()
 
 	a := &Api{
 		storage,
+		oauth2MetaMan,
 	}
 
 	mux.HandleFunc("/oauth2-providers", func(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +168,10 @@ func (a *Api) SetOAuth2Provider(prov OAuth2Provider) error {
 		return err
 	}
 
-	updateOidcConfigs(a.storage)
+	err = a.oauth2MetaMan.Update()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

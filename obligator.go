@@ -181,7 +181,14 @@ func NewServer(conf ServerConfig) *Server {
 		fmt.Fprintln(os.Stderr, "WARNING: No root URI set")
 	}
 
-	api, err := NewApi(storage, conf.ApiSocketDir)
+	oauth2MetaMan := NewOAuth2MetadataManager(storage)
+	err = oauth2MetaMan.Update()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	api, err := NewApi(storage, conf.ApiSocketDir, oauth2MetaMan)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -223,7 +230,7 @@ func NewServer(conf ServerConfig) *Server {
 	oidcHandler := NewOIDCHandler(storage, tmpl)
 	mux.Handle("/", oidcHandler)
 
-	addIdentityOauth2Handler := NewAddIdentityOauth2Handler(storage)
+	addIdentityOauth2Handler := NewAddIdentityOauth2Handler(storage, oauth2MetaMan)
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)
 	mux.Handle("/callback", addIdentityOauth2Handler)
 

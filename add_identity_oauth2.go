@@ -1,7 +1,6 @@
 package obligator
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -27,8 +26,6 @@ type AddIdentityOauth2Handler struct {
 	mux *http.ServeMux
 }
 
-var oidcConfigs map[string]*OAuth2ServerMetadata
-var jwksRefreshers map[string]*jwk.Cache
 var providerLogoMap map[string]template.HTML
 
 func buildProviderLogoMap(storage Storage) {
@@ -56,42 +53,7 @@ func buildProviderLogoMap(storage Storage) {
 	}
 }
 
-func updateOidcConfigs(storage Storage) {
-	oidcConfigs = make(map[string]*OAuth2ServerMetadata)
-	jwksRefreshers = make(map[string]*jwk.Cache)
-
-	ctx := context.Background()
-
-	providers, err := storage.GetOAuth2Providers()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
-	for _, oidcProvider := range providers {
-		if !oidcProvider.OpenIDConnect {
-			continue
-		}
-
-		var err error
-		oidcConfigs[oidcProvider.ID], err = GetOidcConfiguration(oidcProvider.URI)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-
-		jwksRefreshers[oidcProvider.ID] = jwk.NewCache(ctx)
-		jwksRefreshers[oidcProvider.ID].Register(oidcConfigs[oidcProvider.ID].JwksUri)
-
-		_, err = jwksRefreshers[oidcProvider.ID].Refresh(ctx, oidcConfigs[oidcProvider.ID].JwksUri)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-	}
-}
-
-func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
+func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataManager) *AddIdentityOauth2Handler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityOauth2Handler{
@@ -99,8 +61,6 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 	}
 
 	httpClient := &http.Client{}
-
-	ctx := context.Background()
 
 	buildProviderLogoMap(storage)
 
@@ -110,7 +70,7 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 	// TODO: This is not thread-safe to run in a goroutine. It creates a
 	// race condition with any incoming requests. But this speeds up
 	// startup for development.
-	go updateOidcConfigs(storage)
+	go oauth2MetaMan.Update()
 
 	mux.HandleFunc("/login-oauth2", func(w http.ResponseWriter, r *http.Request) {
 
@@ -132,7 +92,13 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 
 		var authURL string
 		if provider.OpenIDConnect {
-			authURL = oidcConfigs[provider.ID].AuthorizationEndpoint
+			meta, err := oauth2MetaMan.GetMeta(provider.ID)
+			if err != nil {
+				w.WriteHeader(500)
+				io.WriteString(w, err.Error())
+				return
+			}
+			authURL = meta.AuthorizationEndpoint
 		} else {
 			authURL = provider.AuthorizationURI
 		}
@@ -244,7 +210,13 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 				// oauth2Provider.TokenURI is blank
 				tokenEndpoint = oauth2Provider.TokenURI
 			} else {
-				tokenEndpoint = oidcConfigs[oauth2Provider.ID].TokenEndpoint
+				meta, err := oauth2MetaMan.GetMeta(oauth2Provider.ID)
+				if err != nil {
+					w.WriteHeader(500)
+					io.WriteString(w, err.Error())
+					return
+				}
+				tokenEndpoint = meta.TokenEndpoint
 			}
 		} else {
 			tokenEndpoint = oauth2Provider.TokenURI
@@ -289,7 +261,7 @@ func NewAddIdentityOauth2Handler(storage Storage) *AddIdentityOauth2Handler {
 		var email string
 
 		if oauth2Provider.OpenIDConnect {
-			keyset, err := jwksRefreshers[oauth2Provider.ID].Get(ctx, oidcConfigs[oauth2Provider.ID].JwksUri)
+			keyset, err := oauth2MetaMan.GetKeyset(oauth2Provider.ID)
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
