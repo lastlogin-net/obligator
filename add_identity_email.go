@@ -65,7 +65,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		os.Exit(1)
 	}
 
-	const EmailTimeout = 2 * time.Minute
+	const EmailTimeout = 5 * time.Minute
 	prefix := storage.GetPrefix()
 	loginKeyName := prefix + "login_key"
 
