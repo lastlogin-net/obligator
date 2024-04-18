@@ -6,6 +6,7 @@ arch_name=$2
 version=$(git describe --tags)
 arch=$arch_name
 file_extension=
+strip_command=strip
 
 if [[ "$os" == "windows" ]]
 then
@@ -16,6 +17,7 @@ fi
 if [[ "$arch_name" == "arm64" ]]
 then
     export CC=aarch64-linux-gnu-gcc
+    strip_command=aarch64-linux-gnu-strip
 fi
 
 if [[ "$arch_name" == "x64" ]]
@@ -34,6 +36,12 @@ CGO_ENABLED=1 GOOS=$os GOARCH=$arch go build \
 
 if [[ "$os" != "windows" ]]
 then
+    $strip_command build/$filename
     tar czf build/$filename.tar.gz -C build $filename
-    rm build/$filename
+else
+    cd build
+    zip $filename.zip $filename
+    cd ..
 fi
+
+rm build/$filename
