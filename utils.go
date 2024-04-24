@@ -77,6 +77,8 @@ func buildCookieDomain(fullUrl string) (string, error) {
 	}
 	hostParts := strings.Split(rootUrlParsed.Host, ".")
 
+	// TODO: This should probably be using the public suffix list. It's
+	// currently hardcoded for only certain domains
 	if len(hostParts) < 3 {
 		// apex domain
 		return rootUrlParsed.Host, nil
