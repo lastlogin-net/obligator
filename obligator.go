@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -416,13 +417,27 @@ func (s *Server) Validate(r *http.Request) (*Validation, error) {
 		return nil, err
 	}
 
-	// TODO: add Remote-Email to header
-	_, err = jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+	parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
 	if err != nil {
 		return nil, err
 	}
 
-	v := &Validation{}
+	tokIdentsInterface, exists := parsed.Get("identities")
+	if !exists {
+		return nil, errors.New("No identities")
+	}
+
+	tokIdents, ok := tokIdentsInterface.([]*Identity)
+	if !ok {
+		return nil, errors.New("No identities")
+	}
+
+	ident := tokIdents[0]
+
+	v := &Validation{
+		IdType: ident.IdType,
+		Id:     ident.Id,
+	}
 
 	return v, nil
 }
