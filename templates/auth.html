@@ -1,5 +1,6 @@
 {{ template "header.html" . }}
 
+    <button id='register-fedcm-btn' class='og-formbutton'>Register FedCM</button>
     <div class='og-logout-container'>
       <form action="/logout" method="POST">
         <input type='hidden' name='prev_page' value='{{.URL}}' required>
@@ -116,5 +117,14 @@
       </div>
       {{end}}
     </div>
+
+    <script>
+      const fedcmBtn = document.getElementById('register-fedcm-btn');
+      fedcmBtn.addEventListener('click', () => {
+        const rootUri = {{.RootUri}};
+        const registerUri = `${rootUri}/fedcm/config.json`;
+        IdentityProvider.register(registerUri);
+      });
+    </script>
 
 {{ template "footer.html" . }}
