@@ -119,12 +119,20 @@
     </div>
 
     <script>
-      const fedcmBtn = document.getElementById('register-fedcm-btn');
-      fedcmBtn.addEventListener('click', () => {
-        const rootUri = {{.RootUri}};
-        const registerUri = `${rootUri}/fedcm/config.json`;
-        IdentityProvider.register(registerUri);
-      });
+      // FedCM feature detection from here: https://github.com/fedidcg/FedCM/issues/240#issuecomment-2004650817
+      function getChromeVersion () {     
+          const raw = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
+          return raw ? parseInt(raw[2], 10) : false;
+      }
+
+      if (window["IdentityProvider"] && IdentityProvider.register != undefined && getChromeVersion() >= 126) {
+        const fedcmBtn = document.getElementById('register-fedcm-btn');
+        fedcmBtn.addEventListener('click', () => {
+          const rootUri = {{.RootUri}};
+          const registerUri = `${rootUri}/fedcm/config.json`;
+          IdentityProvider.register(registerUri);
+        });
+      }
     </script>
 
 {{ template "footer.html" . }}
