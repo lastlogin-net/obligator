@@ -5,6 +5,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
+	//"net/http/httputil"
+	"os"
+
+	"github.com/lestrrat-go/jwx/v2/jwa"
+	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
 type FedCmWebId struct {
@@ -51,6 +59,16 @@ func NewFedCmHandler(storage Storage) *FedCmHandler {
 		mux: mux,
 	}
 
+	prefix := storage.GetPrefix()
+	loginKeyName := prefix + "login_key"
+
+	privateJwks := storage.GetJWKSet()
+	publicJwks, err := jwk.PublicSetOf(privateJwks)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
 	mux.HandleFunc("/.well-known/web-identity", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("/.well-known/web-identity")
 
@@ -70,12 +88,11 @@ func NewFedCmHandler(storage Storage) *FedCmHandler {
 		}
 	})
 	mux.HandleFunc("/config.json", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("/fedcm/config.json")
 		config := FedCmConfig{
 			AccountsEndpoint:       fmt.Sprintf("%s/fedcm/accounts", storage.GetRootUri()),
 			ClientMetadataEndpoint: fmt.Sprintf("%s/fedcm/client-metadata", storage.GetRootUri()),
 			IdAssertionEndpoint:    fmt.Sprintf("%s/fedcm/id-assertion", storage.GetRootUri()),
-			LoginUrl:               fmt.Sprintf("%s/fedcm/login-url", storage.GetRootUri()),
+			LoginUrl:               fmt.Sprintf("%s/fedcm/login", storage.GetRootUri()),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -87,21 +104,53 @@ func NewFedCmHandler(storage Storage) *FedCmHandler {
 		}
 	})
 	mux.HandleFunc("/accounts", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("/fedcm/accounts")
+
+		if r.Header.Get("Sec-Fetch-Dest") != "webidentity" {
+			w.WriteHeader(401)
+			io.WriteString(w, "Sec-Fetch-Dest != webidentity")
+			return
+		}
+
+		idents := []*Identity{}
+
+		loginKeyCookie, err := r.Cookie(loginKeyName)
+		if err != nil {
+			fmt.Println(err.Error())
+			//w.WriteHeader(401)
+			//io.WriteString(w, err.Error())
+			//return
+		} else {
+
+			idents, err = getIdentities(loginKeyCookie.Value, publicJwks)
+			if err != nil {
+				fmt.Println(err.Error())
+				//w.WriteHeader(401)
+				//io.WriteString(w, err.Error())
+				//return
+			}
+		}
+
 		accounts := FedCmAccounts{
-			Accounts: []FedCmAccount{
-				FedCmAccount{
-					Id:        "fake-id",
-					GivenName: "Anders Pitman",
-					Name:      "Anders",
-					Email:     "&ers@apitman.com",
-					Picture:   "https://apitman.com/gemdrive/images/512/portrait.jpg",
-				},
-			},
+			Accounts: []FedCmAccount{},
+		}
+
+		for _, ident := range idents {
+			account := FedCmAccount{
+				Id: ident.Id,
+				//GivenName: "Anders Pitman",
+				Name:  "No Name",
+				Email: ident.Id,
+				//Picture:   "https://apitman.com/gemdrive/images/512/portrait.jpg",
+
+			}
+			if account.Name == "" {
+				account.Name = "No Name"
+			}
+			accounts.Accounts = append(accounts.Accounts, account)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		err := json.NewEncoder(w).Encode(accounts)
+		err = json.NewEncoder(w).Encode(accounts)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -109,7 +158,6 @@ func NewFedCmHandler(storage Storage) *FedCmHandler {
 		}
 	})
 	mux.HandleFunc("/client-metadata", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("/fedcm/client-metadata")
 
 		md := FedCmClientMetadata{
 			PrivacyPolicyUrl:  storage.GetRootUri(),
@@ -125,33 +173,93 @@ func NewFedCmHandler(storage Storage) *FedCmHandler {
 		}
 	})
 	mux.HandleFunc("/id-assertion", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("/fedcm/id-assertion")
+
+		if r.Header.Get("Sec-Fetch-Dest") != "webidentity" {
+			w.WriteHeader(401)
+			io.WriteString(w, "Sec-Fetch-Dest != webidentity")
+			return
+		}
 
 		r.ParseForm()
 
-		fmt.Println(r)
+		accountId := r.Form.Get("account_id")
 
-		printJson(r.Form)
+		idents := []*Identity{}
+
+		loginKeyCookie, err := r.Cookie(loginKeyName)
+		if err != nil {
+			fmt.Println(err.Error())
+			//w.WriteHeader(401)
+			//io.WriteString(w, err.Error())
+			//return
+		} else {
+			idents, err = getIdentities(loginKeyCookie.Value, publicJwks)
+			if err != nil {
+				fmt.Println(err.Error())
+				//w.WriteHeader(401)
+				//io.WriteString(w, err.Error())
+				//return
+			}
+		}
 
 		res := FedCmIdAssertionResponse{
 			Token: "fake-token",
 		}
 
 		clientId := r.Form.Get("client_id")
-
 		clientId = clientId[:len(clientId)-1]
 
-		fmt.Println("client_id", clientId)
+		// TODO: Multiple idents might map to the same email. might
+		// need to start using unique random IDs for accounts.
+		for _, ident := range idents {
+			if accountId == ident.Id {
+
+				issuedAt := time.Now().UTC()
+				expiresAt := issuedAt.Add(8 * time.Minute)
+
+				idTokenBuilder := openid.NewBuilder().
+					Subject(ident.Id).
+					Audience([]string{clientId}).
+					Issuer(storage.GetRootUri()).
+					IssuedAt(issuedAt).
+					Expiration(expiresAt)
+					//Claim("nonce", claimFromToken("nonce", parsedAuthReq))
+
+				idToken, err := idTokenBuilder.Build()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, err.Error())
+					break
+				}
+
+				key, exists := storage.GetJWKSet().Key(0)
+				if !exists {
+					fmt.Fprintf(os.Stderr, "No keys available")
+					break
+				}
+
+				signedIdToken, err := jwt.Sign(idToken, jwt.WithKey(jwa.RS256, key))
+				if err != nil {
+					fmt.Fprintf(os.Stderr, err.Error())
+					break
+				}
+
+				res.Token = string(signedIdToken)
+				break
+			}
+		}
 
 		w.Header().Set("Access-Control-Allow-Origin", clientId)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Content-Type", "application/json")
-		err := json.NewEncoder(w).Encode(res)
+		err = json.NewEncoder(w).Encode(res)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
+	})
+
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 	})
 
 	return h

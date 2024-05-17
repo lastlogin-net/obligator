@@ -191,7 +191,8 @@ func addIdentityToCookie(storage Storage, providerName, id, email, cookieValue s
 		HttpOnly: true,
 		MaxAge:   86400 * 365,
 		Path:     "/",
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteNoneMode,
+		//SameSite: http.SameSiteLaxMode,
 		//SameSite: http.SameSiteStrictMode,
 	}
 
@@ -434,4 +435,29 @@ func getRemoteIp(r *http.Request, behindProxy bool) (string, error) {
 	}
 
 	return remoteIp, nil
+}
+
+func getIdentities(jwtStr string, publicJwks jwk.Set) ([]*Identity, error) {
+
+	if jwtStr == "" {
+		return nil, errors.New("Blank jwt")
+	}
+
+	parsed, err := jwt.Parse([]byte(jwtStr), jwt.WithKeySet(publicJwks))
+	if err != nil {
+		return nil, errors.New("Invalid jwt")
+	}
+
+	identities := []*Identity{}
+
+	tokIdentsInterface, exists := parsed.Get("identities")
+	if !exists {
+		return nil, errors.New("No identities")
+	}
+
+	if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
+		identities = tokIdents
+	}
+
+	return identities, nil
 }
