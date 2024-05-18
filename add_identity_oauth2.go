@@ -342,6 +342,7 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			return
 		}
 
+		w.Header().Add("Set-Login", "logged-in")
 		http.SetCookie(w, cookie)
 
 		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), rawQuery)

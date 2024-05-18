@@ -443,6 +443,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			return
 		}
 
+		w.Header().Add("Set-Login", "logged-in")
 		http.SetCookie(w, cookie)
 
 		authRequest, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)

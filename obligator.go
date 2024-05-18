@@ -323,6 +323,7 @@ func NewServer(conf ServerConfig) *Server {
 			fmt.Fprintf(os.Stderr, err.Error())
 		}
 
+		w.Header().Add("Set-Login", "logged-out")
 		http.Redirect(w, r, redirect, http.StatusSeeOther)
 	})
 
