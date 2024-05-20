@@ -218,6 +218,7 @@ func NewFedCmHandler(storage Storage) *FedCmHandler {
 				expiresAt := issuedAt.Add(8 * time.Minute)
 
 				idTokenBuilder := openid.NewBuilder().
+					Email(ident.Id).
 					Subject(ident.Id).
 					Audience([]string{clientId}).
 					Issuer(storage.GetRootUri()).

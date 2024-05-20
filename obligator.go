@@ -259,6 +259,10 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/.well-known/web-identity", fedCmHandler)
 	mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
 
+	addIdentityFedCmHandler := NewAddIdentityFedCmHandler(storage, tmpl)
+	mux.Handle("/login-fedcm", addIdentityFedCmHandler)
+	mux.Handle("/complete-login-fedcm", addIdentityFedCmHandler)
+
 	mux.HandleFunc("/ip", func(w http.ResponseWriter, r *http.Request) {
 		remoteIp, err := getRemoteIp(r, conf.BehindProxy)
 		if err != nil {

@@ -1,0 +1,33 @@
+{{ template "header.html" . }}
+
+<form class='tn-form' id='fedcm-login-form' action="/complete-login-fedcm" method="POST">
+  <input type="hidden" id='fedcm-token-input' name="fedcm-token" required>
+</form>
+
+<script type='module'>
+
+  const identityCredential = await navigator.credentials.get({
+    identity: {
+      context: "signin",
+      providers: [
+        {
+          configURL: "any",
+          clientId: window.location.origin+"/",
+          nonce: "fake-nonce",
+        },
+      ]
+    },
+  }).catch(e => {
+    console.log("Error", e.message);
+  });
+
+  console.log(identityCredential);
+
+  const form = document.getElementById('fedcm-login-form');
+  const tokenEl = document.getElementById('fedcm-token-input');
+  tokenEl.value = identityCredential.token;
+  form.submit();
+</script>
+
+    
+{{ template "footer.html" . }}
