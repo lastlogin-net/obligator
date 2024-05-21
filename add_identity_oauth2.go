@@ -148,6 +148,9 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 
 		setJwtCookie(storage, reqJwt, prefix+"upstream_oauth2_request", maxAge, w, r)
 
+		returnUri := r.Form.Get("return_uri")
+		setReturnUriCookie(storage, returnUri, w)
+
 		callbackUri := fmt.Sprintf("%s/callback", storage.GetRootUri())
 
 		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s&nonce=%s&prompt=consent",
@@ -314,17 +317,16 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			return
 		}
 
-		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
+		returnUri, err := getReturnUriCookie(storage, r)
 		if err != nil {
 			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
+			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
-
-		rawQuery := claimFromToken("raw_query", parsedAuthReq)
+		deleteReturnUriCookie(storage, w)
 
 		if !storage.GetPublic() && !validUser(email, users) {
-			redirUrl := fmt.Sprintf("%s/no-account?%s", rootUri, rawQuery)
+			redirUrl := fmt.Sprintf("%s/no-account?%s", rootUri, returnUri)
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 			return
 		}
@@ -345,7 +347,7 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 		w.Header().Add("Set-Login", "logged-in")
 		http.SetCookie(w, cookie)
 
-		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), rawQuery)
+		redirUrl := fmt.Sprintf("%s", returnUri)
 
 		clearCookie(storage, prefix+"upstream_oauth2_request", w)
 

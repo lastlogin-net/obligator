@@ -51,16 +51,13 @@ type FedCmHandler struct {
 	mux *http.ServeMux
 }
 
-func NewFedCmHandler(storage Storage) *FedCmHandler {
+func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 
 	mux := http.NewServeMux()
 
 	h := &FedCmHandler{
 		mux: mux,
 	}
-
-	prefix := storage.GetPrefix()
-	loginKeyName := prefix + "login_key"
 
 	privateJwks := storage.GetJWKSet()
 	publicJwks, err := jwk.PublicSetOf(privateJwks)
@@ -92,7 +89,7 @@ func NewFedCmHandler(storage Storage) *FedCmHandler {
 			AccountsEndpoint:       fmt.Sprintf("%s/fedcm/accounts", storage.GetRootUri()),
 			ClientMetadataEndpoint: fmt.Sprintf("%s/fedcm/client-metadata", storage.GetRootUri()),
 			IdAssertionEndpoint:    fmt.Sprintf("%s/fedcm/id-assertion", storage.GetRootUri()),
-			LoginUrl:               fmt.Sprintf("%s/fedcm/login", storage.GetRootUri()),
+			LoginUrl:               fmt.Sprintf("%s%s", storage.GetRootUri(), loginEndpoint),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -111,24 +108,7 @@ func NewFedCmHandler(storage Storage) *FedCmHandler {
 			return
 		}
 
-		idents := []*Identity{}
-
-		loginKeyCookie, err := r.Cookie(loginKeyName)
-		if err != nil {
-			fmt.Println(err.Error())
-			//w.WriteHeader(401)
-			//io.WriteString(w, err.Error())
-			//return
-		} else {
-
-			idents, err = getIdentities(loginKeyCookie.Value, publicJwks)
-			if err != nil {
-				fmt.Println(err.Error())
-				//w.WriteHeader(401)
-				//io.WriteString(w, err.Error())
-				//return
-			}
-		}
+		idents, _ := getIdentities(storage, r, publicJwks)
 
 		accounts := FedCmAccounts{
 			Accounts: []FedCmAccount{},
@@ -184,23 +164,7 @@ func NewFedCmHandler(storage Storage) *FedCmHandler {
 
 		accountId := r.Form.Get("account_id")
 
-		idents := []*Identity{}
-
-		loginKeyCookie, err := r.Cookie(loginKeyName)
-		if err != nil {
-			fmt.Println(err.Error())
-			//w.WriteHeader(401)
-			//io.WriteString(w, err.Error())
-			//return
-		} else {
-			idents, err = getIdentities(loginKeyCookie.Value, publicJwks)
-			if err != nil {
-				fmt.Println(err.Error())
-				//w.WriteHeader(401)
-				//io.WriteString(w, err.Error())
-				//return
-			}
-		}
+		idents, _ := getIdentities(storage, r, publicJwks)
 
 		res := FedCmIdAssertionResponse{
 			Token: "fake-token",
@@ -258,9 +222,6 @@ func NewFedCmHandler(storage Storage) *FedCmHandler {
 			io.WriteString(w, err.Error())
 			return
 		}
-	})
-
-	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 	})
 
 	return h

@@ -99,13 +99,20 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			return
 		}
 
+		idents, _ := getIdentities(storage, r, publicJwks)
+
 		templateData := struct {
 			DisplayName string
 			RootUri     string
+			Identities  []*Identity
 		}{
 			DisplayName: storage.GetDisplayName(),
 			RootUri:     storage.GetRootUri(),
+			Identities:  idents,
 		}
+
+		returnUri := r.Form.Get("return_uri")
+		setReturnUriCookie(storage, returnUri, w)
 
 		err := tmpl.ExecuteTemplate(w, "login-email.html", templateData)
 		if err != nil {
@@ -195,6 +202,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			io.WriteString(w, err.Error())
 			return
 		}
+		// TODO: delete this cookie eventually
 		cookie := &http.Cookie{
 			Domain:   cookieDomain,
 			Name:     prefix + "email_login",
@@ -265,12 +273,16 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			fmt.Fprintf(os.Stderr, "Email validation attempted for non-existing user: %s\n", email)
 		}
 
+		idents, _ := getIdentities(storage, r, publicJwks)
+
 		data := struct {
 			DisplayName string
 			RootUri     string
+			Identities  []*Identity
 		}{
 			DisplayName: storage.GetDisplayName(),
 			RootUri:     storage.GetRootUri(),
+			Identities:  idents,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "email-sent.html", data)
@@ -364,8 +376,11 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			}
 		}
 
+		idents, _ := getIdentities(storage, r, publicJwks)
+
 		templateData := struct {
 			DisplayName       string
+			Identities        []*Identity
 			RootUri           string
 			Key               string
 			DifferentIps      bool
@@ -378,6 +393,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			InstanceId        string
 		}{
 			DisplayName:       storage.GetDisplayName(),
+			Identities:        idents,
 			RootUri:           storage.GetRootUri(),
 			Key:               key,
 			DifferentIps:      differentIps,
@@ -446,18 +462,31 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		w.Header().Add("Set-Login", "logged-in")
 		http.SetCookie(w, cookie)
 
-		authRequest, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
+		_, err = getJwtFromCookie(prefix+"auth_request", storage, w, r)
 		if err == nil {
-			redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), claimFromToken("raw_query", authRequest))
+
+			returnUri, err := getReturnUriCookie(storage, r)
+			if err != nil {
+				w.WriteHeader(500)
+				fmt.Fprintf(os.Stderr, err.Error())
+				return
+			}
+			deleteReturnUriCookie(storage, w)
+
+			redirUrl := fmt.Sprintf("%s", returnUri)
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 			return
 		} else {
+			idents, _ := getIdentities(storage, r, publicJwks)
+
 			templateData := struct {
 				DisplayName string
 				RootUri     string
+				Identities  []*Identity
 			}{
 				DisplayName: storage.GetDisplayName(),
 				RootUri:     storage.GetRootUri(),
+				Identities:  idents,
 			}
 
 			err := tmpl.ExecuteTemplate(w, "confirm-magic.html", templateData)

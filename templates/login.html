@@ -1,0 +1,22 @@
+{{ template "header.html" . }}
+
+  {{if $.Identities}}
+  <p>
+    Available identities:
+  </p>
+
+  {{range $.Identities}}
+  <div class='og-identity-list-item'>
+    <strong>{{.Id}}</strong> ({{.ProviderName}})
+  </div>
+  {{end}}
+
+  {{else}}
+  <p>
+    No available identities.
+  </p>
+  {{end}}
+
+  {{ template "add-identities.html" . }}
+
+{{ template "footer.html" . }}

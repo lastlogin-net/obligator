@@ -33,6 +33,7 @@ type QrTemplateData struct {
 	QrKey        string
 	InstanceId   string
 	ErrorMessage string
+	ReturnUri    string
 }
 
 func (h *QrHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -105,18 +106,22 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		qrPng := base64.StdEncoding.EncodeToString(qrCode)
 		qrDataUri := template.URL("data:image/png;base64," + qrPng)
 
+		idents, _ := getIdentities(storage, r, publicJwks)
+
 		templateData := struct {
 			DisplayName  string
 			RootUri      string
 			QrDataUri    template.URL
 			QrKey        string
 			ErrorMessage string
+			Identities   []*Identity
 		}{
 			DisplayName:  storage.GetDisplayName(),
 			RootUri:      storage.GetRootUri(),
 			QrDataUri:    qrDataUri,
 			QrKey:        qrKey,
 			ErrorMessage: "",
+			Identities:   idents,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "login-qr.html", templateData)
@@ -269,13 +274,21 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		defer mut.Unlock()
 		pendingShares[qrKey] = share
 
+		idents, _ := getIdentities(storage, r, publicJwks)
+
 		templateData := struct {
 			DisplayName string
 			RootUri     string
+			Identities  []*Identity
+			ReturnUri   string
 		}{
 			DisplayName: storage.GetDisplayName(),
 			RootUri:     storage.GetRootUri(),
+			Identities:  idents,
 		}
+
+		returnUri := r.Form.Get("return_uri")
+		setReturnUriCookie(storage, returnUri, w)
 
 		err = tmpl.ExecuteTemplate(w, "send-success.html", templateData)
 		if err != nil {
@@ -359,14 +372,15 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 
 		http.SetCookie(w, cookie)
 
-		authRequest, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
+		returnUri, err := getReturnUriCookie(storage, r)
 		if err != nil {
 			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
+			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
+		deleteReturnUriCookie(storage, w)
 
-		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), claimFromToken("raw_query", authRequest))
+		redirUrl := fmt.Sprintf("%s", returnUri)
 
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})

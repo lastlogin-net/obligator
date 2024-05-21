@@ -247,7 +247,6 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(maxAge)).
 			Claim("login_key_hash", hashedLoginKey).
-			Claim("raw_query", r.URL.RawQuery).
 			Claim("client_id", ar.ClientId).
 			Claim("redirect_uri", ar.RedirectUri).
 			Claim("state", ar.State).
@@ -284,25 +283,28 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		}
 
 		data := struct {
-			RootUri         string
-			DisplayName     string
-			ClientId        string
-			Identities      []*Identity
-			PreviousLogins  []*Login
-			OAuth2Providers []OAuth2Provider
-			LogoMap         map[string]template.HTML
-			URL             string
-			CanEmail        bool
+			RootUri             string
+			DisplayName         string
+			ClientId            string
+			Identities          []*Identity
+			RemainingIdentities []*Identity
+			PreviousLogins      []*Login
+			OAuth2Providers     []OAuth2Provider
+			LogoMap             map[string]template.HTML
+			URL                 string
+			CanEmail            bool
+			ReturnUri           string
 		}{
-			RootUri:         storage.GetRootUri(),
-			DisplayName:     storage.GetDisplayName(),
-			ClientId:        parsedClientId.Host,
-			Identities:      remainingIdents,
-			PreviousLogins:  previousLogins,
-			OAuth2Providers: providers,
-			LogoMap:         providerLogoMap,
-			URL:             fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
-			CanEmail:        canEmail,
+			RootUri:             storage.GetRootUri(),
+			DisplayName:         storage.GetDisplayName(),
+			ClientId:            parsedClientId.Host,
+			Identities:          identities,
+			RemainingIdentities: remainingIdents,
+			PreviousLogins:      previousLogins,
+			OAuth2Providers:     providers,
+			LogoMap:             providerLogoMap,
+			CanEmail:            canEmail,
+			ReturnUri:           fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "auth.html", data)

@@ -22,8 +22,22 @@
   <div class='content'>
 
   <div class='og-banner-container'>
-    <a class='og-banner-link' href='{{.RootUri}}'>
+    <a class='og-banner-link' href='/'>
       <img src='/logo.png' width=64 height=64 />
       {{.DisplayName}}
     </a>
+  </div>
+
+  <div class='og-top-button-container'>
+    {{if $.Identities}}
+    <form action="/logout" method="POST">
+      {{if $.ReturnUri}}
+      <input type='hidden' name='prev_page' value='{{.ReturnUri}}' required>
+      {{else}}
+      <input type='hidden' name='prev_page' value='/login' required>
+      {{end}}
+      <button class='og-button' type="submit">Log out</button>
+    </form>
+    {{end}}
+    <button id='og-register-fedcm-button' class='og-button og-remove'>Register FedCM</button>
   </div>

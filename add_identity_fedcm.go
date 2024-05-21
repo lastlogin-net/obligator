@@ -24,17 +24,34 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 		mux: mux,
 	}
 
+	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
 	prefix := storage.GetPrefix()
 	loginKeyName := prefix + "login_key"
 
 	mux.HandleFunc("/login-fedcm", func(w http.ResponseWriter, r *http.Request) {
+
+		r.ParseForm()
+
+		idents, _ := getIdentities(storage, r, publicJwks)
+
 		data := struct {
 			RootUri     string
 			DisplayName string
+			Identities  []*Identity
 		}{
 			RootUri:     storage.GetRootUri(),
 			DisplayName: storage.GetDisplayName(),
+			Identities:  idents,
 		}
+
+		returnUri := r.Form.Get("return_uri")
+		fmt.Println("here", returnUri)
+		setReturnUriCookie(storage, returnUri, w)
 
 		err := tmpl.ExecuteTemplate(w, "login-fedcm.html", data)
 		if err != nil {
@@ -113,8 +130,6 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 			cookieValue = loginKeyCookie.Value
 		}
 
-		printJson(oidcToken)
-
 		email := oidcToken.Email()
 
 		cookie, err := addIdentityToCookie(storage, issuer, email, email, cookieValue, true)
@@ -124,19 +139,18 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 			return
 		}
 
+		returnUri, err := getReturnUriCookie(storage, r)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
+		deleteReturnUriCookie(storage, w)
+
 		w.Header().Add("Set-Login", "logged-in")
 		http.SetCookie(w, cookie)
 
-                parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		rawQuery := claimFromToken("raw_query", parsedAuthReq)
-
-		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), rawQuery)
+		redirUrl := fmt.Sprintf("%s", returnUri)
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})
 

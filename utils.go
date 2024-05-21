@@ -437,22 +437,32 @@ func getRemoteIp(r *http.Request, behindProxy bool) (string, error) {
 	return remoteIp, nil
 }
 
-func getIdentities(jwtStr string, publicJwks jwk.Set) ([]*Identity, error) {
+func getIdentities(storage Storage, r *http.Request, publicJwks jwk.Set) ([]*Identity, error) {
+
+	identities := []*Identity{}
+
+	prefix := storage.GetPrefix()
+	loginKeyName := prefix + "login_key"
+
+	loginKeyCookie, err := r.Cookie(loginKeyName)
+	if err != nil {
+		return identities, err
+	}
+
+	jwtStr := loginKeyCookie.Value
 
 	if jwtStr == "" {
-		return nil, errors.New("Blank jwt")
+		return identities, errors.New("Blank jwt")
 	}
 
 	parsed, err := jwt.Parse([]byte(jwtStr), jwt.WithKeySet(publicJwks))
 	if err != nil {
-		return nil, errors.New("Invalid jwt")
+		return identities, errors.New("Invalid jwt")
 	}
-
-	identities := []*Identity{}
 
 	tokIdentsInterface, exists := parsed.Get("identities")
 	if !exists {
-		return nil, errors.New("No identities")
+		return identities, errors.New("No identities")
 	}
 
 	if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
@@ -460,4 +470,44 @@ func getIdentities(jwtStr string, publicJwks jwk.Set) ([]*Identity, error) {
 	}
 
 	return identities, nil
+}
+
+func getReturnUriCookie(storage Storage, r *http.Request) (string, error) {
+	name := storage.GetPrefix() + "return_uri"
+
+	cookie, err := r.Cookie(name)
+	if err != nil {
+		return "", errors.New("Missing return URI cookie")
+	}
+
+	return cookie.Value, nil
+}
+func setReturnUriCookie(storage Storage, uri string, w http.ResponseWriter) error {
+
+	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+	if err != nil {
+		return err
+	}
+
+	name := storage.GetPrefix() + "return_uri"
+
+	cookie := &http.Cookie{
+		Domain:   cookieDomain,
+		Name:     name,
+		Value:    uri,
+		Path:     "/",
+		SameSite: http.SameSiteLaxMode,
+		Secure:   true,
+		HttpOnly: true,
+	}
+	http.SetCookie(w, cookie)
+
+	return nil
+}
+
+func deleteReturnUriCookie(storage Storage, w http.ResponseWriter) {
+
+	name := storage.GetPrefix() + "return_uri"
+
+	clearCookie(storage, name, w)
 }

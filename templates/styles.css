@@ -192,7 +192,22 @@ table, th, td {
 }
 
 
+.og-button {
+  font-size: 16px;
+  padding: 12px 32px;
+  background: none;
+  border: 1px solid #000;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.og-button:hover {
+  background-color: #eee;
+}
 
+.og-top-button-container {
+  display: flex;
+  flex-direction: row-reverse;
+}
 
 .og-formbutton {
   font-size: 16px;
@@ -206,19 +221,15 @@ table, th, td {
 .og-formbutton:hover {
   background-color: #eee;
 }
-
-.og-logout-container {
-  position: absolute;
-  right: 32px;
-}
-
-.og-first-elem {
-  margin-top: 64px;
-}
-
 .og-formbutton svg {
   width: 20px;
   height: 20px;
+}
+
+
+
+.og-first-elem {
+  margin-top: 64px;
 }
 
 .og-button-list {
@@ -283,4 +294,12 @@ table, th, td {
 
 .og-confirm-button {
   margin: 32px;
+}
+
+.og-identity-list-item {
+  margin: 10px;
+}
+
+.og-remove {
+  display: none;
 }

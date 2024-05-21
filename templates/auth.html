@@ -1,17 +1,10 @@
 {{ template "header.html" . }}
 
-    <button id='register-fedcm-btn' class='og-formbutton'>Register FedCM</button>
-    <div class='og-logout-container'>
-      <form action="/logout" method="POST">
-        <input type='hidden' name='prev_page' value='{{.URL}}' required>
-        <button class='og-formbutton' type="submit">Log out</button>
-      </form>
-    </div>
 
     <p class='og-first-elem'>
       <span class='og-auth-client-id'>{{$.ClientId}}</span> wants to log you in.
 
-      {{if $.Identities}}
+      {{if $.RemainingIdentities}}
       To approve this action, select an identity below:
       {{end}}
     </p>
@@ -39,7 +32,7 @@
       {{end}}
     </div>
 
-    {{if $.Identities}}
+    {{if $.RemainingIdentities}}
     <p>
       You can also use one of your other identities:
     </p>
@@ -47,7 +40,7 @@
     {{end}}
 
     <div class='og-button-list'>
-      {{range $.Identities}}
+      {{range $.RemainingIdentities}}
       <div>
         <form action="/approve" method="POST">
           <input type='hidden' name='identity_id' value='{{.Id}}' required>
@@ -59,92 +52,6 @@
       {{end}}
     </div>
 
-    <p>
-      Add an identity using a provider below:
-    </p>
-
-    <div class='og-button-list'>
-      {{if .CanEmail}}
-      <div>
-        <form action="/login-email" method="POST">
-          <button class='og-formbutton' type="submit">
-            <div class='og-row'>
-              <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect x="48" y="96" width="416" height="320" rx="40" ry="40" style="fill:none;stroke:#000;stroke-linecap:round;stroke-linejoin:round;stroke-width:32px"/><polyline points="112 160 256 272 400 160" style="fill:none;stroke:#000;stroke-linecap:round;stroke-linejoin:round;stroke-width:32px"/></svg>
-              <span>Add identity with Email</span>
-            </div>
-          </button>
-        </form>
-      </div>
-      {{end}}
-
-      <!--
-      <div>
-        <form action="/login-gaml" method="POST">
-          <button class='og-formbutton' type="submit">
-            <div class='og-row'>
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-globe"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-              <span>Add identity with URL</span>
-            </div>
-          </button>
-        </form>
-      </div>
-      -->
-      
-      <div>
-        <form action="/login-qr" method="POST">
-          <button class='og-formbutton' type="submit">
-            <div class='og-row'>
-              <svg xmlns="http://www.w3.org/2000/svg" class="ionicon" viewBox="0 0 512 512"><rect x="336" y="336" width="80" height="80" rx="8" ry="8"/><rect x="272" y="272" width="64" height="64" rx="8" ry="8"/><rect x="416" y="416" width="64" height="64" rx="8" ry="8"/><rect x="432" y="272" width="48" height="48" rx="8" ry="8"/><rect x="272" y="432" width="48" height="48" rx="8" ry="8"/><rect x="336" y="96" width="80" height="80" rx="8" ry="8"/><rect x="288" y="48" width="176" height="176" rx="16" ry="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="96" y="96" width="80" height="80" rx="8" ry="8"/><rect x="48" y="48" width="176" height="176" rx="16" ry="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="96" y="336" width="80" height="80" rx="8" ry="8"/><rect x="48" y="288" width="176" height="176" rx="16" ry="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/></svg>
-              <span>Add identity with QR code</span>
-            </div>
-          </button>
-        </form>
-      </div>
-
-      {{range $.OAuth2Providers}}
-      <div>
-        <form action="/login-oauth2" method="POST">
-          <input type="hidden" name="oauth2_provider_id" value="{{.ID}}" required>
-          <button class='og-formbutton' type="submit">
-            <div class='og-row'>
-              {{ index $.LogoMap .ID }}
-              <span>
-                Add identity with {{.Name}}
-              </span>
-            </div>
-          </button>
-        </form>
-      </div>
-      {{end}}
-
-      <div>
-        <form action="/login-fedcm" method="POST">
-          <button class='og-formbutton' type="submit">
-            <div class='og-row'>
-              <span>
-                Add identity with FedCM
-              </span>
-            </div>
-          </button>
-        </form>
-      </div>
-    </div>
-
-    <script>
-      // FedCM feature detection from here: https://github.com/fedidcg/FedCM/issues/240#issuecomment-2004650817
-      function getChromeVersion () {     
-          const raw = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
-          return raw ? parseInt(raw[2], 10) : false;
-      }
-
-      if (window["IdentityProvider"] && IdentityProvider.register != undefined && getChromeVersion() >= 126) {
-        const fedcmBtn = document.getElementById('register-fedcm-btn');
-        fedcmBtn.addEventListener('click', () => {
-          const rootUri = {{.RootUri}};
-          const registerUri = `${rootUri}/fedcm/config.json`;
-          IdentityProvider.register(registerUri);
-        });
-      }
-    </script>
+    {{ template "add-identities.html" . }}
 
 {{ template "footer.html" . }}

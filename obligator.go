@@ -255,7 +255,8 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/send", qrHandler)
 	mux.Handle("/receive", qrHandler)
 
-	fedCmHandler := NewFedCmHandler(storage)
+	loginEndpoint := "/login"
+	fedCmHandler := NewFedCmHandler(storage, loginEndpoint)
 	mux.Handle("/.well-known/web-identity", fedCmHandler)
 	mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
 
@@ -306,6 +307,46 @@ func NewServer(conf ServerConfig) *Server {
 		_, err = jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
 		if err != nil {
 			http.Redirect(w, r, url, 307)
+			return
+		}
+	})
+
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+
+		idents, _ := getIdentities(storage, r, publicJwks)
+
+		canEmail := true
+		if _, err := storage.GetSmtpConfig(); err != nil {
+			canEmail = false
+		}
+
+		providers, err := storage.GetOAuth2Providers()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		data := struct {
+			DisplayName     string
+			CanEmail        bool
+			Identities      []*Identity
+			OAuth2Providers []OAuth2Provider
+			LogoMap         map[string]template.HTML
+			ReturnUri       string
+		}{
+			DisplayName:     storage.GetDisplayName(),
+			CanEmail:        canEmail,
+			Identities:      idents,
+			OAuth2Providers: providers,
+			LogoMap:         providerLogoMap,
+			ReturnUri:       "/login",
+		}
+
+		err = tmpl.ExecuteTemplate(w, "login.html", data)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
 			return
 		}
 	})
