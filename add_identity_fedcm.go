@@ -43,6 +43,7 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 			RootUri     string
 			DisplayName string
 			Identities  []*Identity
+			ReturnUri   string
 		}{
 			RootUri:     storage.GetRootUri(),
 			DisplayName: storage.GetDisplayName(),
@@ -50,7 +51,6 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 		}
 
 		returnUri := r.Form.Get("return_uri")
-		fmt.Println("here", returnUri)
 		setReturnUriCookie(storage, returnUri, w)
 
 		err := tmpl.ExecuteTemplate(w, "login-fedcm.html", data)

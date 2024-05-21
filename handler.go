@@ -102,6 +102,7 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 			OAuth2Providers []OAuth2Provider
 			LogoMap         map[string]template.HTML
 			ReturnUri       string
+			RootUri         string
 		}{
 			DisplayName:     storage.GetDisplayName(),
 			CanEmail:        canEmail,
@@ -109,6 +110,7 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 			OAuth2Providers: providers,
 			LogoMap:         providerLogoMap,
 			ReturnUri:       "/login",
+			RootUri:         storage.GetRootUri(),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "login.html", data)
