@@ -58,8 +58,6 @@ type OIDCRegistrationRequest struct {
 func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 	mux := http.NewServeMux()
 
-	mux.Handle("/", http.FileServer(http.Dir("static")))
-
 	h := &OIDCHandler{
 		mux: mux,
 	}

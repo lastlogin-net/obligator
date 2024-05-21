@@ -32,6 +32,8 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 		os.Exit(1)
 	}
 
+	mux.Handle("/", http.FileServer(http.Dir("static")))
+
 	mux.HandleFunc("/ip", func(w http.ResponseWriter, r *http.Request) {
 		remoteIp, err := getRemoteIp(r, conf.BehindProxy)
 		if err != nil {
