@@ -16,6 +16,11 @@
         const registerUri = `${rootUri}/fedcm/config.json`;
         IdentityProvider.register(registerUri);
       });
+
+      const fedcmLoginFormContainer = document.getElementById('og-login-fedcm-form-container');
+      if (fedcmLoginFormContainer) {
+        fedcmLoginFormContainer.classList.remove('og-remove');
+      }
     }
   </script>
 </body>
