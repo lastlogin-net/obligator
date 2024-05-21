@@ -67,7 +67,6 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 	}
 
 	mux.HandleFunc("/.well-known/web-identity", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("/.well-known/web-identity")
 
 		webId := FedCmWebId{
 			ProviderUrls: []string{
