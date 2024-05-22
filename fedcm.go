@@ -94,10 +94,10 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 	})
 	mux.HandleFunc("/config.json", func(w http.ResponseWriter, r *http.Request) {
 		config := FedCmConfig{
-			AccountsEndpoint:       fmt.Sprintf("%s/fedcm/accounts", storage.GetRootUri()),
+			AccountsEndpoint: fmt.Sprintf("%s/fedcm/accounts", storage.GetRootUri()),
 			//ClientMetadataEndpoint: fmt.Sprintf("%s/fedcm/client-metadata", storage.GetRootUri()),
-			IdAssertionEndpoint:    fmt.Sprintf("%s/fedcm/id-assertion", storage.GetRootUri()),
-			LoginUrl:               fmt.Sprintf("%s%s", storage.GetRootUri(), loginEndpoint),
+			IdAssertionEndpoint: fmt.Sprintf("%s/fedcm/id-assertion", storage.GetRootUri()),
+			LoginUrl:            fmt.Sprintf("%s%s", storage.GetRootUri(), loginEndpoint),
 		}
 
 		w.Header().Set("Content-Type", "application/json")

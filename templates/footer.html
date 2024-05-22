@@ -21,6 +21,13 @@
       if (fedcmLoginFormContainer) {
         fedcmLoginFormContainer.classList.remove('og-remove');
       }
+
+      const fedcmLoginDoneButton = document.getElementById('og-fedcm-login-done-button');
+      if (fedcmLoginDoneButton) {
+        fedcmLoginDoneButton.addEventListener('click', () => {
+          IdentityProvider.close();
+        });
+      }
     }
   </script>
 </body>

@@ -81,7 +81,7 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 		}
 	})
 
-	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+	loginFunc := func(w http.ResponseWriter, r *http.Request, fedCm bool) {
 
 		idents, _ := getIdentities(storage, r, publicJwks)
 
@@ -97,6 +97,11 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 			return
 		}
 
+		returnUri := "/login"
+		if fedCm {
+			returnUri = "/login-fedcm-auto"
+		}
+
 		data := struct {
 			DisplayName     string
 			CanEmail        bool
@@ -105,14 +110,16 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 			LogoMap         map[string]template.HTML
 			ReturnUri       string
 			RootUri         string
+			FedCm           bool
 		}{
 			DisplayName:     storage.GetDisplayName(),
 			CanEmail:        canEmail,
 			Identities:      idents,
 			OAuth2Providers: providers,
 			LogoMap:         providerLogoMap,
-			ReturnUri:       "/login",
+			ReturnUri:       returnUri,
 			RootUri:         storage.GetRootUri(),
+			FedCm:           fedCm,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "login.html", data)
@@ -121,6 +128,13 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 			io.WriteString(w, err.Error())
 			return
 		}
+	}
+
+	mux.HandleFunc("/login-fedcm-auto", func(w http.ResponseWriter, r *http.Request) {
+		loginFunc(w, r, true)
+	})
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		loginFunc(w, r, false)
 	})
 
 	mux.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {

@@ -303,3 +303,7 @@ table, th, td {
 .og-remove {
   display: none;
 }
+
+#og-fedcm-login-done-button {
+  margin-top: 32px;
+}

@@ -19,4 +19,8 @@
 
   {{ template "add-identities.html" . }}
 
+  {{if .FedCm}}
+  <button id='og-fedcm-login-done-button' class='og-button'>Done</button>
+  {{end}}
+
 {{ template "footer.html" . }}

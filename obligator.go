@@ -257,8 +257,8 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/send", qrHandler)
 	mux.Handle("/receive", qrHandler)
 
-	loginEndpoint := "/login"
-	fedCmHandler := NewFedCmHandler(storage, loginEndpoint)
+	fedCmLoginEndpoint := "/login-fedcm-auto"
+	fedCmHandler := NewFedCmHandler(storage, fedCmLoginEndpoint)
 	mux.Handle("/.well-known/web-identity", fedCmHandler)
 	mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
 
