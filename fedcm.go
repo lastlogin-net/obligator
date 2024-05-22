@@ -20,31 +20,31 @@ type FedCmWebId struct {
 }
 
 type FedCmConfig struct {
-	AccountsEndpoint       string `json:"accounts_endpoint"`
-	ClientMetadataEndpoint string `json:"client_metadata_endpoint"`
-	IdAssertionEndpoint    string `json:"id_assertion_endpoint"`
-	LoginUrl               string `json:"login_url"`
+	AccountsEndpoint       string `json:"accounts_endpoint,omitempty"`
+	ClientMetadataEndpoint string `json:"client_metadata_endpoint,omitempty"`
+	IdAssertionEndpoint    string `json:"id_assertion_endpoint,omitempty"`
+	LoginUrl               string `json:"login_url,omitempty"`
 }
 
 type FedCmAccounts struct {
-	Accounts []FedCmAccount `json:"accounts"`
+	Accounts []FedCmAccount `json:"accounts,omitempty"`
 }
 
 type FedCmAccount struct {
-	Id        string `json:"id"`
-	GivenName string `json:"given_name"`
-	Name      string `json:"name"`
-	Email     string `json:"email"`
-	Picture   string `json:"picture"`
+	Id        string `json:"id,omitempty"`
+	GivenName string `json:"given_name,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Email     string `json:"email,omitempty"`
+	Picture   string `json:"picture,omitempty"`
 }
 
 type FedCmClientMetadata struct {
-	PrivacyPolicyUrl  string `json:"privacy_policy_url"`
-	TermsOfServiceUrl string `json:"terms_of_service_url"`
+	PrivacyPolicyUrl  string `json:"privacy_policy_url,omitempty"`
+	TermsOfServiceUrl string `json:"terms_of_service_url,omitempty"`
 }
 
 type FedCmIdAssertionResponse struct {
-	Token string `json:"token"`
+	Token string `json:"token,omitempty"`
 }
 
 type FedCmHandler struct {
