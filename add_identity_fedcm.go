@@ -87,6 +87,11 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 		issuer := unverifiedToken.Issuer()
 
 		ctx := context.Background()
+
+		// TODO: Maybe this can be reused. Might be tricky in
+		// distributed setups though. Could probably at least prime it
+		// when we first see a new client_id so we don't have to
+		// fetch the OIDC config here which slows things down
 		c := jwk.NewCache(ctx)
 
 		oidcMeta, err := GetOidcConfiguration(issuer)
@@ -120,7 +125,19 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 		oidcToken, ok := verifiedToken.(openid.Token)
 		if !ok {
 			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "Not a valid OpenId Connect token")
+			io.WriteString(w, "FedCM: Not a valid OpenId Connect token")
+			return
+		}
+
+		if len(oidcToken.Audience()) == 0 {
+			w.WriteHeader(400)
+			io.WriteString(w, "FedCM: Missing aud in OIDC token")
+			return
+		}
+
+		if oidcToken.Audience()[0] != storage.GetRootUri() {
+			w.WriteHeader(401)
+			io.WriteString(w, "FedCM: Wrong aud in OIDC token")
 			return
 		}
 
@@ -135,14 +152,14 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 		cookie, err := addIdentityToCookie(storage, issuer, email, email, cookieValue, true)
 		if err != nil {
 			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, err.Error())
+			io.WriteString(w, err.Error())
 			return
 		}
 
 		returnUri, err := getReturnUriCookie(storage, r)
 		if err != nil {
 			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, err.Error())
+			io.WriteString(w, err.Error())
 			return
 		}
 		deleteReturnUriCookie(storage, w)

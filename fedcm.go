@@ -43,8 +43,17 @@ type FedCmClientMetadata struct {
 	TermsOfServiceUrl string `json:"terms_of_service_url,omitempty"`
 }
 
-type FedCmIdAssertionResponse struct {
+type FedCmIdAssertionSuccessResponse struct {
 	Token string `json:"token,omitempty"`
+}
+
+type FedCmIdAssertionErrorResponse struct {
+	Error FedCmIdAssertionError `json:"error,omitempty"`
+}
+
+type FedCmIdAssertionError struct {
+	Code string `json:"code,omitempty"`
+	Url  string `json:"url,omitempty"`
 }
 
 type FedCmHandler struct {
@@ -109,6 +118,12 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 
 		idents, _ := getIdentities(storage, r, publicJwks)
 
+		if len(idents) == 0 {
+			w.WriteHeader(401)
+			io.WriteString(w, "No identities available")
+			return
+		}
+
 		accounts := FedCmAccounts{
 			Accounts: []FedCmAccount{},
 		}
@@ -153,24 +168,40 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 	})
 	mux.HandleFunc("/id-assertion", func(w http.ResponseWriter, r *http.Request) {
 
+		r.ParseForm()
+
+		clientId := r.Form.Get("client_id")
+
+		w.Header().Set("Access-Control-Allow-Origin", clientId)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Content-Type", "application/json")
+
 		if r.Header.Get("Sec-Fetch-Dest") != "webidentity" {
 			w.WriteHeader(401)
 			io.WriteString(w, "Sec-Fetch-Dest != webidentity")
 			return
 		}
 
-		r.ParseForm()
+		origin := r.Header.Get("Origin")
+
+		if origin != clientId {
+			w.WriteHeader(401)
+			res := FedCmIdAssertionErrorResponse{
+				Error: FedCmIdAssertionError{
+					Code: "unauthorized_client",
+				},
+			}
+			json.NewEncoder(w).Encode(res)
+			return
+		}
 
 		accountId := r.Form.Get("account_id")
 
 		idents, _ := getIdentities(storage, r, publicJwks)
 
-		res := FedCmIdAssertionResponse{
+		res := FedCmIdAssertionSuccessResponse{
 			Token: "fake-token",
 		}
-
-		clientId := r.Form.Get("client_id")
-		clientId = clientId[:len(clientId)-1]
 
 		// TODO: Multiple idents might map to the same email. might
 		// need to start using unique random IDs for accounts.
@@ -212,9 +243,6 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 			}
 		}
 
-		w.Header().Set("Access-Control-Allow-Origin", clientId)
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Content-Type", "application/json")
 		err = json.NewEncoder(w).Encode(res)
 		if err != nil {
 			w.WriteHeader(500)
