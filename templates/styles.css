@@ -150,8 +150,8 @@ body {
   flex-direction: column;
   border: 1px solid var(--text-color);
   border-radius: var(--border-radius);
-  padding: 10px;
-  gap: 5px;
+  padding: 12px;
+  gap: 12px;
   align-items: flex-start;
 }
 

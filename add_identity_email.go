@@ -105,10 +105,12 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			DisplayName string
 			RootUri     string
 			Identities  []*Identity
+			ReturnUri   string
 		}{
 			DisplayName: storage.GetDisplayName(),
 			RootUri:     storage.GetRootUri(),
 			Identities:  idents,
+			ReturnUri:   "/login",
 		}
 
 		returnUri := r.Form.Get("return_uri")
@@ -279,10 +281,12 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			DisplayName string
 			RootUri     string
 			Identities  []*Identity
+			ReturnUri   string
 		}{
 			DisplayName: storage.GetDisplayName(),
 			RootUri:     storage.GetRootUri(),
 			Identities:  idents,
+			ReturnUri:   "/login",
 		}
 
 		err = tmpl.ExecuteTemplate(w, "email-sent.html", data)
@@ -391,6 +395,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			MagicIp           string
 			MagicIpGeo        ip2location.IP2Locationrecord
 			InstanceId        string
+			ReturnUri         string
 		}{
 			DisplayName:       storage.GetDisplayName(),
 			Identities:        idents,
@@ -404,6 +409,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			MagicIp:           remoteIp,
 			MagicIpGeo:        magicIpGeo,
 			InstanceId:        ogInstanceId,
+			ReturnUri:         "/login",
 		}
 
 		err = tmpl.ExecuteTemplate(w, "email-magic.html", templateData)
@@ -452,7 +458,16 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			cookieValue = loginKeyCookie.Value
 		}
 
-		cookie, err := addIdentityToCookie(storage, "Email", email, email, cookieValue, true)
+		newIdent := &Identity{
+			IdType:        "email",
+			Id:            email,
+			ProviderName:  "Email",
+			Name:          r.Form.Get("name"),
+			Email:         email,
+			EmailVerified: true,
+		}
+
+		cookie, err := addIdentToCookie(storage, cookieValue, newIdent)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -483,10 +498,12 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 				DisplayName string
 				RootUri     string
 				Identities  []*Identity
+				ReturnUri   string
 			}{
 				DisplayName: storage.GetDisplayName(),
 				RootUri:     storage.GetRootUri(),
 				Identities:  idents,
+				ReturnUri:   "/login",
 			}
 
 			err := tmpl.ExecuteTemplate(w, "confirm-magic.html", templateData)

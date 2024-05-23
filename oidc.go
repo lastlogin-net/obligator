@@ -385,9 +385,14 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		scope := claimFromToken("scope", parsedAuthReq)
 		scopeParts := strings.Split(scope, " ")
 		emailRequested := false
+		profileRequested := false
 		for _, scopePart := range scopeParts {
 			if scopePart == "email" {
 				emailRequested = true
+			}
+
+			if scopePart == "profile" {
+				profileRequested = true
 			}
 		}
 
@@ -405,6 +410,10 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		if emailRequested {
 			idTokenBuilder.Email(identity.Email).
 				EmailVerified(identity.EmailVerified)
+		}
+
+		if profileRequested && identity.Name != "" {
+			idTokenBuilder.Name(identity.Name)
 		}
 
 		idToken, err := idTokenBuilder.Build()

@@ -24,6 +24,7 @@ type Identity struct {
 	IdType        string `json:"id_type"`
 	Id            string `json:"id"`
 	ProviderName  string `json:"provider_name"`
+	Name          string `json:"name,omitempty"`
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
 }

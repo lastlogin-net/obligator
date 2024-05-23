@@ -129,17 +129,18 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 		}
 
 		for _, ident := range idents {
-			account := FedCmAccount{
-				Id: ident.Id,
-				//GivenName: "Anders Pitman",
-				Name:  "No Name",
-				Email: ident.Id,
-				//Picture:   "https://apitman.com/gemdrive/images/512/portrait.jpg",
 
+			name := "No Name"
+			if ident.Name != "" {
+				name = ident.Name
 			}
-			if account.Name == "" {
-				account.Name = "No Name"
+
+			account := FedCmAccount{
+				Id:    ident.Id,
+				Name:  name,
+				Email: ident.Id,
 			}
+
 			accounts.Accounts = append(accounts.Accounts, account)
 		}
 
@@ -219,6 +220,9 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 					IssuedAt(issuedAt).
 					Expiration(expiresAt)
 					//Claim("nonce", claimFromToken("nonce", parsedAuthReq))
+				if ident.Name != "" {
+					idTokenBuilder.Name(ident.Name)
+				}
 
 				idToken, err := idTokenBuilder.Build()
 				if err != nil {

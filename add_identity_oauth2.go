@@ -263,6 +263,8 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 
 		var email string
 
+		name := ""
+
 		if oauth2Provider.OpenIDConnect {
 			keyset, err := oauth2MetaMan.GetKeyset(oauth2Provider.ID)
 			if err != nil {
@@ -305,7 +307,10 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 				return
 			}
 
+			printJson(providerOidcToken)
+
 			email = providerOidcToken.Email()
+			name = providerOidcToken.Name()
 		} else {
 			_, email, _ = GetProfile(&oauth2Provider, tokenRes.AccessToken)
 		}
@@ -337,7 +342,16 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			cookieValue = loginKeyCookie.Value
 		}
 
-		cookie, err := addIdentityToCookie(storage, oauth2Provider.Name, email, email, cookieValue, true)
+		newIdent := &Identity{
+			IdType:        "email",
+			Id:            email,
+			ProviderName:  oauth2Provider.Name,
+			Name:          name,
+			Email:         email,
+			EmailVerified: true,
+		}
+
+		cookie, err := addIdentToCookie(storage, cookieValue, newIdent)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())

@@ -149,7 +149,16 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 
 		email := oidcToken.Email()
 
-		cookie, err := addIdentityToCookie(storage, issuer, email, email, cookieValue, true)
+		newIdent := &Identity{
+			IdType:        "email",
+			Id:            email,
+			ProviderName:  issuer,
+			Name:          oidcToken.Name(),
+			Email:         email,
+			EmailVerified: true,
+		}
+
+		cookie, err := addIdentToCookie(storage, cookieValue, newIdent)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())

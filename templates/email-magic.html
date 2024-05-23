@@ -71,7 +71,11 @@
     </p>
     {{end}}
 
-    <form class='' action="/complete-email-login" method="POST">
+    <form class='tn-form' action="/complete-email-login" method="POST">
+      <div>
+        <label for='name'>Name (optional)</label>
+        <input type="text" name="name" >
+      </div>
       <input type="hidden" name="magic_link_key" value="{{.Key}}" required>
       <input type="hidden" name="instance_id" value="{{.InstanceId}}" required>
       <button class='button' type="submit">Confirm Login</button>
