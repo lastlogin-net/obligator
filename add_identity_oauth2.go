@@ -85,7 +85,7 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			return
 		}
 
-		scope := "openid email"
+		scope := "openid email profile"
 		if provider.Scope != "" {
 			scope = provider.Scope
 		}
