@@ -307,8 +307,6 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 				return
 			}
 
-			printJson(providerOidcToken)
-
 			email = providerOidcToken.Email()
 			name = providerOidcToken.Name()
 		} else {
