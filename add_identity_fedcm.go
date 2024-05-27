@@ -48,6 +48,7 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 			RootUri:     storage.GetRootUri(),
 			DisplayName: storage.GetDisplayName(),
 			Identities:  idents,
+			ReturnUri:   "/login",
 		}
 
 		returnUri := r.Form.Get("return_uri")

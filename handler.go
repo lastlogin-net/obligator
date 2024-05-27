@@ -46,10 +46,12 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 			RootUri     string
 			DisplayName string
 			RemoteIp    string
+			ReturnUri   string
 		}{
 			RootUri:     storage.GetRootUri(),
 			DisplayName: storage.GetDisplayName(),
 			RemoteIp:    remoteIp,
+			ReturnUri:   "/login",
 		}
 
 		err = tmpl.ExecuteTemplate(w, "ip.html", data)
@@ -163,10 +165,12 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 			URL         string
 			RootUri     string
 			DisplayName string
+			ReturnUri   string
 		}{
 			URL:         fmt.Sprintf("/auth?%s", r.URL.RawQuery),
 			RootUri:     storage.GetRootUri(),
 			DisplayName: storage.GetDisplayName(),
+			ReturnUri:   "/login",
 		}
 
 		err = tmpl.ExecuteTemplate(w, "no-account.html", data)

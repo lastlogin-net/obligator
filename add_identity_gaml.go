@@ -39,9 +39,11 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 		templateData := struct {
 			DisplayName string
 			RootUri     string
+			ReturnUri   string
 		}{
 			DisplayName: storage.GetDisplayName(),
 			RootUri:     storage.GetRootUri(),
+			ReturnUri:   "/login",
 		}
 
 		err := tmpl.ExecuteTemplate(w, "login-gaml.html", templateData)
@@ -126,10 +128,12 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			DisplayName string
 			RootUri     string
 			GamlCode    string
+			ReturnUri   string
 		}{
 			DisplayName: storage.GetDisplayName(),
 			RootUri:     storage.GetRootUri(),
 			GamlCode:    gamlCode,
+			ReturnUri:   "/login",
 		}
 
 		err = tmpl.ExecuteTemplate(w, "gaml-code.html", templateData)

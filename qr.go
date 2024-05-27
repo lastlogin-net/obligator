@@ -115,6 +115,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 			QrKey        string
 			ErrorMessage string
 			Identities   []*Identity
+			ReturnUri    string
 		}{
 			DisplayName:  storage.GetDisplayName(),
 			RootUri:      storage.GetRootUri(),
@@ -122,6 +123,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 			QrKey:        qrKey,
 			ErrorMessage: "",
 			Identities:   idents,
+			ReturnUri:    "/login",
 		}
 
 		err = tmpl.ExecuteTemplate(w, "login-qr.html", templateData)
@@ -166,6 +168,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 			QrKey:        qrKey,
 			InstanceId:   instanceId,
 			ErrorMessage: "",
+			ReturnUri:    "/login",
 		}
 
 		err = tmpl.ExecuteTemplate(w, "qr.html", templateData)
@@ -257,6 +260,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 				QrKey:        qrKey,
 				InstanceId:   ogInstanceId,
 				ErrorMessage: "You must select at least one identity",
+				ReturnUri:    "/login",
 			}
 
 			err = tmpl.ExecuteTemplate(w, "qr.html", templateData)
@@ -285,6 +289,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 			DisplayName: storage.GetDisplayName(),
 			RootUri:     storage.GetRootUri(),
 			Identities:  idents,
+			ReturnUri:   "/login",
 		}
 
 		returnUri := r.Form.Get("return_uri")
@@ -326,12 +331,14 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 				QrKey        string
 				QrDataUri    template.URL
 				ErrorMessage string
+				ReturnUri    string
 			}{
 				DisplayName:  storage.GetDisplayName(),
 				RootUri:      storage.GetRootUri(),
 				QrKey:        qrKey,
 				QrDataUri:    qrDataUri,
 				ErrorMessage: "No share found. Make sure you've scanned the QR code on the sharing device and confirmed",
+				ReturnUri:    "/login",
 			}
 
 			err = tmpl.ExecuteTemplate(w, "login-qr.html", templateData)
