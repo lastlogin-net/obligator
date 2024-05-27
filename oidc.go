@@ -397,7 +397,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		}
 
 		issuedAt := time.Now().UTC()
-		expiresAt := issuedAt.Add(8 * time.Minute)
+		expiresAt := issuedAt.Add(24 * time.Hour)
 
 		idTokenBuilder := openid.NewBuilder().
 			Subject(identId).
