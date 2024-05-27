@@ -17,6 +17,7 @@ func main() {
 	behindProxy := flag.Bool("behind-proxy", false, "Whether we are behind a reverse proxy")
 	displayName := flag.String("display-name", "obligator", "Display name")
 	geoDbPath := flag.String("geo-db-path", "", "IP2Location Geo DB file")
+	fedCm := flag.Bool("fedcm", false, "Enable FedCM support")
 	flag.Parse()
 
 	conf := obligator.ServerConfig{
@@ -29,6 +30,7 @@ func main() {
 		BehindProxy:  *behindProxy,
 		DisplayName:  *displayName,
 		GeoDbPath:    *geoDbPath,
+		FedCm:        *fedCm,
 	}
 
 	server := obligator.NewServer(conf)

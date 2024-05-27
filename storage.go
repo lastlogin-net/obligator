@@ -18,6 +18,8 @@ type Storage interface {
 	GetJWKSet() jwk.Set
 	GetDisplayName() string
 	SetDisplayName(string)
+	GetFedCmEnabled() bool
+	SetFedCmEnable(bool)
 }
 
 type Identity struct {

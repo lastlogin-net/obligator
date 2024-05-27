@@ -37,6 +37,7 @@ type ServerConfig struct {
 	BehindProxy  bool
 	DisplayName  string
 	GeoDbPath    string
+	FedCm        bool
 }
 
 type SmtpConfig struct {
@@ -183,6 +184,10 @@ func NewServer(conf ServerConfig) *Server {
 		fmt.Fprintln(os.Stderr, "WARNING: No root URI set")
 	}
 
+	if conf.FedCm {
+		storage.SetFedCmEnable(true)
+	}
+
 	oauth2MetaMan := NewOAuth2MetadataManager(storage)
 	err = oauth2MetaMan.Update()
 	if err != nil {
@@ -257,14 +262,16 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/send", qrHandler)
 	mux.Handle("/receive", qrHandler)
 
-	fedCmLoginEndpoint := "/login-fedcm-auto"
-	fedCmHandler := NewFedCmHandler(storage, fedCmLoginEndpoint)
-	mux.Handle("/.well-known/web-identity", fedCmHandler)
-	mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
+	if storage.GetFedCmEnabled() {
+		fedCmLoginEndpoint := "/login-fedcm-auto"
+		fedCmHandler := NewFedCmHandler(storage, fedCmLoginEndpoint)
+		mux.Handle("/.well-known/web-identity", fedCmHandler)
+		mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
 
-	addIdentityFedCmHandler := NewAddIdentityFedCmHandler(storage, tmpl)
-	mux.Handle("/login-fedcm", addIdentityFedCmHandler)
-	mux.Handle("/complete-login-fedcm", addIdentityFedCmHandler)
+		addIdentityFedCmHandler := NewAddIdentityFedCmHandler(storage, tmpl)
+		mux.Handle("/login-fedcm", addIdentityFedCmHandler)
+		mux.Handle("/complete-login-fedcm", addIdentityFedCmHandler)
+	}
 
 	s := &Server{
 		Config:  conf,

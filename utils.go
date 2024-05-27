@@ -185,6 +185,12 @@ func addIdentToCookie(storage Storage, cookieValue string, newIdent *Identity) (
 
 	loginKeyName := storage.GetPrefix() + "login_key"
 
+	sameSiteMode := http.SameSiteLaxMode
+
+	if storage.GetFedCmEnabled() {
+		sameSiteMode = http.SameSiteNoneMode
+	}
+
 	cookie := &http.Cookie{
 		Domain:   cookieDomain,
 		Name:     loginKeyName,
@@ -193,7 +199,7 @@ func addIdentToCookie(storage Storage, cookieValue string, newIdent *Identity) (
 		HttpOnly: true,
 		MaxAge:   86400 * 365,
 		Path:     "/",
-		SameSite: http.SameSiteNoneMode,
+		SameSite: sameSiteMode,
 		//SameSite: http.SameSiteLaxMode,
 		//SameSite: http.SameSiteStrictMode,
 	}

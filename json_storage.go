@@ -18,6 +18,7 @@ type JsonStorage struct {
 	Jwks            jwk.Set          `json:"jwks"`
 	Users           []User           `json:"users"`
 	Public          bool             `json:"public"`
+	FedCmEnabled    bool             `jons:"fedcm_enabled"`
 	mutex           *sync.Mutex
 	path            string
 	message_chan    chan interface{}
@@ -335,4 +336,16 @@ func (s *JsonStorage) Persist() {
 
 func (s *JsonStorage) persist() {
 	saveJson(s, s.path)
+}
+
+func (s *JsonStorage) SetFedCmEnable(enable bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.FedCmEnabled = enable
+	s.persist()
+}
+func (s *JsonStorage) GetFedCmEnabled() bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.FedCmEnabled
 }
