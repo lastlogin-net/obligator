@@ -477,15 +477,14 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		w.Header().Add("Set-Login", "logged-in")
 		http.SetCookie(w, cookie)
 
-		_, err = getJwtFromCookie(prefix+"auth_request", storage, w, r)
-		if err == nil {
+		returnUri, err := getReturnUriCookie(storage, r)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
 
-			returnUri, err := getReturnUriCookie(storage, r)
-			if err != nil {
-				w.WriteHeader(500)
-				fmt.Fprintf(os.Stderr, err.Error())
-				return
-			}
+		if err == nil {
 			deleteReturnUriCookie(storage, w)
 
 			redirUrl := fmt.Sprintf("%s", returnUri)
