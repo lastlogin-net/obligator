@@ -104,6 +104,8 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 			returnUri = "/login-fedcm-auto"
 		}
 
+		setReturnUriCookie(storage, returnUri, w)
+
 		data := struct {
 			DisplayName     string
 			CanEmail        bool

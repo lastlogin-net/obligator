@@ -51,9 +51,6 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 			ReturnUri:   "/login",
 		}
 
-		returnUri := r.Form.Get("return_uri")
-		setReturnUriCookie(storage, returnUri, w)
-
 		err := tmpl.ExecuteTemplate(w, "login-fedcm.html", data)
 		if err != nil {
 			w.WriteHeader(500)

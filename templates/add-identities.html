@@ -6,7 +6,6 @@
   {{if .CanEmail}}
   <div>
     <form action="/login-email" method="POST">
-      <input type="hidden" name="return_uri" value="{{$.ReturnUri}}" required>
       <button class='og-formbutton' type="submit">
         <div class='og-row'>
           <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect x="48" y="96" width="416" height="320" rx="40" ry="40" style="fill:none;stroke:#000;stroke-linecap:round;stroke-linejoin:round;stroke-width:32px"/><polyline points="112 160 256 272 400 160" style="fill:none;stroke:#000;stroke-linecap:round;stroke-linejoin:round;stroke-width:32px"/></svg>
@@ -32,7 +31,6 @@
   
   <div>
     <form action="/login-qr" method="POST">
-      <input type="hidden" name="return_uri" value="{{$.ReturnUri}}" required>
       <button class='og-formbutton' type="submit">
         <div class='og-row'>
           <svg xmlns="http://www.w3.org/2000/svg" class="ionicon" viewBox="0 0 512 512"><rect x="336" y="336" width="80" height="80" rx="8" ry="8"/><rect x="272" y="272" width="64" height="64" rx="8" ry="8"/><rect x="416" y="416" width="64" height="64" rx="8" ry="8"/><rect x="432" y="272" width="48" height="48" rx="8" ry="8"/><rect x="272" y="432" width="48" height="48" rx="8" ry="8"/><rect x="336" y="96" width="80" height="80" rx="8" ry="8"/><rect x="288" y="48" width="176" height="176" rx="16" ry="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="96" y="96" width="80" height="80" rx="8" ry="8"/><rect x="48" y="48" width="176" height="176" rx="16" ry="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><rect x="96" y="336" width="80" height="80" rx="8" ry="8"/><rect x="48" y="288" width="176" height="176" rx="16" ry="16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/></svg>
@@ -46,7 +44,6 @@
   <div>
     <form action="/login-oauth2" method="POST">
       <input type="hidden" name="oauth2_provider_id" value="{{.ID}}" required>
-      <input type="hidden" name="return_uri" value="{{$.ReturnUri}}" required>
       <button class='og-formbutton' type="submit">
         <div class='og-row'>
           {{ index $.LogoMap .ID }}
@@ -61,7 +58,6 @@
 
   <div id='og-login-fedcm-form-container' class='og-remove'>
     <form action="/login-fedcm" method="POST">
-      <input type="hidden" name="return_uri" value="{{$.ReturnUri}}" required>
       <button class='og-formbutton' type="submit">
         <div class='og-row'>
           <span>

@@ -148,9 +148,6 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 
 		setJwtCookie(storage, reqJwt, prefix+"upstream_oauth2_request", maxAge, w, r)
 
-		returnUri := r.Form.Get("return_uri")
-		setReturnUriCookie(storage, returnUri, w)
-
 		callbackUri := fmt.Sprintf("%s/callback", storage.GetRootUri())
 
 		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s&nonce=%s&prompt=consent",

@@ -292,9 +292,6 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 			ReturnUri:   "/login",
 		}
 
-		returnUri := r.Form.Get("return_uri")
-		setReturnUriCookie(storage, returnUri, w)
-
 		err = tmpl.ExecuteTemplate(w, "send-success.html", templateData)
 		if err != nil {
 			w.WriteHeader(400)

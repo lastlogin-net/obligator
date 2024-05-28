@@ -280,6 +280,8 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
+		returnUri := fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery)
+
 		data := struct {
 			RootUri             string
 			DisplayName         string
@@ -302,8 +304,10 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			OAuth2Providers:     providers,
 			LogoMap:             providerLogoMap,
 			CanEmail:            canEmail,
-			ReturnUri:           fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery),
+			ReturnUri:           returnUri,
 		}
+
+		setReturnUriCookie(storage, returnUri, w)
 
 		err = tmpl.ExecuteTemplate(w, "auth.html", data)
 		if err != nil {
