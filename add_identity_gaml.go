@@ -75,7 +75,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 		urlId := fmt.Sprintf("%s%s", parsedUrl.Host, parsedUrl.Path)
 
 		// It's important to retrieve the value of the previous code
-		// and verifiy that it changes during this process. Otherwise
+		// and verify that it changes during this process. Otherwise
 		// an attacker could read the old code and use it to log it.
 		oldCode, err := retrieveCode(urlId, httpClient, w)
 		if err != nil {
