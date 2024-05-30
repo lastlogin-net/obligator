@@ -163,12 +163,17 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 	})
 
 	mux.HandleFunc("/no-account", func(w http.ResponseWriter, r *http.Request) {
+
+		idents, _ := getIdentities(storage, r, publicJwks)
+
 		data := struct {
+			Identities  []*Identity
 			URL         string
 			RootUri     string
 			DisplayName string
 			ReturnUri   string
 		}{
+			Identities:  idents,
 			URL:         fmt.Sprintf("/auth?%s", r.URL.RawQuery),
 			RootUri:     storage.GetRootUri(),
 			DisplayName: storage.GetDisplayName(),
