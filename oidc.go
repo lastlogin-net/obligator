@@ -32,6 +32,7 @@ type OAuth2ServerMetadata struct {
 	SubjectTypesSupported             []string `json:"subject_types_supported"`
 	RegistrationEndpoint              string   `json:"registration_endpoint"`
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
+	IntrospectionEndpoint             string   `json:"introspection_endpoint,omitempty"`
 }
 
 type OAuth2AuthRequest struct {
@@ -596,10 +597,27 @@ func ParseAuthRequest(w http.ResponseWriter, r *http.Request) (*OAuth2AuthReques
 		return nil, errors.New("redirect_uri missing")
 	}
 
+	parsedClientIdUri, err := url.Parse(clientId)
+	if err != nil {
+		w.WriteHeader(400)
+		msg := "client_id is not a valid URI"
+		io.WriteString(w, msg)
+		return nil, errors.New(msg)
+	}
+
+	parsedRedirectUri, err := url.Parse(redirectUri)
+	if err != nil {
+		w.WriteHeader(400)
+		msg := "redirect_uri is not a valid URI"
+		io.WriteString(w, msg)
+		return nil, errors.New(msg)
+	}
+
 	// draft-ietf-oauth-security-topics-24 4.1
-	if !strings.HasPrefix(redirectUri, clientId) {
+	if parsedClientIdUri.Host != parsedRedirectUri.Host {
 		w.WriteHeader(400)
 		io.WriteString(w, "redirect_uri must be on the same domain as client_id")
+		fmt.Println(redirectUri, clientId)
 		return nil, errors.New("redirect_uri must be on the same domain as client_id")
 	}
 
@@ -622,12 +640,15 @@ func ParseAuthRequest(w http.ResponseWriter, r *http.Request) (*OAuth2AuthReques
 		return nil, errors.New("unsupported_response_type")
 	}
 
+	pkceCodeChallenge := r.Form.Get("code_challenge")
+
 	return &OAuth2AuthRequest{
-		ClientId:     clientId,
-		RedirectUri:  redirectUri,
-		ResponseType: responseType,
-		Scope:        scope,
-		State:        state,
+		ClientId:      clientId,
+		RedirectUri:   redirectUri,
+		ResponseType:  responseType,
+		Scope:         scope,
+		State:         state,
+		CodeChallenge: pkceCodeChallenge,
 	}, nil
 }
 

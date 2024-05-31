@@ -262,6 +262,12 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/send", qrHandler)
 	mux.Handle("/receive", qrHandler)
 
+	indieAuthPrefix := "/indieauth"
+	indieAuthHandler := NewIndieAuthHandler(storage, tmpl, indieAuthPrefix)
+	mux.Handle("/users/", indieAuthHandler)
+	mux.Handle("/.well-known/oauth-authorization-server", indieAuthHandler)
+	mux.Handle(indieAuthPrefix+"/", http.StripPrefix(indieAuthPrefix, indieAuthHandler))
+
 	if storage.GetFedCmEnabled() {
 		fedCmLoginEndpoint := "/login-fedcm-auto"
 		fedCmHandler := NewFedCmHandler(storage, fedCmLoginEndpoint)
