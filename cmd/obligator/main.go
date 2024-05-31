@@ -18,19 +18,21 @@ func main() {
 	displayName := flag.String("display-name", "obligator", "Display name")
 	geoDbPath := flag.String("geo-db-path", "", "IP2Location Geo DB file")
 	fedCm := flag.Bool("fedcm", false, "Enable FedCM support")
+	forwardAuthPassthrough := flag.Bool("forward-auth-passthrough", false, "Always return success for validation requests")
 	flag.Parse()
 
 	conf := obligator.ServerConfig{
-		Port:         *port,
-		RootUri:      *rootUri,
-		Prefix:       *prefix,
-		StorageDir:   *storageDir,
-		DatabaseDir:  *dbDir,
-		ApiSocketDir: *apiSocketDir,
-		BehindProxy:  *behindProxy,
-		DisplayName:  *displayName,
-		GeoDbPath:    *geoDbPath,
-		FedCm:        *fedCm,
+		Port:                   *port,
+		RootUri:                *rootUri,
+		Prefix:                 *prefix,
+		StorageDir:             *storageDir,
+		DatabaseDir:            *dbDir,
+		ApiSocketDir:           *apiSocketDir,
+		BehindProxy:            *behindProxy,
+		DisplayName:            *displayName,
+		GeoDbPath:              *geoDbPath,
+		FedCm:                  *fedCm,
+		ForwardAuthPassthrough: *forwardAuthPassthrough,
 	}
 
 	server := obligator.NewServer(conf)

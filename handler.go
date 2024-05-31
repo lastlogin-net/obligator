@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
 type Handler struct {
@@ -22,9 +21,6 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 	h := &Handler{
 		mux: mux,
 	}
-
-	prefix := storage.GetPrefix()
-	loginKeyName := prefix + "login_key"
 
 	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
 	if err != nil {
@@ -62,6 +58,8 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 		}
 	})
 
+	// TODO: probably needs to be combined with the API somehow, but the
+	// API currently only works over a unix socket for security.
 	mux.HandleFunc("/validate", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 
@@ -69,17 +67,19 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 		url := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=code&state=&scope=",
 			storage.GetRootUri(), redirectUri, redirectUri)
 
-		loginKeyCookie, err := r.Cookie(loginKeyName)
+		validation, err := validate(storage, r)
 		if err != nil {
+			fmt.Println(err)
 			http.Redirect(w, r, url, 307)
 			return
 		}
 
-		// TODO: add Remote-Email to header
-		_, err = jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
-		if err != nil {
-			http.Redirect(w, r, url, 307)
-			return
+		if validation != nil {
+			w.Header().Set("Remote-Id-Type", validation.IdType)
+			w.Header().Set("Remote-Id", validation.Id)
+		} else {
+			w.Header().Set("Remote-Id-Type", "")
+			w.Header().Set("Remote-Id", "")
 		}
 	})
 

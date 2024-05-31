@@ -27,17 +27,18 @@ type Server struct {
 }
 
 type ServerConfig struct {
-	Port         int
-	RootUri      string
-	AuthDomains  []string
-	Prefix       string
-	StorageDir   string
-	DatabaseDir  string
-	ApiSocketDir string
-	BehindProxy  bool
-	DisplayName  string
-	GeoDbPath    string
-	FedCm        bool
+	Port                   int
+	RootUri                string
+	AuthDomains            []string
+	Prefix                 string
+	StorageDir             string
+	DatabaseDir            string
+	ApiSocketDir           string
+	BehindProxy            bool
+	DisplayName            string
+	GeoDbPath              string
+	FedCm                  bool
+	ForwardAuthPassthrough bool
 }
 
 type SmtpConfig struct {
@@ -186,6 +187,10 @@ func NewServer(conf ServerConfig) *Server {
 
 	if conf.FedCm {
 		storage.SetFedCmEnable(true)
+	}
+
+	if conf.ForwardAuthPassthrough {
+		storage.SetForwardAuthPassthrough(true)
 	}
 
 	oauth2MetaMan := NewOAuth2MetadataManager(storage)
@@ -338,36 +343,51 @@ func (s *Server) GetUsers() ([]User, error) {
 }
 
 func (s *Server) Validate(r *http.Request) (*Validation, error) {
+	return validate(s.storage, r)
+}
+
+func checkErrPassthrough(err error, passthrough bool) (*Validation, error) {
+	if passthrough {
+		return nil, nil
+	} else {
+		return nil, err
+	}
+}
+
+func validate(storage Storage, r *http.Request) (*Validation, error) {
 	r.ParseForm()
 
-	loginKeyName := s.storage.GetPrefix() + "login_key"
+	passthrough := storage.GetForwardAuthPassthrough()
+
+	loginKeyName := storage.GetPrefix() + "login_key"
 
 	loginKeyCookie, err := r.Cookie(loginKeyName)
 	if err != nil {
-		return nil, err
+		return checkErrPassthrough(err, passthrough)
 	}
 
 	// TODO: don't generate publicJwks every time
-	publicJwks, err := jwk.PublicSetOf(s.storage.GetJWKSet())
+	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
 	if err != nil {
-		return nil, err
+		return checkErrPassthrough(err, passthrough)
 	}
 
 	parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
 	if err != nil {
-		return nil, err
+		return checkErrPassthrough(err, passthrough)
 	}
 
 	tokIdentsInterface, exists := parsed.Get("identities")
 	if !exists {
-		return nil, errors.New("No identities")
+		return checkErrPassthrough(errors.New("No identities"), passthrough)
 	}
 
 	tokIdents, ok := tokIdentsInterface.([]*Identity)
 	if !ok {
-		return nil, errors.New("No identities")
+		return checkErrPassthrough(errors.New("No identities"), passthrough)
 	}
 
+	// TODO: maybe return whole list of identities?
 	ident := tokIdents[0]
 
 	v := &Validation{

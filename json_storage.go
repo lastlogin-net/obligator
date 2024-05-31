@@ -10,18 +10,19 @@ import (
 )
 
 type JsonStorage struct {
-	DisplayName     string           `json:"display_name"`
-	RootUri         string           `json:"root_uri"`
-	Prefix          string           `json:"prefix"`
-	OAuth2Providers []OAuth2Provider `json:"oauth2_providers"`
-	Smtp            *SmtpConfig      `json:"smtp"`
-	Jwks            jwk.Set          `json:"jwks"`
-	Users           []User           `json:"users"`
-	Public          bool             `json:"public"`
-	FedCmEnabled    bool             `jons:"fedcm_enabled"`
-	mutex           *sync.Mutex
-	path            string
-	message_chan    chan interface{}
+	DisplayName            string           `json:"display_name"`
+	RootUri                string           `json:"root_uri"`
+	Prefix                 string           `json:"prefix"`
+	OAuth2Providers        []OAuth2Provider `json:"oauth2_providers"`
+	Smtp                   *SmtpConfig      `json:"smtp"`
+	Jwks                   jwk.Set          `json:"jwks"`
+	Users                  []User           `json:"users"`
+	Public                 bool             `json:"public"`
+	FedCmEnabled           bool             `json:"fedcm_enabled"`
+	ForwardAuthPassthrough bool             `json:"forward_auth_passthrough"`
+	mutex                  *sync.Mutex
+	path                   string
+	message_chan           chan interface{}
 }
 
 func NewJsonStorage(path string) (*JsonStorage, error) {
@@ -348,4 +349,16 @@ func (s *JsonStorage) GetFedCmEnabled() bool {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	return s.FedCmEnabled
+}
+
+func (s *JsonStorage) SetForwardAuthPassthrough(enable bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.ForwardAuthPassthrough = enable
+	s.persist()
+}
+func (s *JsonStorage) GetForwardAuthPassthrough() bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.ForwardAuthPassthrough
 }

@@ -20,6 +20,8 @@ type Storage interface {
 	SetDisplayName(string)
 	GetFedCmEnabled() bool
 	SetFedCmEnable(bool)
+	GetForwardAuthPassthrough() bool
+	SetForwardAuthPassthrough(bool)
 }
 
 type Identity struct {
