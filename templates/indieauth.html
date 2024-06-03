@@ -1,0 +1,14 @@
+{{ template "header.html" . }}
+
+<p class='og-first-elem'>
+  <span class='og-auth-client-id'>{{$.ClientId}}</span> wants to log you in.
+  Do you wish to proceed?
+</p>
+
+<form action="/indieauth/confirm" method="POST">
+  <button class='og-formbutton' type="submit">
+    Confirm
+  </button>
+</form>
+
+{{ template "footer.html" . }}
