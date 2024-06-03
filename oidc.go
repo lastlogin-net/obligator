@@ -245,6 +245,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		authRequestJwt, err := jwt.NewBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(maxAge)).
+			// TODO: should we be checking login_key_hash?
 			Claim("login_key_hash", hashedLoginKey).
 			Claim("client_id", ar.ClientId).
 			Claim("redirect_uri", ar.RedirectUri).

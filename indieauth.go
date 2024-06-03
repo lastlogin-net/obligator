@@ -6,6 +6,12 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"os"
+	"time"
+
+	"github.com/lestrrat-go/jwx/v2/jwa"
+	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
 type footerData struct {
@@ -24,6 +30,14 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 
 	mux := http.NewServeMux()
 
+	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	cookiePrefix := storage.GetPrefix()
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("catchall: " + r.URL.Path)
 	})
@@ -33,19 +47,55 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 
 		r.ParseForm()
 
-		code := r.Form.Get("code")
+		codeJwt := r.Form.Get("code")
 
-		if code != "dummy-code" {
-			w.WriteHeader(400)
-			io.WriteString(w, "Invalid code")
+		parsedCodeJwt, err := jwt.Parse([]byte(codeJwt), jwt.WithKeySet(publicJwks))
+		if err != nil {
+			fmt.Println(err.Error())
+			w.WriteHeader(401)
+			io.WriteString(w, err.Error())
 			return
 		}
 
-		profile := IndieAuthProfile{
-			MeUri: fmt.Sprintf("%s/users/dummy-user", storage.GetRootUri()),
+		printJson(parsedCodeJwt)
+
+		domain := claimFromToken("domain", parsedCodeJwt)
+		if domain != r.Host {
+			w.WriteHeader(400)
+			io.WriteString(w, "Invalid domain")
+			return
 		}
 
-		err := json.NewEncoder(w).Encode(profile)
+		pkceCodeChallenge, exists := parsedCodeJwt.Get("pkce_code_challenge")
+		if !exists {
+			w.WriteHeader(401)
+			io.WriteString(w, "Invalid pkce_code_challenge in code")
+			return
+		}
+
+		// https://datatracker.ietf.org/doc/html/draft-ietf-oauth-security-topics#section-4.8.2
+		// draft-ietf-oauth-security-topics-24 2.1.1
+		pkceCodeVerifier := r.Form.Get("code_verifier")
+		if pkceCodeChallenge != "" {
+			challenge := GeneratePKCECodeChallenge(pkceCodeVerifier)
+			if challenge != pkceCodeChallenge {
+				w.WriteHeader(401)
+				io.WriteString(w, "Invalid code_verifier")
+				return
+			}
+		} else {
+			if pkceCodeVerifier != "" {
+				w.WriteHeader(401)
+				io.WriteString(w, "code_verifier provided for request that did not include code_challenge")
+				return
+			}
+		}
+
+		profile := IndieAuthProfile{
+			MeUri: fmt.Sprintf("https://%s/users/me", r.Host),
+		}
+
+		err = json.NewEncoder(w).Encode(profile)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -67,10 +117,100 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 			return
 		}
 
-		uri := fmt.Sprintf("%s?code=%s&state=%s",
-			ar.RedirectUri,
-			"dummy-code",
-			ar.State)
+		maxAge := 8 * time.Minute
+		issuedAt := time.Now().UTC()
+		authRequestJwt, err := jwt.NewBuilder().
+			IssuedAt(issuedAt).
+			Expiration(issuedAt.Add(maxAge)).
+			Claim("client_id", ar.ClientId).
+			Claim("redirect_uri", ar.RedirectUri).
+			Claim("state", ar.State).
+			Claim("scope", r.Form.Get("scope")).
+			Claim("nonce", r.Form.Get("nonce")).
+			Claim("pkce_code_challenge", r.Form.Get("code_challenge")).
+			Claim("response_type", ar.ResponseType).
+			Build()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		setJwtCookie(storage, authRequestJwt, cookiePrefix+"auth_request", maxAge, w, r)
+		idents, _ := getIdentities(storage, r, publicJwks)
+
+		data := struct {
+			DisplayName string
+			Identities  []*Identity
+			ReturnUri   string
+			ClientId    string
+			RootUri     string
+		}{
+			DisplayName: storage.GetDisplayName(),
+			Identities:  idents,
+			ClientId:    ar.ClientId,
+			RootUri:     fmt.Sprintf("https://%s", r.Host),
+		}
+
+		err = tmpl.ExecuteTemplate(w, "indieauth.html", data)
+		if err != nil {
+			fmt.Println(err)
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+	})
+
+	mux.HandleFunc("/confirm", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("/indieauth/confirm")
+
+		clearCookie(storage, cookiePrefix+"auth_request", w)
+
+		parsedAuthReq, err := getJwtFromCookie(cookiePrefix+"auth_request", storage, w, r)
+		if err != nil {
+			w.WriteHeader(401)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		printJson(parsedAuthReq)
+
+		issuedAt := time.Now().UTC()
+		codeJwt, err := jwt.NewBuilder().
+			IssuedAt(issuedAt).
+			Expiration(issuedAt.Add(16*time.Second)).
+			//Subject(idToken.Email()).
+			Claim("domain", r.Host).
+			Claim("pkce_code_challenge", claimFromToken("pkce_code_challenge", parsedAuthReq)).
+			Build()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		key, exists := storage.GetJWKSet().Key(0)
+		if !exists {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "No keys available")
+			return
+		}
+
+		signedCode, err := jwt.Sign(codeJwt, jwt.WithKey(jwa.RS256, key))
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		uri := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&code=%s&state=%s&scope=%s",
+			claimFromToken("redirect_uri", parsedAuthReq),
+			claimFromToken("client_id", parsedAuthReq),
+			claimFromToken("redirect_uri", parsedAuthReq),
+			string(signedCode),
+			claimFromToken("state", parsedAuthReq),
+			claimFromToken("scope", parsedAuthReq))
 
 		http.Redirect(w, r, uri, 302)
 	})
@@ -80,7 +220,7 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 	mux.HandleFunc("/users/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("/users/")
 
-		uri := fmt.Sprintf("%s/.well-known/oauth-authorization-server", storage.GetRootUri())
+		uri := fmt.Sprintf("%s/.well-known/oauth-authorization-server", fmt.Sprintf("https://%s", r.Host))
 		link := fmt.Sprintf("<%s>; rel=\"indieauth-metadata\"", uri)
 		w.Header().Set("Link", link)
 		w.Header().Set("Content-Type", "text/html")
@@ -88,7 +228,7 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 		data := struct {
 			RootUri string
 		}{
-			RootUri: storage.GetRootUri(),
+			RootUri: fmt.Sprintf("https://%s", r.Host),
 		}
 
 		err := tmpl.ExecuteTemplate(w, "user.html", data)
@@ -105,7 +245,7 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 
-		rootUri := storage.GetRootUri()
+		rootUri := fmt.Sprintf("https://%s", r.Host)
 
 		meta := OAuth2ServerMetadata{
 			Issuer:                        rootUri,
