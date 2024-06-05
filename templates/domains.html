@@ -1,0 +1,28 @@
+{{ template "header.html" . }}
+
+<p>
+  You can use this form to add a domain.
+</p>
+
+<form class='tn-form' action="/add-domain" method="POST">
+  <p>
+    Select an identity to be the admin for this domain:
+  </p>
+
+  <select name='owner_id'>
+    {{range .Identities}}
+    <option>{{.Id}}</option>
+    {{end}}
+  </select>
+
+  <p>
+    Enter the domain to add:
+  </p>
+  <input type='text' name='domain' placeholder="Enter a domain" />
+
+  <button class='og-formbutton' type="submit">
+    Submit
+  </button>
+</form>
+
+{{ template "footer.html" . }}
