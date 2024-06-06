@@ -184,10 +184,7 @@ func NewServer(conf ServerConfig) *Server {
 		os.Exit(1)
 	}
 
-	err = proxy.AddDomain(rootUrl.Host)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-	}
+	db.AddDomain(rootUrl.Host, "root")
 
 	domains, err := db.GetDomains()
 	if err != nil {
@@ -195,10 +192,12 @@ func NewServer(conf ServerConfig) *Server {
 	}
 
 	for _, d := range domains {
-		err = proxy.AddDomain(d.Domain)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-		}
+		go func(d *Domain) {
+			err = proxy.AddDomain(d.Domain)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+			}
+		}(d)
 	}
 
 	conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
