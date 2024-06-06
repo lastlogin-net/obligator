@@ -189,6 +189,18 @@ func NewServer(conf ServerConfig) *Server {
 		fmt.Fprintln(os.Stderr, err.Error())
 	}
 
+	domains, err := db.GetDomains()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+	}
+
+	for _, d := range domains {
+		err = proxy.AddDomain(d.Domain)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+		}
+	}
+
 	conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
 
 	if conf.FedCm {

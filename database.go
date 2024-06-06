@@ -98,3 +98,47 @@ func (s *Database) AddDomain(domain, ownerId string) error {
 	}
 	return nil
 }
+
+type Domain struct {
+	HashedOwnerId string
+	Domain        string
+}
+
+func (s *Database) GetDomain(domain string) (*Domain, error) {
+
+	var d Domain
+
+	stmt := "SELECT domain,hashed_owner_id FROM domains WHERE domain = ?"
+	err := s.db.QueryRow(stmt, domain).Scan(&d.Domain, &d.HashedOwnerId)
+	if err != nil {
+		return nil, err
+	}
+
+	return &d, nil
+}
+
+func (s *Database) GetDomains() ([]*Domain, error) {
+
+	rows, err := s.db.Query("SELECT * FROM domains")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	allDomains := []*Domain{}
+
+	for rows.Next() {
+		var d Domain
+		err = rows.Scan(&d.Domain, &d.HashedOwnerId)
+		if err != nil {
+			return nil, err
+		}
+		allDomains = append(allDomains, &d)
+	}
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return allDomains, nil
+}
