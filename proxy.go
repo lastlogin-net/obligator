@@ -7,18 +7,20 @@ import (
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/multisig-labs/caddyapi"
 )
 
 type Proxy interface {
 	AddDomain(domain string) error
 }
 
-func NewProxy(type_ string) Proxy {
+func NewProxy(type_ string, port int) Proxy {
 	switch type_ {
 	case "fly.io":
 		return NewFlyIoProxy()
 	case "caddy":
-		return NewCaddyProxy()
+		return NewCaddyProxy(port)
 	default:
 		return nil
 	}
@@ -89,12 +91,63 @@ func (p *FlyIoProxy) AddDomain(domain string) error {
 }
 
 type CaddyProxy struct {
+	api    *caddyapi.CaddyAPI
+	config caddyapi.Config
 }
 
-func NewCaddyProxy() *CaddyProxy {
-	return &CaddyProxy{}
+func NewCaddyProxy(port int) *CaddyProxy {
+	api := caddyapi.NewCaddyAPI("http://localhost:2019")
+
+	routes := []caddyapi.Route{
+		caddyapi.Route{
+			Handle: []caddyapi.Handle{
+				caddyapi.Handle{
+					Handler: "reverse_proxy",
+					Upstreams: []caddyapi.Upstream{
+						caddyapi.Upstream{
+							Dial: fmt.Sprintf("localhost:%d", port),
+						},
+					},
+				},
+			},
+			Match: []caddyapi.Match{
+				caddyapi.Match{
+					Host: []string{},
+				},
+			},
+		},
+	}
+
+	config := caddyapi.Config{
+		Apps: caddyapi.Apps{
+			HTTP: caddyapi.HTTP{
+				Servers: map[string]caddyapi.Server{
+					"obligator": caddyapi.Server{
+						Listen: []string{
+							":443",
+						},
+						Routes: routes,
+					},
+				},
+			},
+		},
+	}
+
+	err := api.LoadConfig(config)
+	if err != nil {
+		panic(err)
+	}
+
+	return &CaddyProxy{
+		api,
+		config,
+	}
 }
 
 func (p *CaddyProxy) AddDomain(domain string) error {
-	return nil
+
+	match := &p.config.Apps.HTTP.Servers["obligator"].Routes[0].Match[0]
+	(*match).Host = append((*match).Host, domain)
+
+	return p.api.LoadConfig(p.config)
 }

@@ -164,6 +164,7 @@ func NewServer(conf ServerConfig) *Server {
 	}
 
 	cluster := NewCluster()
+	proxy := NewProxy("caddy", conf.Port)
 
 	if conf.DisplayName != "obligator" {
 		storage.SetDisplayName(conf.DisplayName)
@@ -173,17 +174,22 @@ func NewServer(conf ServerConfig) *Server {
 		storage.SetRootUri(conf.RootUri)
 	}
 
-	rootUrl, err := url.Parse(conf.RootUri)
+	if storage.GetRootUri() == "" {
+		fmt.Fprintln(os.Stderr, "WARNING: No root URI set")
+	}
+
+	rootUrl, err := url.Parse(storage.GetRootUri())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
-	conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
-
-	if storage.GetRootUri() == "" {
-		fmt.Fprintln(os.Stderr, "WARNING: No root URI set")
+	err = proxy.AddDomain(rootUrl.Host)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
 	}
+
+	conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
 
 	if conf.FedCm {
 		storage.SetFedCmEnable(true)
@@ -272,6 +278,103 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/users/", indieAuthHandler)
 	mux.Handle("/.well-known/oauth-authorization-server", indieAuthHandler)
 	mux.Handle(indieAuthPrefix+"/", http.StripPrefix(indieAuthPrefix, indieAuthHandler))
+
+	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	mux.HandleFunc("/domains", func(w http.ResponseWriter, r *http.Request) {
+
+		idents, _ := getIdentities(storage, r, publicJwks)
+
+		data := struct {
+			RootUri     string
+			DisplayName string
+			Identities  []*Identity
+			ReturnUri   string
+		}{
+			RootUri:     storage.GetRootUri(),
+			DisplayName: storage.GetDisplayName(),
+			Identities:  idents,
+			ReturnUri:   "/domains",
+		}
+
+		err = tmpl.ExecuteTemplate(w, "domains.html", data)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+	})
+
+	mux.HandleFunc("/add-domain", func(w http.ResponseWriter, r *http.Request) {
+
+		r.ParseForm()
+
+		// TODO: sanitize domain
+		domain := r.Form.Get("domain")
+
+		if domain == "" {
+			w.WriteHeader(400)
+			io.WriteString(w, "Missing domain")
+			return
+		}
+
+		_, err := url.Parse(domain)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		ownerId := r.Form.Get("owner_id")
+
+		idents, _ := getIdentities(storage, r, publicJwks)
+
+		match := false
+		for _, ident := range idents {
+			if ident.Id == ownerId {
+				match = true
+				break
+			}
+		}
+
+		if !match {
+			w.WriteHeader(403)
+			io.WriteString(w, "You don't own that ID")
+			return
+		}
+
+		//cname, err := getAuthoritativeCNAME(r.Context(), domain)
+		//if err != nil {
+		//        w.WriteHeader(500)
+		//        io.WriteString(w, err.Error())
+		//        return
+		//}
+
+		//if cname != rootUrl.Host {
+		//        fmt.Println(cname, rootUrl.Host)
+		//        w.WriteHeader(400)
+		//        io.WriteString(w, "CNAME != host")
+		//        return
+		//}
+
+		err = db.AddDomain(domain, ownerId)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		err = proxy.AddDomain(domain)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+	})
 
 	if storage.GetFedCmEnabled() {
 		fedCmLoginEndpoint := "/login-fedcm-auto"

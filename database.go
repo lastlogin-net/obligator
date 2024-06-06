@@ -27,6 +27,17 @@ func NewDatabase(path string) (*Database, error) {
 		}
 	}
 
+	stmt = `
+        CREATE TABLE IF NOT EXISTS domains(
+                domain TEXT UNIQUE,
+                hashed_owner_id TEXT
+        );
+        `
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Database{
 		db: db,
 	}
@@ -75,4 +86,15 @@ func (s *Database) GetEmailValidationCounts(since time.Time) ([]*EmailValidation
 	}
 
 	return counts, nil
+}
+
+func (s *Database) AddDomain(domain, ownerId string) error {
+	stmt := `
+        INSERT INTO domains(domain,hashed_owner_id) VALUES(?,?);
+        `
+	_, err := s.db.Exec(stmt, domain, Hash(ownerId))
+	if err != nil {
+		return err
+	}
+	return nil
 }
