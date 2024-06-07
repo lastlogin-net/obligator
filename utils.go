@@ -10,7 +10,6 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -19,6 +18,52 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
+
+type commonData struct {
+	RootUri     string
+	DisplayName string
+	Identities  []*Identity
+	ReturnUri   string
+}
+
+func newCommonData(overrides *commonData, storage Storage, r *http.Request) *commonData {
+	d := &commonData{}
+
+	if overrides == nil || overrides.RootUri == "" {
+		d.RootUri = domainToUri(r.Host)
+	} else {
+		d.RootUri = overrides.RootUri
+	}
+
+	if overrides == nil || overrides.DisplayName == "" {
+		d.DisplayName = storage.GetDisplayName()
+	} else {
+		d.DisplayName = overrides.DisplayName
+	}
+
+	if overrides == nil || overrides.Identities == nil {
+
+		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+		if err != nil {
+			d.Identities = []*Identity{}
+		} else {
+			idents, _ := getIdentities(storage, r, publicJwks)
+			d.Identities = idents
+		}
+	}
+
+	if overrides == nil || overrides.ReturnUri == "" {
+		var err error
+		d.ReturnUri, err = getReturnUriCookie(storage, r)
+		if err != nil {
+			d.ReturnUri = "/"
+		}
+	} else {
+		d.ReturnUri = overrides.ReturnUri
+	}
+
+	return d
+}
 
 func Hash(input string) string {
 	sha2 := sha256.New()
@@ -70,18 +115,15 @@ func genRandomCode() (string, error) {
 	return id, nil
 }
 
-func buildCookieDomain(fullUrl string) (string, error) {
-	rootUrlParsed, err := url.Parse(fullUrl)
-	if err != nil {
-		return "", err
-	}
-	hostParts := strings.Split(rootUrlParsed.Host, ".")
+func buildCookieDomain(domain string) (string, error) {
+
+	hostParts := strings.Split(domain, ".")
 
 	// TODO: This should probably be using the public suffix list. It's
 	// currently hardcoded for only certain domains
 	if len(hostParts) < 3 {
 		// apex domain
-		return rootUrlParsed.Host, nil
+		return domain, nil
 	} else {
 		cookieDomain := strings.Join(hostParts[1:], ".")
 		return cookieDomain, nil
@@ -97,25 +139,7 @@ func validUser(email string, users []User) bool {
 	return false
 }
 
-func addIdentityToCookie(storage Storage, providerName, id, email, cookieValue string, emailVerified bool) (*http.Cookie, error) {
-
-	idType := "email"
-	if providerName == "URL" {
-		idType = "url"
-	}
-
-	newIdent := &Identity{
-		IdType:        idType,
-		Id:            id,
-		ProviderName:  providerName,
-		Email:         email,
-		EmailVerified: emailVerified,
-	}
-
-	return addIdentToCookie(storage, cookieValue, newIdent)
-}
-
-func addIdentToCookie(storage Storage, cookieValue string, newIdent *Identity) (*http.Cookie, error) {
+func addIdentToCookie(domain string, storage Storage, cookieValue string, newIdent *Identity) (*http.Cookie, error) {
 
 	key, exists := storage.GetJWKSet().Key(0)
 	if !exists {
@@ -178,7 +202,7 @@ func addIdentToCookie(storage Storage, cookieValue string, newIdent *Identity) (
 
 	unhashedLoginKey := string(signed)
 
-	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+	cookieDomain, err := buildCookieDomain(domain)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +231,7 @@ func addIdentToCookie(storage Storage, cookieValue string, newIdent *Identity) (
 	return cookie, nil
 }
 
-func addLoginToCookie(storage Storage, currentCookieValue, clientId string, newLogin *Login) (*http.Cookie, error) {
+func addLoginToCookie(domain string, storage Storage, currentCookieValue, clientId string, newLogin *Login) (*http.Cookie, error) {
 	key, exists := storage.GetJWKSet().Key(0)
 	if !exists {
 		return nil, errors.New("No keys available")
@@ -284,7 +308,7 @@ func addLoginToCookie(storage Storage, currentCookieValue, clientId string, newL
 
 	loginKey := string(signed)
 
-	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+	cookieDomain, err := buildCookieDomain(domain)
 	if err != nil {
 		return nil, err
 	}
@@ -306,8 +330,8 @@ func addLoginToCookie(storage Storage, currentCookieValue, clientId string, newL
 	return cookie, nil
 }
 
-func deleteLoginKeyCookie(storage Storage, w http.ResponseWriter) error {
-	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+func deleteLoginKeyCookie(domain string, storage Storage, w http.ResponseWriter) error {
+	cookieDomain, err := buildCookieDomain(domain)
 	if err != nil {
 		return err
 	}
@@ -375,7 +399,7 @@ func getJwtFromCookie(cookieKey string, storage Storage, w http.ResponseWriter, 
 	return parsedAuthReq, nil
 }
 
-func setJwtCookie(storage Storage, jot jwt.Token, cookieKey string, maxAge time.Duration, w http.ResponseWriter, r *http.Request) {
+func setJwtCookie(domain string, storage Storage, jot jwt.Token, cookieKey string, maxAge time.Duration, w http.ResponseWriter, r *http.Request) {
 	key, exists := storage.GetJWKSet().Key(0)
 	if !exists {
 		w.WriteHeader(500)
@@ -390,7 +414,7 @@ func setJwtCookie(storage Storage, jot jwt.Token, cookieKey string, maxAge time.
 		return
 	}
 
-	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+	cookieDomain, err := buildCookieDomain(domain)
 	if err != nil {
 		w.WriteHeader(500)
 		io.WriteString(w, err.Error())
@@ -410,8 +434,8 @@ func setJwtCookie(storage Storage, jot jwt.Token, cookieKey string, maxAge time.
 	http.SetCookie(w, cookie)
 }
 
-func clearCookie(storage Storage, cookieKey string, w http.ResponseWriter) {
-	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+func clearCookie(domain string, storage Storage, cookieKey string, w http.ResponseWriter) {
+	cookieDomain, err := buildCookieDomain(domain)
 	if err != nil {
 		w.WriteHeader(500)
 		io.WriteString(w, err.Error())
@@ -490,9 +514,9 @@ func getReturnUriCookie(storage Storage, r *http.Request) (string, error) {
 
 	return cookie.Value, nil
 }
-func setReturnUriCookie(storage Storage, uri string, w http.ResponseWriter) error {
+func setReturnUriCookie(domain string, storage Storage, uri string, w http.ResponseWriter) error {
 
-	cookieDomain, err := buildCookieDomain(storage.GetRootUri())
+	cookieDomain, err := buildCookieDomain(domain)
 	if err != nil {
 		return err
 	}
@@ -513,9 +537,13 @@ func setReturnUriCookie(storage Storage, uri string, w http.ResponseWriter) erro
 	return nil
 }
 
-func deleteReturnUriCookie(storage Storage, w http.ResponseWriter) {
+func deleteReturnUriCookie(domain string, storage Storage, w http.ResponseWriter) {
 
 	name := storage.GetPrefix() + "return_uri"
 
-	clearCookie(storage, name, w)
+	clearCookie(domain, storage, name, w)
+}
+
+func domainToUri(host string) string {
+	return fmt.Sprintf("https://%s", host)
 }

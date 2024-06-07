@@ -69,27 +69,6 @@ package obligator
 //	return s, nil
 //}
 //
-//func (s *SqliteStorage) GetRootUri() string {
-//	var rootUri string
-//	err := s.db.QueryRow("select root_uri from root_uri where id=0").Scan(&rootUri)
-//	// TODO: handle errors
-//	if err != nil {
-//		fmt.Fprintln(os.Stderr, err)
-//	}
-//	return rootUri
-//}
-//
-//func (s *SqliteStorage) SetRootUri(rootUri string) error {
-//	stmt := `
-//        update root_uri set root_uri = ?;
-//        `
-//	_, err := s.db.Exec(stmt, rootUri)
-//	if err != nil {
-//		fmt.Fprintln(os.Stderr, err)
-//	}
-//	return nil
-//}
-//
 //func (s *SqliteStorage) GetUsers() ([]User, error) {
 //	rows, err := s.db.Query("select email from users")
 //	if err != nil {

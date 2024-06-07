@@ -11,7 +11,6 @@ import (
 
 type JsonStorage struct {
 	DisplayName            string           `json:"display_name"`
-	RootUri                string           `json:"root_uri"`
 	Prefix                 string           `json:"prefix"`
 	OAuth2Providers        []OAuth2Provider `json:"oauth2_providers"`
 	Smtp                   *SmtpConfig      `json:"smtp"`
@@ -48,12 +47,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 		for {
 			rawMessage := <-s.message_chan
 			switch msg := rawMessage.(type) {
-			case getRootUriMessage:
-				msg.resp <- s.RootUri
-			case setRootUriMessage:
-				s.RootUri = msg.rootUri
-				msg.resp <- nil
-				s.Persist()
 			case getPrefixMessage:
 				msg.resp <- s.Prefix
 			case setPrefixMessage:
@@ -130,34 +123,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 	s.persist()
 
 	return s, nil
-}
-
-type getRootUriMessage struct {
-	resp chan string
-}
-
-func (s *JsonStorage) GetRootUri() string {
-	ch := make(chan string)
-	s.message_chan <- getRootUriMessage{
-		resp: ch,
-	}
-	result := <-ch
-	return result
-}
-
-type setRootUriMessage struct {
-	rootUri string
-	resp    chan error
-}
-
-func (s *JsonStorage) SetRootUri(rootUri string) error {
-	resp := make(chan error)
-	s.message_chan <- setRootUriMessage{
-		rootUri,
-		resp,
-	}
-	err := <-resp
-	return err
 }
 
 type getPrefixMessage struct {

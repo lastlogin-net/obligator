@@ -79,7 +79,7 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 
 		webId := FedCmWebId{
 			ProviderUrls: []string{
-				fmt.Sprintf("%s/fedcm/config.json", storage.GetRootUri()),
+				fmt.Sprintf("%s/fedcm/config.json", domainToUri(r.Host)),
 			},
 		}
 
@@ -93,11 +93,14 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 		}
 	})
 	mux.HandleFunc("/config.json", func(w http.ResponseWriter, r *http.Request) {
+
+		uri := domainToUri(r.Host)
+
 		config := FedCmConfig{
-			AccountsEndpoint: fmt.Sprintf("%s/fedcm/accounts", storage.GetRootUri()),
-			//ClientMetadataEndpoint: fmt.Sprintf("%s/fedcm/client-metadata", storage.GetRootUri()),
-			IdAssertionEndpoint: fmt.Sprintf("%s/fedcm/id-assertion", storage.GetRootUri()),
-			LoginUrl:            fmt.Sprintf("%s%s", storage.GetRootUri(), loginEndpoint),
+			AccountsEndpoint: fmt.Sprintf("%s/fedcm/accounts", uri),
+			//ClientMetadataEndpoint: fmt.Sprintf("%s/fedcm/client-metadata", uri),
+			IdAssertionEndpoint: fmt.Sprintf("%s/fedcm/id-assertion", uri),
+			LoginUrl:            fmt.Sprintf("%s%s", uri, loginEndpoint),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -154,9 +157,11 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 	})
 	mux.HandleFunc("/client-metadata", func(w http.ResponseWriter, r *http.Request) {
 
+		uri := domainToUri(r.Host)
+
 		md := FedCmClientMetadata{
-			PrivacyPolicyUrl:  storage.GetRootUri(),
-			TermsOfServiceUrl: storage.GetRootUri(),
+			PrivacyPolicyUrl:  uri,
+			TermsOfServiceUrl: uri,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -204,6 +209,8 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 			Token: "fake-token",
 		}
 
+		uri := domainToUri(r.Host)
+
 		// TODO: Multiple idents might map to the same email. might
 		// need to start using unique random IDs for accounts.
 		for _, ident := range idents {
@@ -216,7 +223,7 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 					Email(ident.Id).
 					Subject(ident.Id).
 					Audience([]string{clientId}).
-					Issuer(storage.GetRootUri()).
+					Issuer(uri).
 					IssuedAt(issuedAt).
 					Expiration(expiresAt)
 					//Claim("nonce", claimFromToken("nonce", parsedAuthReq))

@@ -5,9 +5,7 @@ import (
 )
 
 type Storage interface {
-	GetRootUri() string
 	GetPrefix() string
-	SetRootUri(string) error
 	GetUsers() ([]User, error)
 	CreateUser(User) error
 	GetOAuth2Providers() ([]OAuth2Provider, error)

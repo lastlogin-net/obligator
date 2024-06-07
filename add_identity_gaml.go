@@ -37,13 +37,9 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 	mux.HandleFunc("/login-gaml", func(w http.ResponseWriter, r *http.Request) {
 
 		templateData := struct {
-			DisplayName string
-			RootUri     string
-			ReturnUri   string
+			*commonData
 		}{
-			DisplayName: storage.GetDisplayName(),
-			RootUri:     storage.GetRootUri(),
-			ReturnUri:   "/login",
+			commonData: newCommonData(nil, storage, r),
 		}
 
 		err := tmpl.ExecuteTemplate(w, "login-gaml.html", templateData)
@@ -122,18 +118,14 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			return
 		}
 
-		setJwtCookie(storage, reqJwt, prefix+"_gaml_login_state", maxAge, w, r)
+		setJwtCookie(r.Host, storage, reqJwt, prefix+"_gaml_login_state", maxAge, w, r)
 
 		templateData := struct {
-			DisplayName string
-			RootUri     string
-			GamlCode    string
-			ReturnUri   string
+			*commonData
+			GamlCode string
 		}{
-			DisplayName: storage.GetDisplayName(),
-			RootUri:     storage.GetRootUri(),
-			GamlCode:    gamlCode,
-			ReturnUri:   "/login",
+			commonData: newCommonData(nil, storage, r),
+			GamlCode:   gamlCode,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "gaml-code.html", templateData)
@@ -214,7 +206,13 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			cookieValue = loginKeyCookie.Value
 		}
 
-		cookie, err := addIdentityToCookie(storage, "URL", urlId, "", cookieValue, false)
+		newIdent := &Identity{
+			IdType:       "url",
+			Id:           urlId,
+			ProviderName: "URL",
+		}
+
+		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -223,7 +221,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 
 		http.SetCookie(w, cookie)
 
-		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), claimFromToken("raw_query", request))
+		redirUrl := fmt.Sprintf("%s/auth?%s", domainToUri(r.Host), claimFromToken("raw_query", request))
 
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})

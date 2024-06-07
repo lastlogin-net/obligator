@@ -6,8 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-
-	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
 type Handler struct {
@@ -22,11 +20,7 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 		mux: mux,
 	}
 
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
+	var err error
 
 	mux.Handle("/", http.FileServer(http.Dir("static")))
 
@@ -39,15 +33,11 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 		}
 
 		data := struct {
-			RootUri     string
-			DisplayName string
-			RemoteIp    string
-			ReturnUri   string
+			*commonData
+			RemoteIp string
 		}{
-			RootUri:     storage.GetRootUri(),
-			DisplayName: storage.GetDisplayName(),
-			RemoteIp:    remoteIp,
-			ReturnUri:   "/login",
+			commonData: newCommonData(nil, storage, r),
+			RemoteIp:   remoteIp,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "ip.html", data)
@@ -65,7 +55,7 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 
 		redirectUri := r.Form.Get("redirect_uri")
 		url := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=code&state=&scope=",
-			storage.GetRootUri(), redirectUri, redirectUri)
+			domainToUri(r.Host), redirectUri, redirectUri)
 
 		validation, err := validate(storage, r)
 		if err != nil {
@@ -85,8 +75,6 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 
 	loginFunc := func(w http.ResponseWriter, r *http.Request, fedCm bool) {
 
-		idents, _ := getIdentities(storage, r, publicJwks)
-
 		canEmail := true
 		if _, err := storage.GetSmtpConfig(); err != nil {
 			canEmail = false
@@ -104,25 +92,21 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 			returnUri = "/login-fedcm-auto"
 		}
 
-		setReturnUriCookie(storage, returnUri, w)
+		setReturnUriCookie(r.Host, storage, returnUri, w)
 
 		data := struct {
-			DisplayName     string
+			*commonData
 			CanEmail        bool
-			Identities      []*Identity
 			OAuth2Providers []OAuth2Provider
 			LogoMap         map[string]template.HTML
-			ReturnUri       string
-			RootUri         string
 			FedCm           bool
 		}{
-			DisplayName:     storage.GetDisplayName(),
+			commonData: newCommonData(&commonData{
+				ReturnUri: returnUri,
+			}, storage, r),
 			CanEmail:        canEmail,
-			Identities:      idents,
 			OAuth2Providers: providers,
 			LogoMap:         providerLogoMap,
-			ReturnUri:       returnUri,
-			RootUri:         storage.GetRootUri(),
 			FedCm:           fedCm,
 		}
 
@@ -143,16 +127,11 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 
 	mux.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
 
-		if r.Method != http.MethodPost {
-			w.WriteHeader(405)
-			return
-		}
-
 		r.ParseForm()
 
 		redirect := r.Form.Get("prev_page")
 
-		err = deleteLoginKeyCookie(storage, w)
+		err = deleteLoginKeyCookie(r.Host, storage, w)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -164,20 +143,10 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 
 	mux.HandleFunc("/no-account", func(w http.ResponseWriter, r *http.Request) {
 
-		idents, _ := getIdentities(storage, r, publicJwks)
-
 		data := struct {
-			Identities  []*Identity
-			URL         string
-			RootUri     string
-			DisplayName string
-			ReturnUri   string
+			*commonData
 		}{
-			Identities:  idents,
-			URL:         fmt.Sprintf("/auth?%s", r.URL.RawQuery),
-			RootUri:     storage.GetRootUri(),
-			DisplayName: storage.GetDisplayName(),
-			ReturnUri:   "/login",
+			commonData: newCommonData(nil, storage, r),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "no-account.html", data)

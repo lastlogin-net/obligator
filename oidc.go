@@ -78,14 +78,14 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 
-		rootUri := storage.GetRootUri()
+		uri := fmt.Sprintf("https://%s", r.Host)
 
 		doc := OAuth2ServerMetadata{
-			Issuer:                           rootUri,
-			AuthorizationEndpoint:            fmt.Sprintf("%s/auth", rootUri),
-			TokenEndpoint:                    fmt.Sprintf("%s/token", rootUri),
-			UserinfoEndpoint:                 fmt.Sprintf("%s/userinfo", rootUri),
-			JwksUri:                          fmt.Sprintf("%s/jwks", rootUri),
+			Issuer:                           uri,
+			AuthorizationEndpoint:            fmt.Sprintf("%s/auth", uri),
+			TokenEndpoint:                    fmt.Sprintf("%s/token", uri),
+			UserinfoEndpoint:                 fmt.Sprintf("%s/userinfo", uri),
+			JwksUri:                          fmt.Sprintf("%s/jwks", uri),
 			ScopesSupported:                  []string{"openid", "email", "profile"},
 			ResponseTypesSupported:           []string{"code"},
 			IdTokenSigningAlgValuesSupported: []string{"RS256"},
@@ -93,7 +93,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			CodeChallengeMethodsSupported: []string{"S256"},
 			// https://openid.net/specs/openid-connect-core-1_0.html#SubjectIDTypes
 			SubjectTypesSupported:             []string{"public"},
-			RegistrationEndpoint:              fmt.Sprintf("%s/register", rootUri),
+			RegistrationEndpoint:              fmt.Sprintf("%s/register", uri),
 			TokenEndpointAuthMethodsSupported: []string{"none"},
 		}
 
@@ -261,7 +261,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		setJwtCookie(storage, authRequestJwt, prefix+"auth_request", maxAge, w, r)
+		setJwtCookie(r.Host, storage, authRequestJwt, prefix+"auth_request", maxAge, w, r)
 
 		providers, err := storage.GetOAuth2Providers()
 		if err != nil {
@@ -285,31 +285,27 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		returnUri := fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery)
 
 		data := struct {
-			RootUri             string
-			DisplayName         string
+			*commonData
 			ClientId            string
-			Identities          []*Identity
 			RemainingIdentities []*Identity
 			PreviousLogins      []*Login
 			OAuth2Providers     []OAuth2Provider
 			LogoMap             map[string]template.HTML
 			URL                 string
 			CanEmail            bool
-			ReturnUri           string
 		}{
-			RootUri:             storage.GetRootUri(),
-			DisplayName:         storage.GetDisplayName(),
+			commonData: newCommonData(&commonData{
+				ReturnUri: returnUri,
+			}, storage, r),
 			ClientId:            parsedClientId.Host,
-			Identities:          identities,
 			RemainingIdentities: remainingIdents,
 			PreviousLogins:      previousLogins,
 			OAuth2Providers:     providers,
 			LogoMap:             providerLogoMap,
 			CanEmail:            canEmail,
-			ReturnUri:           returnUri,
 		}
 
-		setReturnUriCookie(storage, returnUri, w)
+		setReturnUriCookie(r.Host, storage, returnUri, w)
 
 		err = tmpl.ExecuteTemplate(w, "auth.html", data)
 		if err != nil {
@@ -342,7 +338,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		clearCookie(storage, prefix+"auth_request", w)
+		clearCookie(r.Host, storage, prefix+"auth_request", w)
 
 		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
 		if err != nil {
@@ -380,7 +376,9 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			ProviderName: identity.ProviderName,
 		}
 
-		newLoginCookie, err := addLoginToCookie(storage, loginKeyCookie.Value, clientId, newLogin)
+		uri := domainToUri(r.Host)
+
+		newLoginCookie, err := addLoginToCookie(r.Host, storage, loginKeyCookie.Value, clientId, newLogin)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -408,7 +406,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		idTokenBuilder := openid.NewBuilder().
 			Subject(identId).
 			Audience([]string{clientId}).
-			Issuer(storage.GetRootUri()).
+			Issuer(uri).
 			IssuedAt(issuedAt).
 			Expiration(expiresAt).
 			Claim("nonce", claimFromToken("nonce", parsedAuthReq))

@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
@@ -24,12 +23,6 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 		mux: mux,
 	}
 
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
 	prefix := storage.GetPrefix()
 	loginKeyName := prefix + "login_key"
 
@@ -37,18 +30,10 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 
 		r.ParseForm()
 
-		idents, _ := getIdentities(storage, r, publicJwks)
-
 		data := struct {
-			RootUri     string
-			DisplayName string
-			Identities  []*Identity
-			ReturnUri   string
+			*commonData
 		}{
-			RootUri:     storage.GetRootUri(),
-			DisplayName: storage.GetDisplayName(),
-			Identities:  idents,
-			ReturnUri:   "/login",
+			commonData: newCommonData(nil, storage, r),
 		}
 
 		err := tmpl.ExecuteTemplate(w, "login-fedcm.html", data)
@@ -133,7 +118,7 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 			return
 		}
 
-		if oidcToken.Audience()[0] != storage.GetRootUri() {
+		if oidcToken.Audience()[0] != domainToUri(r.Host) {
 			w.WriteHeader(401)
 			io.WriteString(w, "FedCM: Wrong aud in OIDC token")
 			return
@@ -156,7 +141,7 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 			EmailVerified: true,
 		}
 
-		cookie, err := addIdentToCookie(storage, cookieValue, newIdent)
+		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -169,7 +154,7 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 			io.WriteString(w, err.Error())
 			return
 		}
-		deleteReturnUriCookie(storage, w)
+		deleteReturnUriCookie(r.Host, storage, w)
 
 		w.Header().Add("Set-Login", "logged-in")
 		http.SetCookie(w, cookie)

@@ -9,7 +9,6 @@ import (
 func main() {
 
 	port := flag.Int("port", 1616, "Port")
-	rootUri := flag.String("root-uri", "", "Root URI")
 	prefix := flag.String("prefix", "obligator_", "Prefix for files and cookies")
 	storageDir := flag.String("storage-dir", "./", "Storage directory")
 	dbDir := flag.String("database-dir", "./", "Database directory")
@@ -23,7 +22,6 @@ func main() {
 
 	conf := obligator.ServerConfig{
 		Port:                   *port,
-		RootUri:                *rootUri,
 		Prefix:                 *prefix,
 		StorageDir:             *storageDir,
 		DatabaseDir:            *dbDir,

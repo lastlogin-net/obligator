@@ -146,12 +146,17 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			return
 		}
 
-		setJwtCookie(storage, reqJwt, prefix+"upstream_oauth2_request", maxAge, w, r)
+		setJwtCookie(r.Host, storage, reqJwt, prefix+"upstream_oauth2_request", maxAge, w, r)
 
-		callbackUri := fmt.Sprintf("%s/callback", storage.GetRootUri())
+		callbackUri := fmt.Sprintf("%s/callback", domainToUri(r.Host))
+
+		clientId := domainToUri(r.Host)
+		if provider.ClientID != "" {
+			clientId = provider.ClientID
+		}
 
 		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s&nonce=%s&prompt=consent",
-			authURL, provider.ClientID, callbackUri, state,
+			authURL, clientId, callbackUri, state,
 			scope, pkceCodeChallenge, nonce)
 
 		http.Redirect(w, r, url, http.StatusSeeOther)
@@ -191,8 +196,7 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 
 		providerCode := r.Form.Get("code")
 
-		rootUri := storage.GetRootUri()
-		callbackUri := fmt.Sprintf("%s/callback", rootUri)
+		callbackUri := fmt.Sprintf("%s/callback", domainToUri(r.Host))
 
 		body := url.Values{}
 		body.Set("code", providerCode)
@@ -323,10 +327,10 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
-		deleteReturnUriCookie(storage, w)
+		deleteReturnUriCookie(r.Host, storage, w)
 
 		if !storage.GetPublic() && !validUser(email, users) {
-			redirUrl := fmt.Sprintf("%s/no-account?%s", rootUri, returnUri)
+			redirUrl := fmt.Sprintf("%s/no-account?%s", domainToUri(r.Host), returnUri)
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 			return
 		}
@@ -346,7 +350,7 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			EmailVerified: true,
 		}
 
-		cookie, err := addIdentToCookie(storage, cookieValue, newIdent)
+		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -358,7 +362,7 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 
 		redirUrl := fmt.Sprintf("%s", returnUri)
 
-		clearCookie(storage, prefix+"upstream_oauth2_request", w)
+		clearCookie(r.Host, storage, prefix+"upstream_oauth2_request", w)
 
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})

@@ -136,7 +136,7 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 			return
 		}
 
-		setJwtCookie(storage, authRequestJwt, cookiePrefix+"auth_request", maxAge, w, r)
+		setJwtCookie(r.Host, storage, authRequestJwt, cookiePrefix+"auth_request", maxAge, w, r)
 		idents, _ := getIdentities(storage, r, publicJwks)
 
 		data := struct {
@@ -165,7 +165,7 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 	mux.HandleFunc("/confirm", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("/indieauth/confirm")
 
-		clearCookie(storage, cookiePrefix+"auth_request", w)
+		clearCookie(r.Host, storage, cookiePrefix+"auth_request", w)
 
 		parsedAuthReq, err := getJwtFromCookie(cookiePrefix+"auth_request", storage, w, r)
 		if err != nil {

@@ -28,7 +28,6 @@ type Server struct {
 
 type ServerConfig struct {
 	Port                   int
-	RootUri                string
 	AuthDomains            []string
 	Prefix                 string
 	StorageDir             string
@@ -170,37 +169,27 @@ func NewServer(conf ServerConfig) *Server {
 		storage.SetDisplayName(conf.DisplayName)
 	}
 
-	if conf.RootUri != "" {
-		storage.SetRootUri(conf.RootUri)
-	}
-
-	if storage.GetRootUri() == "" {
-		fmt.Fprintln(os.Stderr, "WARNING: No root URI set")
-	}
-
-	rootUrl, err := url.Parse(storage.GetRootUri())
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
-	db.AddDomain(rootUrl.Host, "root")
-
 	domains, err := db.GetDomains()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 	}
 
-	for _, d := range domains {
-		go func(d *Domain) {
-			err = proxy.AddDomain(d.Domain)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err.Error())
-			}
-		}(d)
+	if len(domains) == 0 {
+		fmt.Fprintln(os.Stderr, "WARNING: domains set")
 	}
 
-	conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
+	for _, d := range domains {
+		// TODO: was running this in goroutines, but not all the
+		// domains were making it into Caddy. Need to make it work
+		// in parallel
+		err = proxy.AddDomain(d.Domain)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+		}
+	}
+
+	// TODO: re-enable
+	//conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
 
 	if conf.FedCm {
 		storage.SetFedCmEnable(true)
@@ -298,18 +287,10 @@ func NewServer(conf ServerConfig) *Server {
 
 	mux.HandleFunc("/domains", func(w http.ResponseWriter, r *http.Request) {
 
-		idents, _ := getIdentities(storage, r, publicJwks)
-
 		data := struct {
-			RootUri     string
-			DisplayName string
-			Identities  []*Identity
-			ReturnUri   string
+			*commonData
 		}{
-			RootUri:     storage.GetRootUri(),
-			DisplayName: storage.GetDisplayName(),
-			Identities:  idents,
-			ReturnUri:   "/domains",
+			commonData: newCommonData(nil, storage, r),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "domains.html", data)
@@ -429,9 +410,10 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) AuthUri(authReq *OAuth2AuthRequest) string {
-	return AuthUri(s.Config.RootUri+"/auth", authReq)
-}
+// TODO: re-enable
+//func (s *Server) AuthUri(authReq *OAuth2AuthRequest) string {
+//	return AuthUri(s.Config.RootUri+"/auth", authReq)
+//}
 
 func AuthUri(serverUri string, authReq *OAuth2AuthRequest) string {
 	uri := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&response_type=%s&state=%s&scope=%s",
