@@ -26,7 +26,7 @@ type IndieAuthProfile struct {
 	MeUri string `json:"me"`
 }
 
-func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string) *IndieAuthHandler {
+func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template, prefix string) *IndieAuthHandler {
 
 	mux := http.NewServeMux()
 
@@ -92,7 +92,7 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 		}
 
 		profile := IndieAuthProfile{
-			MeUri: fmt.Sprintf("https://%s/users/me", r.Host),
+			MeUri: domainToUri(r.Host),
 		}
 
 		err = json.NewEncoder(w).Encode(profile)
@@ -105,7 +105,6 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 	}
 
 	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("/auth")
 
 		if r.Method == "POST" {
 			handleToken(w, r)
@@ -114,6 +113,30 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 
 		ar, err := ParseAuthRequest(w, r)
 		if err != nil {
+			return
+		}
+
+		domain, err := db.GetDomain(r.Host)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		idents, _ := getIdentities(storage, r, publicJwks)
+
+		var matchIdent *Identity = nil
+		for _, ident := range idents {
+			if domain.HashedOwnerId == Hash(ident.Id) {
+				matchIdent = ident
+				break
+			}
+		}
+
+		if matchIdent == nil {
+			w.WriteHeader(401)
+			msg := fmt.Sprintf("You don't have permission to log in as %s", r.Host)
+			io.WriteString(w, msg)
 			return
 		}
 
@@ -137,19 +160,15 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 		}
 
 		setJwtCookie(r.Host, storage, authRequestJwt, cookiePrefix+"auth_request", maxAge, w, r)
-		idents, _ := getIdentities(storage, r, publicJwks)
 
 		data := struct {
-			DisplayName string
-			Identities  []*Identity
-			ReturnUri   string
-			ClientId    string
-			RootUri     string
+			*commonData
+			ClientId string
 		}{
-			DisplayName: storage.GetDisplayName(),
-			Identities:  idents,
-			ClientId:    ar.ClientId,
-			RootUri:     fmt.Sprintf("https://%s", r.Host),
+			commonData: newCommonData(&commonData{
+				Identities: idents,
+			}, storage, r),
+			ClientId: ar.ClientId,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "indieauth.html", data)
@@ -217,35 +236,13 @@ func NewIndieAuthHandler(storage Storage, tmpl *template.Template, prefix string
 
 	mux.HandleFunc("/token", handleToken)
 
-	mux.HandleFunc("/users/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("/users/")
-
-		uri := fmt.Sprintf("%s/.well-known/oauth-authorization-server", fmt.Sprintf("https://%s", r.Host))
-		link := fmt.Sprintf("<%s>; rel=\"indieauth-metadata\"", uri)
-		w.Header().Set("Link", link)
-		w.Header().Set("Content-Type", "text/html")
-
-		data := struct {
-			RootUri string
-		}{
-			RootUri: fmt.Sprintf("https://%s", r.Host),
-		}
-
-		err := tmpl.ExecuteTemplate(w, "user.html", data)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-	})
-
 	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("/.well-known/oauth-authorization-server")
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 
-		rootUri := fmt.Sprintf("https://%s", r.Host)
+		rootUri := domainToUri(r.Host)
 
 		meta := OAuth2ServerMetadata{
 			Issuer:                        rootUri,

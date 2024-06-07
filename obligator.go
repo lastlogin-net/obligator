@@ -38,6 +38,22 @@ type ServerConfig struct {
 	GeoDbPath              string
 	FedCm                  bool
 	ForwardAuthPassthrough bool
+	Domains                DomainList
+}
+
+type DomainList []string
+
+func (d *DomainList) String() string {
+	s := ""
+	for _, domain := range *d {
+		s = s + " " + domain
+	}
+	return s
+}
+
+func (d *DomainList) Set(value string) error {
+	*d = append(*d, value)
+	return nil
 }
 
 type SmtpConfig struct {
@@ -169,13 +185,17 @@ func NewServer(conf ServerConfig) *Server {
 		storage.SetDisplayName(conf.DisplayName)
 	}
 
+	for _, domain := range conf.Domains {
+		db.AddDomain(domain, "root")
+	}
+
 	domains, err := db.GetDomains()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 	}
 
 	if len(domains) == 0 {
-		fmt.Fprintln(os.Stderr, "WARNING: domains set")
+		fmt.Fprintln(os.Stderr, "WARNING: No domains set")
 	}
 
 	for _, d := range domains {
@@ -239,7 +259,13 @@ func NewServer(conf ServerConfig) *Server {
 		}
 	}
 
-	handler := NewHandler(storage, conf, tmpl)
+	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	handler := NewHandler(db, storage, conf, tmpl)
 	mux.Handle("/", handler)
 
 	oidcHandler := NewOIDCHandler(storage, tmpl)
@@ -274,16 +300,10 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/receive", qrHandler)
 
 	indieAuthPrefix := "/indieauth"
-	indieAuthHandler := NewIndieAuthHandler(storage, tmpl, indieAuthPrefix)
+	indieAuthHandler := NewIndieAuthHandler(db, storage, tmpl, indieAuthPrefix)
 	mux.Handle("/users/", indieAuthHandler)
 	mux.Handle("/.well-known/oauth-authorization-server", indieAuthHandler)
 	mux.Handle(indieAuthPrefix+"/", http.StripPrefix(indieAuthPrefix, indieAuthHandler))
-
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
 
 	mux.HandleFunc("/domains", func(w http.ResponseWriter, r *http.Request) {
 

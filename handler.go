@@ -12,7 +12,7 @@ type Handler struct {
 	mux *http.ServeMux
 }
 
-func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Handler {
+func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template.Template) *Handler {
 
 	mux := http.NewServeMux()
 
@@ -22,7 +22,35 @@ func NewHandler(storage Storage, conf ServerConfig, tmpl *template.Template) *Ha
 
 	var err error
 
-	mux.Handle("/", http.FileServer(http.Dir("static")))
+	fsHandler := http.FileServer(http.Dir("static"))
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+
+		domain, err := db.GetDomain(r.Host)
+		if err != nil {
+			fsHandler.ServeHTTP(w, r)
+			return
+		}
+
+		if domain.HashedOwnerId == Hash("root") {
+			fsHandler.ServeHTTP(w, r)
+			return
+		}
+
+		uri := fmt.Sprintf("%s/.well-known/oauth-authorization-server", domainToUri(r.Host))
+		link := fmt.Sprintf("<%s>; rel=\"indieauth-metadata\"", uri)
+		w.Header().Set("Link", link)
+
+		tmplData := newCommonData(nil, storage, r)
+
+		err = tmpl.ExecuteTemplate(w, "user.html", tmplData)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+	})
 
 	mux.HandleFunc("/ip", func(w http.ResponseWriter, r *http.Request) {
 		remoteIp, err := getRemoteIp(r, conf.BehindProxy)
