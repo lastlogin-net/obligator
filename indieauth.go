@@ -14,10 +14,6 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
-type footerData struct {
-	RootUri string
-}
-
 type IndieAuthHandler struct {
 	mux *http.ServeMux
 }
