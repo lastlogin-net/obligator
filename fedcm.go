@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
+	//"time"
 	//"net/http/httputil"
 	"os"
 
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
-	"github.com/lestrrat-go/jwx/v2/jwt/openid"
+	//"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
 type FedCmWebId struct {
@@ -60,7 +62,12 @@ type FedCmHandler struct {
 	mux *http.ServeMux
 }
 
-func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
+type IndieAuthFedCmResponse struct {
+	Code             string `json:"code"`
+	MetadataEndpoint string `json:"metadata_endpoint"`
+}
+
+func NewFedCmHandler(db *Database, storage Storage, loginEndpoint string) *FedCmHandler {
 
 	mux := http.NewServeMux()
 
@@ -176,21 +183,27 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 
 		r.ParseForm()
 
+		printJson(r.Form)
+
 		clientId := r.Form.Get("client_id")
-
-		w.Header().Set("Access-Control-Allow-Origin", clientId)
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Content-Type", "application/json")
-
-		if r.Header.Get("Sec-Fetch-Dest") != "webidentity" {
-			w.WriteHeader(401)
-			io.WriteString(w, "Sec-Fetch-Dest != webidentity")
-			return
-		}
 
 		origin := r.Header.Get("Origin")
 
-		if origin != clientId {
+		parsedOrigin, err := url.Parse(origin)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		parsedClientId, err := url.Parse(clientId)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		if parsedOrigin.Host != parsedClientId.Host {
 			w.WriteHeader(401)
 			res := FedCmIdAssertionErrorResponse{
 				Error: FedCmIdAssertionError{
@@ -201,58 +214,139 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 			return
 		}
 
-		accountId := r.Form.Get("account_id")
+		w.Header().Set("Access-Control-Allow-Origin", "https://"+parsedClientId.Host)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.Header.Get("Sec-Fetch-Dest") != "webidentity" {
+			w.WriteHeader(401)
+			io.WriteString(w, "Sec-Fetch-Dest != webidentity")
+			return
+		}
 
 		idents, _ := getIdentities(storage, r, publicJwks)
 
-		res := FedCmIdAssertionSuccessResponse{
-			Token: "fake-token",
+		accountId := r.Form.Get("account_id")
+		pkceCodeChallenge := r.Form.Get("nonce")
+
+		issuedAt := time.Now().UTC()
+		codeJwt, err := jwt.NewBuilder().
+			IssuedAt(issuedAt).
+			// TODO: make shorter
+			//Expiration(issuedAt.Add(16*time.Second)).
+			Expiration(issuedAt.Add(5*time.Minute)).
+			//Subject(idToken.Email()).
+			Claim("domain", r.Host).
+			Claim("pkce_code_challenge", pkceCodeChallenge).
+			Build()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
 		}
 
-		uri := domainToUri(r.Host)
+		key, exists := storage.GetJWKSet().Key(0)
+		if !exists {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, "No keys available")
+			return
+		}
+
+		signedCode, err := jwt.Sign(codeJwt, jwt.WithKey(jwa.RS256, key))
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		payload := IndieAuthFedCmResponse{
+			Code:             string(signedCode),
+			MetadataEndpoint: fmt.Sprintf("https://%s/.well-known/oauth-authorization-server", r.Host),
+		}
+
+		payloadJson, err := json.Marshal(payload)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		res := FedCmIdAssertionSuccessResponse{
+			Token: string(payloadJson),
+		}
+
+		//uri := domainToUri(r.Host)
 
 		// TODO: Multiple idents might map to the same email. might
 		// need to start using unique random IDs for accounts.
+		var foundIdent *Identity = nil
 		for _, ident := range idents {
 			if accountId == ident.Id {
 
-				issuedAt := time.Now().UTC()
-				expiresAt := issuedAt.Add(8 * time.Minute)
-
-				idTokenBuilder := openid.NewBuilder().
-					Email(ident.Id).
-					Subject(ident.Id).
-					Audience([]string{clientId}).
-					Issuer(uri).
-					IssuedAt(issuedAt).
-					Expiration(expiresAt)
-					//Claim("nonce", claimFromToken("nonce", parsedAuthReq))
-				if ident.Name != "" {
-					idTokenBuilder.Name(ident.Name)
-				}
-
-				idToken, err := idTokenBuilder.Build()
-				if err != nil {
-					fmt.Fprintf(os.Stderr, err.Error())
-					break
-				}
-
-				key, exists := storage.GetJWKSet().Key(0)
-				if !exists {
-					fmt.Fprintf(os.Stderr, "No keys available")
-					break
-				}
-
-				signedIdToken, err := jwt.Sign(idToken, jwt.WithKey(jwa.RS256, key))
-				if err != nil {
-					fmt.Fprintf(os.Stderr, err.Error())
-					break
-				}
-
-				res.Token = string(signedIdToken)
+				foundIdent = ident
 				break
+
+				// TODO: this code is for directly returning the ID token. We're currently
+				// hard coded for IndieAuth.
+
+				//issuedAt := time.Now().UTC()
+				//expiresAt := issuedAt.Add(8 * time.Minute)
+
+				//idTokenBuilder := openid.NewBuilder().
+				//	Email(ident.Id).
+				//	Subject(ident.Id).
+				//	Audience([]string{clientId}).
+				//	Issuer(uri).
+				//	IssuedAt(issuedAt).
+				//	Expiration(expiresAt)
+				//	//Claim("nonce", claimFromToken("nonce", parsedAuthReq))
+				//if ident.Name != "" {
+				//	idTokenBuilder.Name(ident.Name)
+				//}
+
+				//idToken, err := idTokenBuilder.Build()
+				//if err != nil {
+				//	fmt.Fprintf(os.Stderr, err.Error())
+				//	break
+				//}
+
+				//key, exists := storage.GetJWKSet().Key(0)
+				//if !exists {
+				//	fmt.Fprintf(os.Stderr, "No keys available")
+				//	break
+				//}
+
+				//signedIdToken, err := jwt.Sign(idToken, jwt.WithKey(jwa.RS256, key))
+				//if err != nil {
+				//	fmt.Fprintf(os.Stderr, err.Error())
+				//	break
+				//}
+
+				//res.Token = string(signedIdToken)
+				//break
 			}
 		}
+
+		if foundIdent == nil {
+			w.WriteHeader(403)
+			io.WriteString(w, "No proper identity found")
+			return
+		}
+
+		domain, err := db.GetDomain(r.Host)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		if domain.HashedOwnerId != Hash(foundIdent.Id) {
+			w.WriteHeader(403)
+			io.WriteString(w, "You don't own this domain")
+			return
+		}
+
+		printJson(res)
 
 		err = json.NewEncoder(w).Encode(res)
 		if err != nil {

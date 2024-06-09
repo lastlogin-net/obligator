@@ -91,13 +91,16 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 			MeUri: domainToUri(r.Host),
 		}
 
+		printJson(profile)
+
+		w.Header().Set("Content-Type", "application/json")
+
 		err = json.NewEncoder(w).Encode(profile)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
-
 	}
 
 	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {

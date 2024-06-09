@@ -386,11 +386,13 @@ func NewServer(conf ServerConfig) *Server {
 			io.WriteString(w, err.Error())
 			return
 		}
+
+		http.Redirect(w, r, fmt.Sprintf("https://%s/login", domain), 303)
 	})
 
 	if storage.GetFedCmEnabled() {
 		fedCmLoginEndpoint := "/login-fedcm-auto"
-		fedCmHandler := NewFedCmHandler(storage, fedCmLoginEndpoint)
+		fedCmHandler := NewFedCmHandler(db, storage, fedCmLoginEndpoint)
 		mux.Handle("/.well-known/web-identity", fedCmHandler)
 		mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
 
