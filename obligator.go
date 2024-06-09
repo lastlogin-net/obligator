@@ -9,7 +9,6 @@ import (
 	"html/template"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -259,12 +258,6 @@ func NewServer(conf ServerConfig) *Server {
 		}
 	}
 
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
 	handler := NewHandler(db, storage, conf, tmpl)
 	mux.Handle("/", handler)
 
@@ -305,90 +298,9 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/.well-known/oauth-authorization-server", indieAuthHandler)
 	mux.Handle(indieAuthPrefix+"/", http.StripPrefix(indieAuthPrefix, indieAuthHandler))
 
-	mux.HandleFunc("/domains", func(w http.ResponseWriter, r *http.Request) {
-
-		data := struct {
-			*commonData
-		}{
-			commonData: newCommonData(nil, storage, r),
-		}
-
-		err = tmpl.ExecuteTemplate(w, "domains.html", data)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-	})
-
-	mux.HandleFunc("/add-domain", func(w http.ResponseWriter, r *http.Request) {
-
-		r.ParseForm()
-
-		// TODO: sanitize domain
-		domain := r.Form.Get("domain")
-
-		if domain == "" {
-			w.WriteHeader(400)
-			io.WriteString(w, "Missing domain")
-			return
-		}
-
-		_, err := url.Parse(domain)
-		if err != nil {
-			w.WriteHeader(400)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		ownerId := r.Form.Get("owner_id")
-
-		idents, _ := getIdentities(storage, r, publicJwks)
-
-		match := false
-		for _, ident := range idents {
-			if ident.Id == ownerId {
-				match = true
-				break
-			}
-		}
-
-		if !match {
-			w.WriteHeader(403)
-			io.WriteString(w, "You don't own that ID")
-			return
-		}
-
-		//cname, err := getAuthoritativeCNAME(r.Context(), domain)
-		//if err != nil {
-		//        w.WriteHeader(500)
-		//        io.WriteString(w, err.Error())
-		//        return
-		//}
-
-		//if cname != rootUrl.Host {
-		//        fmt.Println(cname, rootUrl.Host)
-		//        w.WriteHeader(400)
-		//        io.WriteString(w, "CNAME != host")
-		//        return
-		//}
-
-		err = db.AddDomain(domain, ownerId)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		err = proxy.AddDomain(domain)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		http.Redirect(w, r, fmt.Sprintf("https://%s/login", domain), 303)
-	})
+	domainHandler := NewDomainHandler(db, storage, tmpl, proxy)
+	mux.Handle("/domains", domainHandler)
+	mux.Handle("/add-domain", domainHandler)
 
 	if storage.GetFedCmEnabled() {
 		fedCmLoginEndpoint := "/login-fedcm-auto"

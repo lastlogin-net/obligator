@@ -1,0 +1,163 @@
+package obligator
+
+import (
+	"errors"
+	"fmt"
+	"html/template"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+
+	"github.com/lestrrat-go/jwx/v2/jwk"
+)
+
+type DomainHandler struct {
+	mux *http.ServeMux
+}
+
+func (h *DomainHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.mux.ServeHTTP(w, r)
+}
+
+func NewDomainHandler(db *Database, storage Storage, tmpl *template.Template, proxy Proxy) *DomainHandler {
+
+	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/domains", func(w http.ResponseWriter, r *http.Request) {
+
+		data := struct {
+			*commonData
+		}{
+			commonData: newCommonData(nil, storage, r),
+		}
+
+		err = tmpl.ExecuteTemplate(w, "domains.html", data)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+	})
+
+	mux.HandleFunc("/add-domain", func(w http.ResponseWriter, r *http.Request) {
+
+		r.ParseForm()
+
+		// TODO: sanitize domain
+		domain := r.Form.Get("domain")
+
+		if domain == "" {
+			w.WriteHeader(400)
+			io.WriteString(w, "Missing domain")
+			return
+		}
+
+		_, err := url.Parse(domain)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		ownerId := r.Form.Get("owner_id")
+
+		idents, _ := getIdentities(storage, r, publicJwks)
+
+		match := false
+		for _, ident := range idents {
+			if ident.Id == ownerId {
+				match = true
+				break
+			}
+		}
+
+		if !match {
+			w.WriteHeader(403)
+			io.WriteString(w, "You don't own that ID")
+			return
+		}
+
+		err = verifyIpsMatch(domain, r.Host)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		//cname, err := getAuthoritativeCNAME(r.Context(), domain)
+		//if err != nil {
+		//        w.WriteHeader(500)
+		//        io.WriteString(w, err.Error())
+		//        return
+		//}
+
+		//if cname != rootUrl.Host {
+		//        fmt.Println(cname, rootUrl.Host)
+		//        w.WriteHeader(400)
+		//        io.WriteString(w, "CNAME != host")
+		//        return
+		//}
+
+		err = db.AddDomain(domain, ownerId)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		err = proxy.AddDomain(domain)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		http.Redirect(w, r, fmt.Sprintf("https://%s/login", domain), 303)
+	})
+
+	h := &DomainHandler{
+		mux: mux,
+	}
+
+	return h
+}
+
+func verifyIpsMatch(domainA, domainB string) error {
+
+	aIps, err := net.LookupHost(domainA)
+	if err != nil {
+		return err
+	}
+
+	bIps, err := net.LookupHost(domainB)
+	if err != nil {
+		return err
+	}
+
+	for _, aIp := range aIps {
+		match := false
+		for _, bIp := range bIps {
+			if aIp == bIp {
+				match = true
+				break
+			}
+		}
+
+		if !match {
+			return errors.New("No matching IP. Make sure you either have either a CNAME or BOTH A and AAAA records set up.")
+		}
+	}
+
+	printJson(aIps)
+	printJson(bIps)
+
+	return nil
+}
