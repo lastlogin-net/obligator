@@ -183,8 +183,6 @@ func NewFedCmHandler(db *Database, storage Storage, loginEndpoint string) *FedCm
 
 		r.ParseForm()
 
-		printJson(r.Form)
-
 		clientId := r.Form.Get("client_id")
 
 		origin := r.Header.Get("Origin")
@@ -345,8 +343,6 @@ func NewFedCmHandler(db *Database, storage Storage, loginEndpoint string) *FedCm
 			io.WriteString(w, "You don't own this domain")
 			return
 		}
-
-		printJson(res)
 
 		err = json.NewEncoder(w).Encode(res)
 		if err != nil {

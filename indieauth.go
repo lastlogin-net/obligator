@@ -34,13 +34,7 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 
 	cookiePrefix := storage.GetPrefix()
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("catchall: " + r.URL.Path)
-	})
-
 	handleToken := func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("/token")
-
 		r.ParseForm()
 
 		codeJwt := r.Form.Get("code")
@@ -52,8 +46,6 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 			io.WriteString(w, err.Error())
 			return
 		}
-
-		printJson(parsedCodeJwt)
 
 		domain := claimFromToken("domain", parsedCodeJwt)
 		if domain != r.Host {
@@ -90,8 +82,6 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 		profile := IndieAuthProfile{
 			MeUri: domainToUri(r.Host),
 		}
-
-		printJson(profile)
 
 		w.Header().Set("Content-Type", "application/json")
 
@@ -181,7 +171,6 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 	})
 
 	mux.HandleFunc("/confirm", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("/indieauth/confirm")
 
 		clearCookie(r.Host, storage, cookiePrefix+"auth_request", w)
 
@@ -191,8 +180,6 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 			io.WriteString(w, err.Error())
 			return
 		}
-
-		printJson(parsedAuthReq)
 
 		issuedAt := time.Now().UTC()
 		codeJwt, err := jwt.NewBuilder().
@@ -236,7 +223,6 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 	mux.HandleFunc("/token", handleToken)
 
 	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("/.well-known/oauth-authorization-server")
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
