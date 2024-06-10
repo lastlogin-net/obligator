@@ -33,10 +33,34 @@ func NewDomainHandler(db *Database, storage Storage, tmpl *template.Template, pr
 
 	mux.HandleFunc("/domains", func(w http.ResponseWriter, r *http.Request) {
 
+		// TODO: can probably be done once at startup
+		ips, err := net.LookupIP(r.Host)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		var ipv4 net.IP
+		var ipv6 net.IP
+		for _, ip := range ips {
+			if ip.To4() != nil {
+				ipv4 = ip
+			} else {
+				ipv6 = ip
+			}
+		}
+
 		data := struct {
 			*commonData
+			Host string
+			Ipv4 string
+			Ipv6 string
 		}{
 			commonData: newCommonData(nil, storage, r),
+			Host:       r.Host,
+			Ipv4:       ipv4.String(),
+			Ipv6:       ipv6.String(),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "domains.html", data)
