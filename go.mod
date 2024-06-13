@@ -9,7 +9,6 @@ require (
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/lestrrat-go/jwx/v2 v2.0.11
 	github.com/mattn/go-sqlite3 v1.14.18
-	github.com/multisig-labs/caddyapi v0.0.0-20230606201431-ebf2f56f6f8a
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 )
 
