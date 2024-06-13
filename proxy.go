@@ -14,8 +14,8 @@ type Proxy interface {
 	AddDomain(domain string) error
 }
 
-func NewProxy(type_ string, port int) Proxy {
-	return NewCaddyProxy("srv0", port)
+func NewProxy(type_ string, port int, prefix string) Proxy {
+	return NewCaddyProxy("srv0", port, prefix)
 }
 
 type FlyIoProxy struct {
@@ -84,13 +84,16 @@ type CaddyProxy struct {
 	serverUri  string
 	serverName string
 	port       int
+	id         string
 }
 
-func NewCaddyProxy(serverName string, port int) *CaddyProxy {
+func NewCaddyProxy(serverName string, port int, prefix string) *CaddyProxy {
 	serverUri := "http://localhost:2019"
 
+	id := fmt.Sprintf("%sroute", prefix)
+
 	route := Route{
-		Id: "obligator-route",
+		Id: id,
 		Handle: []Handle{
 			Handle{
 				Handler: "reverse_proxy",
@@ -109,9 +112,11 @@ func NewCaddyProxy(serverName string, port int) *CaddyProxy {
 		serverUri:  serverUri,
 		serverName: serverName,
 		port:       port,
+		id:         id,
 	}
 
-	err := p.request("PATCH", "/id/obligator-route/match", []Match{})
+	path := fmt.Sprintf("/id/%s/match", id)
+	err := p.request("PATCH", path, []Match{})
 	if err != nil {
 		path := fmt.Sprintf("/config/apps/http/servers/%s/routes", serverName)
 		err := p.request("POST", path, route)
@@ -129,7 +134,8 @@ func (p *CaddyProxy) AddDomain(domain string) error {
 		Host: []string{domain},
 	}
 
-	err := p.request("POST", "/id/obligator-route/match", match)
+	path := fmt.Sprintf("/id/%s/match", p.id)
+	err := p.request("POST", path, match)
 	if err != nil {
 		return err
 	}
@@ -164,14 +170,7 @@ func (p *CaddyProxy) requestBytes(method string, path string, data []byte) error
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println(string(body))
-		return err
-	}
-
 	if resp.StatusCode != http.StatusOK {
-		fmt.Println(string(body))
 		return errors.New("Bad code")
 	}
 
