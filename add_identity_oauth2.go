@@ -327,13 +327,14 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
-		deleteReturnUriCookie(r.Host, storage, w)
 
 		if !storage.GetPublic() && !validUser(email, users) {
 			redirUrl := fmt.Sprintf("%s/no-account?%s", domainToUri(r.Host), returnUri)
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 			return
 		}
+
+		deleteReturnUriCookie(r.Host, storage, w)
 
 		cookieValue := ""
 		loginKeyCookie, err := r.Cookie(loginKeyName)
