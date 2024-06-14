@@ -22,10 +22,11 @@ type FedCmWebId struct {
 }
 
 type FedCmConfig struct {
-	AccountsEndpoint       string `json:"accounts_endpoint,omitempty"`
-	ClientMetadataEndpoint string `json:"client_metadata_endpoint,omitempty"`
-	IdAssertionEndpoint    string `json:"id_assertion_endpoint,omitempty"`
-	LoginUrl               string `json:"login_url,omitempty"`
+	AccountsEndpoint       string   `json:"accounts_endpoint,omitempty"`
+	ClientMetadataEndpoint string   `json:"client_metadata_endpoint,omitempty"`
+	IdAssertionEndpoint    string   `json:"id_assertion_endpoint,omitempty"`
+	LoginUrl               string   `json:"login_url,omitempty"`
+	Types                  []string `json:"types"`
 }
 
 type FedCmAccounts struct {
@@ -108,6 +109,9 @@ func NewFedCmHandler(db *Database, storage Storage, loginEndpoint string) *FedCm
 			//ClientMetadataEndpoint: fmt.Sprintf("%s/fedcm/client-metadata", uri),
 			IdAssertionEndpoint: fmt.Sprintf("%s/fedcm/id-assertion", uri),
 			LoginUrl:            fmt.Sprintf("%s%s", uri, loginEndpoint),
+			Types: []string{
+				"indieauth",
+			},
 		}
 
 		w.Header().Set("Content-Type", "application/json")
