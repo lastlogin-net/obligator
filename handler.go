@@ -81,9 +81,11 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 	mux.HandleFunc("/validate", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 
+		authServer := r.Form.Get("auth_server")
+
 		redirectUri := r.Form.Get("redirect_uri")
 		url := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=code&state=&scope=",
-			domainToUri(r.Host), redirectUri, redirectUri)
+			domainToUri(authServer), redirectUri, redirectUri)
 
 		validation, err := validate(storage, r)
 		if err != nil {
