@@ -269,6 +269,7 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/auth", oidcHandler)
 	mux.Handle("/approve", oidcHandler)
 	mux.Handle("/token", oidcHandler)
+	mux.Handle("/end-session", oidcHandler)
 
 	addIdentityOauth2Handler := NewAddIdentityOauth2Handler(storage, oauth2MetaMan)
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)

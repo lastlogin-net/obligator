@@ -33,6 +33,7 @@ type OAuth2ServerMetadata struct {
 	RegistrationEndpoint              string   `json:"registration_endpoint"`
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
 	IntrospectionEndpoint             string   `json:"introspection_endpoint,omitempty"`
+	EndSessionEndpoint                string   `json:"end_session_endpoint"`
 }
 
 type OAuth2AuthRequest struct {
@@ -95,9 +96,46 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			SubjectTypesSupported:             []string{"public"},
 			RegistrationEndpoint:              fmt.Sprintf("%s/register", uri),
 			TokenEndpointAuthMethodsSupported: []string{"none"},
+			EndSessionEndpoint:                fmt.Sprintf("%s/end-session", uri),
 		}
 
 		json.NewEncoder(w).Encode(doc)
+	})
+
+	mux.HandleFunc("/end-session", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+
+		redirUri := r.Form.Get("post_logout_redirect_uri")
+
+		parsedRedirUri, err := url.Parse(redirUri)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		idents, _ := getIdentities(storage, r, publicJwks)
+
+		for _, ident := range idents {
+			printJson(ident)
+		}
+
+		data := struct {
+			*commonData
+			RpDomain    string
+			RedirectUri string
+		}{
+			commonData:  newCommonData(nil, storage, r),
+			RpDomain:    parsedRedirUri.Host,
+			RedirectUri: redirUri,
+		}
+
+		err = tmpl.ExecuteTemplate(w, "logout.html", data)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
 	})
 
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {

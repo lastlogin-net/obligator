@@ -1,0 +1,12 @@
+{{ template "header.html" . }}
+<p>
+  <strong>{{.RpDomain}}</strong> wants to log you out. Do you wish to approve
+  this? If you do, you will be redirected to <strong>{{.RedirectUri}}</strong>.
+</p>
+
+<form action="/logout" method="POST">
+  <input type='hidden' name='prev_page' value='{{.RedirectUri}}' required>
+  <button class='og-button' type='submit'>Approve</button>
+</form>
+
+{{ template "footer.html" . }}
