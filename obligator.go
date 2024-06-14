@@ -158,7 +158,7 @@ func NewServer(conf ServerConfig) *Server {
 		os.Exit(1)
 	}
 
-	if conf.Prefix != "obligator" || storage.GetPrefix() == "" {
+	if conf.Prefix != "obligator_" || storage.GetPrefix() == "" {
 		storage.SetPrefix(conf.Prefix)
 	}
 
