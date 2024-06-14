@@ -180,8 +180,5 @@ func verifyIpsMatch(domainA, domainB string) error {
 		}
 	}
 
-	printJson(aIps)
-	printJson(bIps)
-
 	return nil
 }

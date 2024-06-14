@@ -114,12 +114,6 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		idents, _ := getIdentities(storage, r, publicJwks)
-
-		for _, ident := range idents {
-			printJson(ident)
-		}
-
 		data := struct {
 			*commonData
 			RpDomain    string
