@@ -178,7 +178,7 @@ func NewServer(conf ServerConfig) *Server {
 	}
 
 	cluster := NewCluster()
-	proxy := NewProxy("caddy", conf.Port)
+	proxy := NewProxy("caddy", conf.Port, prefix)
 
 	if conf.DisplayName != "obligator" {
 		storage.SetDisplayName(conf.DisplayName)
