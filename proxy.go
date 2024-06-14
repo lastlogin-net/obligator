@@ -14,10 +14,6 @@ type Proxy interface {
 	AddDomain(domain string) error
 }
 
-func NewProxy(type_ string, port int, prefix string) Proxy {
-	return NewCaddyProxy("srv0", port, prefix)
-}
-
 type FlyIoProxy struct {
 	token      string
 	appId      string
@@ -72,11 +68,34 @@ func (p *FlyIoProxy) AddDomain(domain string) error {
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		fmt.Println(string(body))
 		return err
 	}
 
+	if res.StatusCode != 200 {
+		msg := fmt.Sprintf("Adding domain to fly.io failed: %s", string(body))
+		return errors.New(msg)
+	}
+
+	var graphQlMsg GraphQLMessage
+
+	err = json.Unmarshal(body, &graphQlMsg)
+	if err != nil {
+		return err
+	}
+
+	if len(graphQlMsg.Errors) > 0 {
+		return errors.New(graphQlMsg.Errors[0].Message)
+	}
+
 	return nil
+}
+
+type GraphQLMessage struct {
+	Errors []*GraphQLError `json:"errors"`
+}
+
+type GraphQLError struct {
+	Message string `json:"message"`
 }
 
 type CaddyProxy struct {

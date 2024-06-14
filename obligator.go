@@ -178,7 +178,8 @@ func NewServer(conf ServerConfig) *Server {
 	}
 
 	cluster := NewCluster()
-	proxy := NewProxy("caddy", conf.Port, prefix)
+	proxy := NewCaddyProxy("srv0", conf.Port, prefix)
+	//proxy := NewFlyIoProxy()
 
 	if conf.DisplayName != "obligator" {
 		storage.SetDisplayName(conf.DisplayName)

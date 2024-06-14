@@ -130,14 +130,14 @@ func NewDomainHandler(db *Database, storage Storage, tmpl *template.Template, pr
 		//        return
 		//}
 
-		err = db.AddDomain(domain, ownerId)
+		err = proxy.AddDomain(domain)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		err = proxy.AddDomain(domain)
+		err = db.AddDomain(domain, ownerId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
