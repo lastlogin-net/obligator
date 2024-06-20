@@ -123,6 +123,9 @@ func (s *ObligatorMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if validation != nil {
 			newReq.Header.Set("Remote-Id-Type", validation.IdType)
 			newReq.Header.Set("Remote-Id", validation.Id)
+		} else {
+			newReq.Header.Set("Remote-Id-Type", "")
+			newReq.Header.Set("Remote-Id", "")
 		}
 
 		mux.ServeHTTP(w, newReq)
