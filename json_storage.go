@@ -16,7 +16,6 @@ type JsonStorage struct {
 	Smtp                   *SmtpConfig      `json:"smtp"`
 	Jwks                   jwk.Set          `json:"jwks"`
 	Users                  []User           `json:"users"`
-	Public                 bool             `json:"public"`
 	FedCmEnabled           bool             `json:"fedcm_enabled"`
 	ForwardAuthPassthrough bool             `json:"forward_auth_passthrough"`
 	mutex                  *sync.Mutex
@@ -53,8 +52,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 				s.Prefix = msg.prefix
 				msg.resp <- nil
 				s.Persist()
-			case getPublicMessage:
-				msg.resp <- s.Public
 			case getUsersMessage:
 				users := []User{}
 				for _, user := range s.Users {
@@ -180,19 +177,6 @@ func (s *JsonStorage) GetOAuth2ProviderByID(id string) (OAuth2Provider, error) {
 	}
 
 	return OAuth2Provider{}, errors.New("No such provider")
-}
-
-type getPublicMessage struct {
-	resp chan bool
-}
-
-func (s *JsonStorage) GetPublic() bool {
-	ch := make(chan bool)
-	s.message_chan <- getPublicMessage{
-		resp: ch,
-	}
-	public := <-ch
-	return public
 }
 
 type getUsersMessage struct {

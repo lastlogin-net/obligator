@@ -53,7 +53,7 @@ func buildProviderLogoMap(storage Storage) {
 	}
 }
 
-func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataManager) *AddIdentityOauth2Handler {
+func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *OAuth2MetadataManager) *AddIdentityOauth2Handler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityOauth2Handler{
@@ -328,7 +328,14 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			return
 		}
 
-		if !storage.GetPublic() && !validUser(email, users) {
+		config, err := db.GetConfig()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			w.WriteHeader(500)
+			return
+		}
+
+		if !config.Public && !validUser(email, users) {
 			redirUrl := fmt.Sprintf("%s/no-account?%s", domainToUri(r.Host), returnUri)
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 			return

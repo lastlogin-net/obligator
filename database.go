@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+type DbConfig struct {
+	Public bool `json:"public"`
+}
+
 type Database struct {
 	db *sqlx.DB
 }
@@ -18,6 +22,35 @@ func NewDatabase(path string) (*Database, error) {
 	}
 
 	stmt := `
+        CREATE TABLE IF NOT EXISTS config(
+                public BOOLEAN UNIQUE
+        );
+        `
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return nil, err
+	}
+
+	stmt = `
+        SELECT COUNT(*) FROM config;
+        `
+	var numRows int
+	err = db.QueryRow(stmt).Scan(&numRows)
+	if err != nil {
+		return nil, err
+	}
+
+	if numRows == 0 {
+		stmt = `
+                INSERT INTO config (public) VALUES(false);
+                `
+		_, err = db.Exec(stmt)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	stmt = `
         create table email_validation_requests(id integer not null primary key, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, hashed_requester_id TEXT NOT NULL, hashed_email TEXT NOT NULL);
         `
 	_, err = db.Exec(stmt)
@@ -43,6 +76,30 @@ func NewDatabase(path string) (*Database, error) {
 	}
 
 	return s, nil
+}
+
+func (s *Database) GetConfig() (*DbConfig, error) {
+	var c DbConfig
+
+	stmt := "SELECT public FROM config"
+	err := s.db.QueryRow(stmt).Scan(&c.Public)
+	if err != nil {
+		return nil, err
+	}
+
+	return &c, nil
+}
+
+func (s *Database) SetPublic(public bool) error {
+	stmt := `
+        UPDATE config SET public=?;
+        `
+	_, err := s.db.Exec(stmt, public)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *Database) AddEmailValidationRequest(requesterId, email string) error {

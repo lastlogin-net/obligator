@@ -250,7 +250,14 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			}
 		}
 
-		if storage.GetPublic() || validUser(email, users) {
+		config, err := db.GetConfig()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			w.WriteHeader(500)
+			return
+		}
+
+		if config.Public || validUser(email, users) {
 			// run in goroutine so the user can't use timing to determine whether the account exists
 			go func() {
 				err := h.StartEmailValidation(email, serverUri, magicLink, identities)

@@ -23,6 +23,7 @@ type Server struct {
 	Config  ServerConfig
 	Mux     *ObligatorMux
 	storage Storage
+	db      *Database
 }
 
 type ServerConfig struct {
@@ -272,7 +273,7 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/token", oidcHandler)
 	mux.Handle("/end-session", oidcHandler)
 
-	addIdentityOauth2Handler := NewAddIdentityOauth2Handler(storage, oauth2MetaMan)
+	addIdentityOauth2Handler := NewAddIdentityOauth2Handler(storage, db, oauth2MetaMan)
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)
 	mux.Handle("/callback", addIdentityOauth2Handler)
 
@@ -320,6 +321,7 @@ func NewServer(conf ServerConfig) *Server {
 		Mux:     mux,
 		api:     api,
 		storage: storage,
+		db:      db,
 	}
 
 	return s
@@ -330,6 +332,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) Start() error {
+
 	server := http.Server{
 		Addr:    fmt.Sprintf(":%d", s.Config.Port),
 		Handler: s.Mux,
