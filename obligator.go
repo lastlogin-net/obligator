@@ -1,6 +1,7 @@
 package obligator
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"embed"
@@ -24,6 +25,7 @@ type Server struct {
 	Mux     *ObligatorMux
 	storage Storage
 	db      *Database
+	muxMap  map[string]*http.ServeMux
 }
 
 type ServerConfig struct {
@@ -39,6 +41,7 @@ type ServerConfig struct {
 	FedCm                  bool
 	ForwardAuthPassthrough bool
 	Domains                DomainList
+	Public                 bool
 }
 
 type DomainList []string
@@ -73,6 +76,7 @@ type OAuth2TokenResponse struct {
 }
 
 type ObligatorMux struct {
+	server      *Server
 	behindProxy bool
 	mux         *http.ServeMux
 }
@@ -102,6 +106,28 @@ func NewObligatorMux(behindProxy bool) *ObligatorMux {
 }
 
 func (s *ObligatorMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	// TODO: mutex?
+	mux, exists := s.server.muxMap[r.Host]
+	if exists {
+		validation, err := s.server.Validate(r)
+		if err != nil {
+			w.WriteHeader(401)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		newReq := r.Clone(context.Background())
+
+		if validation != nil {
+			newReq.Header.Set("Remote-Id-Type", validation.IdType)
+			newReq.Header.Set("Remote-Id", validation.Id)
+		}
+
+		mux.ServeHTTP(w, newReq)
+		return
+	}
+
 	// TODO: see if we can re-enable script-src none. Removed it for FedCM support
 	//w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'; script-src 'none'")
 	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
@@ -220,6 +246,10 @@ func NewServer(conf ServerConfig) *Server {
 		storage.SetForwardAuthPassthrough(true)
 	}
 
+	if conf.Public {
+		db.SetPublic(true)
+	}
+
 	oauth2MetaMan := NewOAuth2MetadataManager(storage)
 	err = oauth2MetaMan.Update()
 	if err != nil {
@@ -322,7 +352,11 @@ func NewServer(conf ServerConfig) *Server {
 		api:     api,
 		storage: storage,
 		db:      db,
+		muxMap:  make(map[string]*http.ServeMux),
 	}
+
+	// TODO: very hacky
+	mux.server = s
 
 	return s
 }
@@ -379,6 +413,11 @@ func (s *Server) GetUsers() ([]User, error) {
 
 func (s *Server) Validate(r *http.Request) (*Validation, error) {
 	return validate(s.storage, r)
+}
+
+func (s *Server) ProxyMux(domain string, mux *http.ServeMux) error {
+	s.muxMap[domain] = mux
+	return nil
 }
 
 func checkErrPassthrough(err error, passthrough bool) (*Validation, error) {
