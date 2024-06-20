@@ -42,6 +42,7 @@ type ServerConfig struct {
 	ForwardAuthPassthrough bool
 	Domains                DomainList
 	Public                 bool
+	ProxyType              string
 }
 
 type DomainList []string
@@ -171,6 +172,10 @@ func NewServer(conf ServerConfig) *Server {
 		conf.DisplayName = "obligator"
 	}
 
+	if conf.ProxyType == "" {
+		conf.ProxyType = "builtin"
+	}
+
 	var identsType []*Identity
 	jwt.RegisterCustomField("identities", identsType)
 	var loginsType map[string][]*Login
@@ -205,8 +210,7 @@ func NewServer(conf ServerConfig) *Server {
 	}
 
 	cluster := NewCluster()
-	proxy := NewCaddyProxy("srv0", conf.Port, prefix)
-	//proxy := NewFlyIoProxy()
+	proxy := NewProxy(&conf, prefix)
 
 	if conf.DisplayName != "obligator" {
 		storage.SetDisplayName(conf.DisplayName)

@@ -18,6 +18,7 @@ func main() {
 	geoDbPath := flag.String("geo-db-path", "", "IP2Location Geo DB file")
 	fedCm := flag.Bool("fedcm", false, "Enable FedCM support")
 	forwardAuthPassthrough := flag.Bool("forward-auth-passthrough", false, "Always return success for validation requests")
+	proxyType := flag.String("proxy-type", "builtin", "Proxy type")
 
 	var domains obligator.DomainList
 	flag.Var(&domains, "domain", "Domains")
@@ -35,6 +36,7 @@ func main() {
 		FedCm:                  *fedCm,
 		ForwardAuthPassthrough: *forwardAuthPassthrough,
 		Domains:                domains,
+		ProxyType:              *proxyType,
 	}
 
 	server := obligator.NewServer(conf)

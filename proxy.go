@@ -14,6 +14,26 @@ type Proxy interface {
 	AddDomain(domain string) error
 }
 
+func NewProxy(config *ServerConfig, prefix string) Proxy {
+	switch config.ProxyType {
+	case "builtin":
+		return &BuiltinProxy{}
+	case "caddy":
+		return NewCaddyProxy("srv0", config.Port, prefix)
+	case "fly.io":
+		return NewFlyIoProxy()
+	default:
+		panic("Invalid proxy type")
+	}
+}
+
+type BuiltinProxy struct {
+}
+
+func (p *BuiltinProxy) AddDomain(domain string) error {
+	return nil
+}
+
 type FlyIoProxy struct {
 	token      string
 	appId      string
