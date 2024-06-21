@@ -43,6 +43,7 @@ type ServerConfig struct {
 	Domains                DomainList
 	Public                 bool
 	ProxyType              string
+	LogoPng                []byte
 }
 
 type DomainList []string

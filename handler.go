@@ -53,6 +53,17 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 
 	})
 
+	mux.HandleFunc("/logo.png", func(w http.ResponseWriter, r *http.Request) {
+		if conf.LogoPng != nil {
+			w.Header()["Content-Type"] = []string{"image/png"}
+			w.Header()["Cache-Control"] = []string{"max-age=86400"}
+			w.Write(conf.LogoPng)
+			return
+		} else {
+			fsHandler.ServeHTTP(w, r)
+		}
+	})
+
 	mux.HandleFunc("/ip", func(w http.ResponseWriter, r *http.Request) {
 		remoteIp, err := getRemoteIp(r, conf.BehindProxy)
 		if err != nil {
