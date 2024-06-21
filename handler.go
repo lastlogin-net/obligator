@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 )
 
@@ -105,6 +106,8 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 
 	loginFunc := func(w http.ResponseWriter, r *http.Request, fedCm bool) {
 
+		r.ParseForm()
+
 		canEmail := true
 		if _, err := storage.GetSmtpConfig(); err != nil {
 			canEmail = false
@@ -117,9 +120,30 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 			return
 		}
 
-		returnUri := "/login"
-		if fedCm {
-			returnUri = "/login-fedcm-auto"
+		returnUri := r.Form.Get("return_uri")
+
+		if returnUri == "" {
+			returnUri = "/login"
+
+			if fedCm {
+				returnUri = "/login-fedcm-auto"
+			}
+		} else {
+			parsedUrl, err := url.Parse(returnUri)
+			if err != nil {
+				w.WriteHeader(400)
+				io.WriteString(w, err.Error())
+				return
+			}
+
+			// Prevent open redirect by verifying the return
+			// domain is in our database.
+			_, err = db.GetDomain(parsedUrl.Host)
+			if err != nil {
+				w.WriteHeader(403)
+				io.WriteString(w, err.Error())
+				return
+			}
 		}
 
 		setReturnUriCookie(r.Host, storage, returnUri, w)
