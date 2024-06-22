@@ -29,6 +29,7 @@
   </div>
 
   <div class='og-top-button-container'>
+    {{if not $.DisableHeaderButtons}}
     {{if $.Identities}}
     <form action="/logout" method="POST">
       {{if $.ReturnUri}}
@@ -47,4 +48,5 @@
       <button class='og-button'>Domains</button>
     </a>
     <button id='og-register-fedcm-button' class='og-button og-remove'>Register FedCM</button>
+    {{end}}
   </div>

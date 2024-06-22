@@ -165,14 +165,17 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 			OAuth2Providers []OAuth2Provider
 			LogoMap         map[string]template.HTML
 			FedCm           bool
+			DisableQrLogin  bool
 		}{
 			commonData: newCommonData(&commonData{
-				ReturnUri: returnUri,
+				ReturnUri:            returnUri,
+				DisableHeaderButtons: true,
 			}, storage, r),
 			CanEmail:        canEmail,
 			OAuth2Providers: providers,
 			LogoMap:         providerLogoMap,
 			FedCm:           fedCm,
+			DisableQrLogin:  conf.DisableQrLogin,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "login.html", data)

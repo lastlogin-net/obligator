@@ -20,14 +20,19 @@ import (
 )
 
 type commonData struct {
-	RootUri     string
-	DisplayName string
-	Identities  []*Identity
-	ReturnUri   string
+	RootUri              string
+	DisplayName          string
+	Identities           []*Identity
+	ReturnUri            string
+	DisableHeaderButtons bool
 }
 
 func newCommonData(overrides *commonData, storage Storage, r *http.Request) *commonData {
 	d := &commonData{}
+
+	if overrides != nil {
+		d.DisableHeaderButtons = overrides.DisableHeaderButtons
+	}
 
 	if overrides == nil || overrides.RootUri == "" {
 		d.RootUri = domainToUri(r.Host)

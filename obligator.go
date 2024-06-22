@@ -44,6 +44,7 @@ type ServerConfig struct {
 	Public                 bool
 	ProxyType              string
 	LogoPng                []byte
+	DisableQrLogin         bool
 }
 
 type DomainList []string
