@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -25,7 +26,7 @@ type Server struct {
 	Mux     *ObligatorMux
 	storage Storage
 	db      *Database
-	muxMap  map[string]*http.ServeMux
+	muxMap  map[string]http.Handler
 }
 
 type ServerConfig struct {
@@ -45,6 +46,7 @@ type ServerConfig struct {
 	ProxyType              string
 	LogoPng                []byte
 	DisableQrLogin         bool
+	JwksJson               string
 }
 
 type DomainList []string
@@ -272,6 +274,22 @@ func NewServer(conf ServerConfig) *Server {
 		os.Exit(1)
 	}
 
+	if conf.JwksJson != "" {
+		keyset, err := jwk.Parse([]byte(conf.JwksJson))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+
+		key, exists := keyset.Key(0)
+		if !exists {
+			fmt.Fprintln(os.Stderr, "No key in provided JWKS JSON")
+			os.Exit(1)
+		}
+
+		storage.AddJWKKey(key)
+	}
+
 	if storage.GetJWKSet().Len() == 0 {
 		key, err := GenerateJWK()
 		if err != nil {
@@ -361,7 +379,7 @@ func NewServer(conf ServerConfig) *Server {
 		api:     api,
 		storage: storage,
 		db:      db,
-		muxMap:  make(map[string]*http.ServeMux),
+		muxMap:  make(map[string]http.Handler),
 	}
 
 	// TODO: very hacky
@@ -424,7 +442,7 @@ func (s *Server) Validate(r *http.Request) (*Validation, error) {
 	return validate(s.storage, r)
 }
 
-func (s *Server) ProxyMux(domain string, mux *http.ServeMux) error {
+func (s *Server) ProxyMux(domain string, mux http.Handler) error {
 	s.muxMap[domain] = mux
 	return nil
 }
@@ -479,6 +497,24 @@ func validate(storage Storage, r *http.Request) (*Validation, error) {
 	}
 
 	return v, nil
+}
+
+func GenerateJwksJson() (string, error) {
+
+	key, err := GenerateJWK()
+	if err != nil {
+		return "", err
+	}
+
+	keyset := jwk.NewSet()
+	keyset.AddKey(key)
+
+	jsonJwks, err := json.Marshal(keyset)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonJwks), nil
 }
 
 func GenerateJWK() (jwk.Key, error) {
