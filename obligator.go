@@ -456,7 +456,6 @@ func checkErrPassthrough(err error, passthrough bool) (*Validation, error) {
 }
 
 func validate(storage Storage, r *http.Request) (*Validation, error) {
-	r.ParseForm()
 
 	passthrough := storage.GetForwardAuthPassthrough()
 
