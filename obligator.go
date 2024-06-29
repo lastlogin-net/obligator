@@ -172,7 +172,7 @@ func NewServer(conf ServerConfig) *Server {
 	}
 
 	if conf.Prefix == "" {
-		conf.Prefix = "obligator"
+		conf.Prefix = "obligator_"
 	}
 
 	if conf.DisplayName == "" {
