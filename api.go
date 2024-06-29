@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
+	//"net"
 	"net/http"
 	"net/mail"
-	"os"
-	"path/filepath"
+	//"os"
+	//"path/filepath"
 	"strings"
 )
 
@@ -126,22 +126,22 @@ func NewApi(storage Storage, dir string, oauth2MetaMan *OAuth2MetadataManager) (
 		}
 	})
 
-	server := http.Server{
-		Handler: mux,
-	}
+	//server := http.Server{
+	//	Handler: mux,
+	//}
 
-	sockPath := filepath.Join(dir, storage.GetPrefix()+"api.sock")
+	//sockPath := filepath.Join(dir, storage.GetPrefix()+"api.sock")
 
-	os.Remove(sockPath)
+	//os.Remove(sockPath)
 
-	listener, err := net.Listen("unix", sockPath)
-	if err != nil {
-		return nil, err
-	}
+	//listener, err := net.Listen("unix", sockPath)
+	//if err != nil {
+	//	return nil, err
+	//}
 
-	go func() {
-		server.Serve(listener)
-	}()
+	//go func() {
+	//	server.Serve(listener)
+	//}()
 
 	return a, nil
 }
