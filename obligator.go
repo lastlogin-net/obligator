@@ -320,7 +320,7 @@ func NewServer(conf ServerConfig) *Server {
 	handler := NewHandler(db, storage, conf, tmpl)
 	mux.Handle("/", handler)
 
-	oidcHandler := NewOIDCHandler(storage, tmpl)
+	oidcHandler := NewOIDCHandler(storage, conf, tmpl)
 	mux.Handle("/.well-known/openid-configuration", oidcHandler)
 	mux.Handle("/jwks", oidcHandler)
 	mux.Handle("/register", oidcHandler)

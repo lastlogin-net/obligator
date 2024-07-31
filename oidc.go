@@ -57,7 +57,7 @@ type OIDCRegistrationRequest struct {
 	RedirectUris []string `json:"redirect_uris"`
 }
 
-func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
+func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Template) *OIDCHandler {
 	mux := http.NewServeMux()
 
 	h := &OIDCHandler{
@@ -325,6 +325,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			LogoMap             map[string]template.HTML
 			URL                 string
 			CanEmail            bool
+			DisableQrLogin      bool
 		}{
 			commonData: newCommonData(&commonData{
 				ReturnUri: returnUri,
@@ -335,6 +336,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			OAuth2Providers:     providers,
 			LogoMap:             providerLogoMap,
 			CanEmail:            canEmail,
+			DisableQrLogin:      config.DisableQrLogin,
 		}
 
 		setReturnUriCookie(r.Host, storage, returnUri, w)
