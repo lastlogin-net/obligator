@@ -77,26 +77,6 @@ func NewApi(storage Storage, dir string, oauth2MetaMan *OAuth2MetadataManager) (
 		}
 	})
 
-	//mux.HandleFunc("/root-uri", func(w http.ResponseWriter, r *http.Request) {
-	//	switch r.Method {
-	//	case "PUT":
-	//		r.ParseForm()
-	//		rootUri := r.Form.Get("root_uri")
-	//		if rootUri == "" {
-	//			w.WriteHeader(400)
-	//			io.WriteString(w, "Missing root_uri")
-	//			return
-	//		}
-
-	//		err := storage.SetRootUri(rootUri)
-	//		if err != nil {
-	//			w.WriteHeader(400)
-	//			io.WriteString(w, err.Error())
-	//			return
-	//		}
-	//	}
-	//})
-
 	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
