@@ -1,0 +1,9 @@
+<svg viewBox="0 0 100 100" version="1.1" baseProfile="full" width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+  <!-- background -->
+  <!--
+  <rect width="100%" height="100%" fill="#f0f0f0" />
+  -->
+
+  <line x1="30" y1="20" x2="70" y2="20" stroke="#000" stroke-width="10" />
+  <circle cx="50" cy="60" r="22" fill="none" stroke="#000" stroke-width="10" />
+</svg>
