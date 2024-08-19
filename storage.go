@@ -6,8 +6,6 @@ import (
 
 type Storage interface {
 	GetPrefix() string
-	GetUsers() ([]User, error)
-	CreateUser(User) error
 	GetOAuth2Providers() ([]OAuth2Provider, error)
 	GetOAuth2ProviderByID(string) (OAuth2Provider, error)
 	SetOauth2Provider(OAuth2Provider) error
@@ -47,8 +45,4 @@ type OAuth2Provider struct {
 	TokenURI         string `json:"token_uri,omitempty" db:"token_uri"`
 	Scope            string `json:"scope,omitempty"`
 	OpenIDConnect    bool   `json:"openid_connect" db:"supports_openid_connect"`
-}
-
-type User struct {
-	Email string `json:"email"`
 }

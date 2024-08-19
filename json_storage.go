@@ -15,7 +15,6 @@ type JsonStorage struct {
 	OAuth2Providers        []OAuth2Provider `json:"oauth2_providers"`
 	Smtp                   *SmtpConfig      `json:"smtp"`
 	Jwks                   jwk.Set          `json:"jwks"`
-	Users                  []User           `json:"users"`
 	FedCmEnabled           bool             `json:"fedcm_enabled"`
 	ForwardAuthPassthrough bool             `json:"forward_auth_passthrough"`
 	mutex                  *sync.Mutex
@@ -28,7 +27,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 		DisplayName:     "obligator",
 		OAuth2Providers: []OAuth2Provider{},
 		Jwks:            jwk.NewSet(),
-		Users:           []User{},
 		mutex:           &sync.Mutex{},
 		path:            path,
 		message_chan:    make(chan interface{}),
@@ -52,27 +50,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 				s.Prefix = msg.prefix
 				msg.resp <- nil
 				s.Persist()
-			case getUsersMessage:
-				users := []User{}
-				for _, user := range s.Users {
-					users = append(users, user)
-				}
-				msg.resp <- users
-			case createUserMessage:
-				var err error
-				for _, user := range s.Users {
-					if user.Email == msg.user.Email {
-						err = errors.New("User exists")
-						break
-					}
-				}
-
-				if err == nil {
-					s.Users = append(s.Users, msg.user)
-					s.Persist()
-				}
-
-				msg.resp <- err
 			case getOauth2ProvidersMessage:
 				providers := []OAuth2Provider{}
 				for _, prov := range s.OAuth2Providers {
@@ -177,34 +154,6 @@ func (s *JsonStorage) GetOAuth2ProviderByID(id string) (OAuth2Provider, error) {
 	}
 
 	return OAuth2Provider{}, errors.New("No such provider")
-}
-
-type getUsersMessage struct {
-	resp chan []User
-}
-
-func (s *JsonStorage) GetUsers() ([]User, error) {
-	ch := make(chan []User)
-	s.message_chan <- getUsersMessage{
-		resp: ch,
-	}
-	users := <-ch
-	return users, nil
-}
-
-type createUserMessage struct {
-	user User
-	resp chan error
-}
-
-func (s *JsonStorage) CreateUser(user User) error {
-	resp := make(chan error)
-	s.message_chan <- createUserMessage{
-		user,
-		resp,
-	}
-	err := <-resp
-	return err
 }
 
 type getOauth2ProvidersMessage struct {

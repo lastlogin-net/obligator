@@ -135,9 +135,9 @@ func buildCookieDomain(domain string) (string, error) {
 	}
 }
 
-func validUser(email string, users []User) bool {
+func validUser(id string, users []*User) bool {
 	for _, user := range users {
-		if email == user.Email {
+		if id == user.Id {
 			return true
 		}
 	}

@@ -9,6 +9,11 @@ import (
 	"github.com/mattn/go-sqlite3"
 )
 
+type User struct {
+	IdType string `json:"id_type" db:"id_type"`
+	Id     string `json:"email" db:"id"`
+}
+
 type DbConfig struct {
 	Public bool `json:"public"`
 }
@@ -74,6 +79,17 @@ func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
         CREATE TABLE IF NOT EXISTS %sdomains(
                 domain TEXT UNIQUE,
                 hashed_owner_id TEXT
+        );
+        `, prefix)
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return nil, err
+	}
+
+	stmt = fmt.Sprintf(`
+        CREATE TABLE IF NOT EXISTS %susers(
+                id TEXT PRIMARY KEY,
+                id_type TEXT
         );
         `, prefix)
 	_, err = db.Exec(stmt)
@@ -160,9 +176,9 @@ func (s *Database) GetEmailValidationCounts(since time.Time) ([]*EmailValidation
 }
 
 func (s *Database) AddDomain(domain, ownerId string) error {
-	stmt := `
-        INSERT INTO domains(domain,hashed_owner_id) VALUES(?,?);
-        `
+	stmt := fmt.Sprintf(`
+        INSERT INTO %sdomains(domain,hashed_owner_id) VALUES(?,?);
+        `, s.prefix)
 	_, err := s.db.Exec(stmt, domain, Hash(ownerId))
 	if err != nil {
 		return err
@@ -212,4 +228,32 @@ func (s *Database) GetDomains() ([]*Domain, error) {
 	}
 
 	return allDomains, nil
+}
+
+func (d *Database) GetUsers() ([]*User, error) {
+
+	stmt := fmt.Sprintf(`
+        SELECT * FROM %susers;
+        `, d.prefix)
+
+	var users []*User
+
+	err := d.db.Select(&users, stmt)
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+func (d *Database) SetUser(u *User) error {
+	stmt := fmt.Sprintf(`
+        INSERT OR REPLACE INTO %susers(id_type,id) VALUES(?,?);
+        `, d.prefix)
+	_, err := d.db.Exec(stmt, u.IdType, u.Id)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

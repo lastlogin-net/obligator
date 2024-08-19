@@ -127,7 +127,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			return
 		}
 
-		users, err := storage.GetUsers()
+		users, err := db.GetUsers()
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())

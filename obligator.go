@@ -279,7 +279,7 @@ func NewServer(conf ServerConfig) *Server {
 		os.Exit(1)
 	}
 
-	api, err := NewApi(storage, conf.ApiSocketDir, oauth2MetaMan)
+	api, err := NewApi(db, storage, conf.ApiSocketDir, oauth2MetaMan)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -445,7 +445,7 @@ func (s *Server) AddUser(user User) error {
 	return s.api.AddUser(user)
 }
 
-func (s *Server) GetUsers() ([]User, error) {
+func (s *Server) GetUsers() ([]*User, error) {
 	return s.api.GetUsers()
 }
 

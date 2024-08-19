@@ -13,15 +13,17 @@ import (
 )
 
 type Api struct {
+	db            *Database
 	storage       Storage
 	oauth2MetaMan *OAuth2MetadataManager
 }
 
-func NewApi(storage Storage, dir string, oauth2MetaMan *OAuth2MetadataManager) (*Api, error) {
+func NewApi(db *Database, storage Storage, dir string, oauth2MetaMan *OAuth2MetadataManager) (*Api, error) {
 
 	mux := http.NewServeMux()
 
 	a := &Api{
+		db,
 		storage,
 		oauth2MetaMan,
 	}
@@ -157,24 +159,18 @@ func (a *Api) SetOAuth2Provider(prov OAuth2Provider) error {
 }
 
 func (a *Api) AddUser(user User) error {
-	_, err := mail.ParseAddress(user.Email)
+	_, err := mail.ParseAddress(user.Id)
 	if err != nil {
 		return err
 	}
 
-	err = a.storage.CreateUser(user)
+	err = a.db.SetUser(&user)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (a *Api) GetUsers() ([]User, error) {
-
-	users, err := a.storage.GetUsers()
-	if err != nil {
-		return nil, err
-	}
-
-	return users, nil
+func (a *Api) GetUsers() ([]*User, error) {
+	return a.db.GetUsers()
 }

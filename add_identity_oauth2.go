@@ -314,7 +314,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 			_, email, _ = GetProfile(&oauth2Provider, tokenRes.AccessToken)
 		}
 
-		users, err := storage.GetUsers()
+		users, err := db.GetUsers()
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
