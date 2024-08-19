@@ -1,9 +1,12 @@
 package obligator
 
 import (
+	"database/sql"
+	"fmt"
+	"time"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/mattn/go-sqlite3"
-	"time"
 )
 
 type DbConfig struct {
@@ -11,29 +14,36 @@ type DbConfig struct {
 }
 
 type Database struct {
-	db *sqlx.DB
+	db     *sqlx.DB
+	prefix string
 }
 
-func NewDatabase(path string) (*Database, error) {
-
-	db, err := sqlx.Open("sqlite3", path)
+func NewDatabase(path string, prefix string) (*Database, error) {
+	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return nil, err
 	}
 
-	stmt := `
-        CREATE TABLE IF NOT EXISTS config(
+	return NewDatabaseWithDb(db, prefix)
+}
+
+func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
+
+	db := sqlx.NewDb(sqlDb, "sqlite3")
+
+	stmt := fmt.Sprintf(`
+        CREATE TABLE IF NOT EXISTS %sconfig(
                 public BOOLEAN UNIQUE
         );
-        `
-	_, err = db.Exec(stmt)
+        `, prefix)
+	_, err := db.Exec(stmt)
 	if err != nil {
 		return nil, err
 	}
 
-	stmt = `
-        SELECT COUNT(*) FROM config;
-        `
+	stmt = fmt.Sprintf(`
+        SELECT COUNT(*) FROM %sconfig;
+        `, prefix)
 	var numRows int
 	err = db.QueryRow(stmt).Scan(&numRows)
 	if err != nil {
@@ -41,18 +51,18 @@ func NewDatabase(path string) (*Database, error) {
 	}
 
 	if numRows == 0 {
-		stmt = `
-                INSERT INTO config (public) VALUES(false);
-                `
+		stmt = fmt.Sprintf(`
+                INSERT INTO %sconfig (public) VALUES(false);
+                `, prefix)
 		_, err = db.Exec(stmt)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	stmt = `
-        create table email_validation_requests(id integer not null primary key, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, hashed_requester_id TEXT NOT NULL, hashed_email TEXT NOT NULL);
-        `
+	stmt = fmt.Sprintf(`
+        create table %semail_validation_requests(id integer not null primary key, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, hashed_requester_id TEXT NOT NULL, hashed_email TEXT NOT NULL);
+        `, prefix)
 	_, err = db.Exec(stmt)
 	if sqliteErr, ok := err.(sqlite3.Error); ok {
 		if sqliteErr.Code != sqlite3.ErrError {
@@ -60,19 +70,20 @@ func NewDatabase(path string) (*Database, error) {
 		}
 	}
 
-	stmt = `
-        CREATE TABLE IF NOT EXISTS domains(
+	stmt = fmt.Sprintf(`
+        CREATE TABLE IF NOT EXISTS %sdomains(
                 domain TEXT UNIQUE,
                 hashed_owner_id TEXT
         );
-        `
+        `, prefix)
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return nil, err
 	}
 
 	s := &Database{
-		db: db,
+		db:     db,
+		prefix: prefix,
 	}
 
 	return s, nil
@@ -81,7 +92,7 @@ func NewDatabase(path string) (*Database, error) {
 func (s *Database) GetConfig() (*DbConfig, error) {
 	var c DbConfig
 
-	stmt := "SELECT public FROM config"
+	stmt := fmt.Sprintf("SELECT public FROM %sconfig", s.prefix)
 	err := s.db.QueryRow(stmt).Scan(&c.Public)
 	if err != nil {
 		return nil, err
@@ -91,9 +102,9 @@ func (s *Database) GetConfig() (*DbConfig, error) {
 }
 
 func (s *Database) SetPublic(public bool) error {
-	stmt := `
-        UPDATE config SET public=?;
-        `
+	stmt := fmt.Sprintf(`
+        UPDATE %sconfig SET public=?;
+        `, s.prefix)
 	_, err := s.db.Exec(stmt, public)
 	if err != nil {
 		return err
@@ -103,9 +114,9 @@ func (s *Database) SetPublic(public bool) error {
 }
 
 func (s *Database) AddEmailValidationRequest(requesterId, email string) error {
-	stmt := `
-        INSERT INTO email_validation_requests(hashed_requester_id,hashed_email) VALUES(?,?);
-        `
+	stmt := fmt.Sprintf(`
+        INSERT INTO %semail_validation_requests(hashed_requester_id,hashed_email) VALUES(?,?);
+        `, s.prefix)
 	_, err := s.db.Exec(stmt, Hash(requesterId), Hash(email))
 	if err != nil {
 		return err
@@ -121,7 +132,10 @@ type EmailValidationCount struct {
 func (s *Database) GetEmailValidationCounts(since time.Time) ([]*EmailValidationCount, error) {
 
 	timeFmt := since.Format(time.DateTime)
-	rows, err := s.db.Query("SELECT hashed_requester_id,count(*) FROM email_validation_requests WHERE timestamp > ? GROUP BY hashed_requester_id", timeFmt)
+	stmt := fmt.Sprintf(`
+        SELECT hashed_requester_id,count(*) FROM %semail_validation_requests WHERE timestamp > ? GROUP BY hashed_requester_id
+        `, s.prefix)
+	rows, err := s.db.Query(stmt, timeFmt)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +179,7 @@ func (s *Database) GetDomain(domain string) (*Domain, error) {
 
 	var d Domain
 
-	stmt := "SELECT domain,hashed_owner_id FROM domains WHERE domain = ?"
+	stmt := fmt.Sprintf("SELECT domain,hashed_owner_id FROM %sdomains WHERE domain = ?", s.prefix)
 	err := s.db.QueryRow(stmt, domain).Scan(&d.Domain, &d.HashedOwnerId)
 	if err != nil {
 		return nil, err
@@ -176,7 +190,7 @@ func (s *Database) GetDomain(domain string) (*Domain, error) {
 
 func (s *Database) GetDomains() ([]*Domain, error) {
 
-	rows, err := s.db.Query("SELECT * FROM domains")
+	rows, err := s.db.Query(fmt.Sprintf("SELECT * FROM %sdomains", s.prefix))
 	if err != nil {
 		return nil, err
 	}

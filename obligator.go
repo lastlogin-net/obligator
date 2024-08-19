@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -33,6 +34,7 @@ type ServerConfig struct {
 	Port                   int
 	AuthDomains            []string
 	Prefix                 string
+	Database               *sql.DB
 	StorageDir             string
 	DatabaseDir            string
 	ApiSocketDir           string
@@ -209,11 +211,20 @@ func NewServer(conf ServerConfig) *Server {
 	//	os.Exit(1)
 	//}
 
-	dbPath := filepath.Join(conf.DatabaseDir, prefix+"db.sqlite")
-	db, err := NewDatabase(dbPath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
+	var db *Database
+	if conf.Database != nil {
+		db, err = NewDatabaseWithDb(conf.Database, prefix)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+	} else {
+		dbPath := filepath.Join(conf.DatabaseDir, prefix+"db.sqlite")
+		db, err = NewDatabase(dbPath, prefix)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
 	}
 
 	cluster := NewCluster()
