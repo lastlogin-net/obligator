@@ -20,8 +20,11 @@ func main() {
 	forwardAuthPassthrough := flag.Bool("forward-auth-passthrough", false, "Always return success for validation requests")
 	proxyType := flag.String("proxy-type", "builtin", "Proxy type")
 
-	var domains obligator.DomainList
-	flag.Var(&domains, "domain", "Domains")
+	var domains obligator.StringList
+	flag.Var(&domains, "domain", "Domains - can provide multiple times")
+	var users obligator.StringList
+	flag.Var(&users, "user", "Users - can provide multiple times")
+
 	flag.Parse()
 
 	conf := obligator.ServerConfig{
@@ -36,6 +39,7 @@ func main() {
 		FedCm:                  *fedCm,
 		ForwardAuthPassthrough: *forwardAuthPassthrough,
 		Domains:                domains,
+		Users:                  users,
 		ProxyType:              *proxyType,
 	}
 

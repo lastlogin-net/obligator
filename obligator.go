@@ -34,6 +34,7 @@ type ServerConfig struct {
 	Port                   int
 	AuthDomains            []string
 	Prefix                 string
+	DbPrefix               string
 	Database               *sql.DB
 	StorageDir             string
 	DatabaseDir            string
@@ -43,7 +44,8 @@ type ServerConfig struct {
 	GeoDbPath              string
 	FedCm                  bool
 	ForwardAuthPassthrough bool
-	Domains                DomainList
+	Domains                StringList
+	Users                  StringList
 	Public                 bool
 	ProxyType              string
 	LogoPng                []byte
@@ -51,9 +53,9 @@ type ServerConfig struct {
 	JwksJson               string
 }
 
-type DomainList []string
+type StringList []string
 
-func (d *DomainList) String() string {
+func (d *StringList) String() string {
 	s := ""
 	for _, domain := range *d {
 		s = s + " " + domain
@@ -61,7 +63,7 @@ func (d *DomainList) String() string {
 	return s
 }
 
-func (d *DomainList) Set(value string) error {
+func (d *StringList) Set(value string) error {
 	*d = append(*d, value)
 	return nil
 }
@@ -213,14 +215,14 @@ func NewServer(conf ServerConfig) *Server {
 
 	var db *Database
 	if conf.Database != nil {
-		db, err = NewDatabaseWithDb(conf.Database, prefix)
+		db, err = NewDatabaseWithDb(conf.Database, conf.DbPrefix)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
 	} else {
-		dbPath := filepath.Join(conf.DatabaseDir, prefix+"db.sqlite")
-		db, err = NewDatabase(dbPath, prefix)
+		dbPath := filepath.Join(conf.DatabaseDir, conf.DbPrefix+"db.sqlite")
+		db, err = NewDatabase(dbPath, conf.DbPrefix)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
@@ -241,6 +243,14 @@ func NewServer(conf ServerConfig) *Server {
 	domains, err := db.GetDomains()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
+	}
+
+	for _, userId := range conf.Users {
+		err := db.SetUser(&User{
+			IdType: "email",
+			Id:     userId,
+		})
+		checkErr(err)
 	}
 
 	if len(domains) == 0 {
@@ -555,4 +565,11 @@ func GenerateJWK() (jwk.Key, error) {
 	//return keyset, nil
 
 	return key, nil
+}
+
+func checkErr(err error) {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 }
