@@ -38,6 +38,7 @@ func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
 
 	stmt := fmt.Sprintf(`
         CREATE TABLE IF NOT EXISTS %sconfig(
+                jwks_json TEXT UNIQUE DEFAULT "" NOT NULL,
                 public BOOLEAN UNIQUE
         );
         `, prefix)
@@ -115,6 +116,33 @@ func (s *Database) GetConfig() (*DbConfig, error) {
 	}
 
 	return &c, nil
+}
+
+func (d *Database) GetJwksJson() (string, error) {
+	var jwksJson string
+
+	stmt := `
+        SELECT jwks_json FROM config;
+        `
+	err := d.db.QueryRow(stmt).Scan(&jwksJson)
+	if err != nil {
+		return "", err
+	}
+
+	return jwksJson, nil
+}
+
+func (d *Database) SetJwksJson(jwksJson string) error {
+
+	stmt := `
+        UPDATE config SET jwks_json=?;
+        `
+	_, err := d.db.Exec(stmt, jwksJson)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *Database) SetPublic(public bool) error {

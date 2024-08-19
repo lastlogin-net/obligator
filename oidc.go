@@ -12,11 +12,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
-	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
 type OAuth2ServerMetadata struct {
@@ -57,17 +52,11 @@ type OIDCRegistrationRequest struct {
 	RedirectUris []string `json:"redirect_uris"`
 }
 
-func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Template) *OIDCHandler {
+func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Template, jose *JOSE) *OIDCHandler {
 	mux := http.NewServeMux()
 
 	h := &OIDCHandler{
 		mux: mux,
-	}
-
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
 	}
 
 	prefix := storage.GetPrefix()
@@ -137,6 +126,12 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
 
+		publicJwks, err := jose.GetPublicJwks()
+		if err != nil {
+			w.WriteHeader(500)
+			return
+		}
+
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		enc.Encode(publicJwks)
@@ -146,7 +141,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 
 		var regReq OIDCRegistrationRequest
 
-		err = json.NewDecoder(r.Body).Decode(&regReq)
+		err := json.NewDecoder(r.Body).Decode(&regReq)
 		if err != nil {
 			w.WriteHeader(400)
 			return
@@ -191,7 +186,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 
 		accessToken := parts[1]
 
-		parsed, err := jwt.Parse([]byte(accessToken), jwt.WithKeySet(publicJwks))
+		parsed, err := jose.Parse(accessToken)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
@@ -228,7 +223,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 		if err == nil && loginKeyCookie.Value != "" {
 			hashedLoginKey = Hash(loginKeyCookie.Value)
 
-			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+			parsed, err := jose.Parse(loginKeyCookie.Value)
 			if err != nil {
 				// Only add identities from current cookie if it's valid
 			} else {
@@ -274,7 +269,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 
 		maxAge := 8 * time.Minute
 		issuedAt := time.Now().UTC()
-		authRequestJwt, err := jwt.NewBuilder().
+		authRequestJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(maxAge)).
 			// TODO: should we be checking login_key_hash?
@@ -354,7 +349,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 
 		if r.Method != http.MethodPost {
 			w.WriteHeader(405)
-			io.WriteString(w, err.Error())
+			io.WriteString(w, "Invalid method")
 			return
 		}
 
@@ -365,7 +360,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 			return
 		}
 
-		parsedLoginKey, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+		parsedLoginKey, err := jose.Parse(loginKeyCookie.Value)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
@@ -437,7 +432,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 		issuedAt := time.Now().UTC()
 		expiresAt := issuedAt.Add(24 * time.Hour)
 
-		idTokenBuilder := openid.NewBuilder().
+		idTokenBuilder := NewOIDCTokenBuilder().
 			Subject(identId).
 			Audience([]string{clientId}).
 			Issuer(uri).
@@ -461,14 +456,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 			return
 		}
 
-		key, exists := storage.GetJWKSet().Key(0)
-		if !exists {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "No keys available")
-			return
-		}
-
-		signedIdToken, err := jwt.Sign(idToken, jwt.WithKey(jwa.RS256, key))
+		signedIdToken, err := jose.Sign(idToken)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -476,7 +464,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 		}
 
 		// TODO: should maybe be encrypting this
-		codeJwt, err := jwt.NewBuilder().
+		codeJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(16*time.Second)).
 			Subject(idToken.Email()).
@@ -489,7 +477,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 			return
 		}
 
-		signedCode, err := jwt.Sign(codeJwt, jwt.WithKey(jwa.RS256, key))
+		signedCode, err := jose.Sign(codeJwt)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
@@ -521,7 +509,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 
 		codeJwt := r.Form.Get("code")
 
-		parsedCodeJwt, err := jwt.Parse([]byte(codeJwt), jwt.WithKeySet(publicJwks))
+		parsedCodeJwt, err := jose.Parse(codeJwt)
 		if err != nil {
 			fmt.Println(err.Error())
 			w.WriteHeader(401)
@@ -568,15 +556,8 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 			}
 		}
 
-		key, exists := storage.GetJWKSet().Key(0)
-		if !exists {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "No keys available")
-			return
-		}
-
 		issuedAt := time.Now().UTC()
-		accessTokenJwt, err := jwt.NewBuilder().
+		accessTokenJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(16 * time.Second)).
 			Subject(parsedCodeJwt.Subject()).
@@ -587,7 +568,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 			return
 		}
 
-		signedAccessToken, err := jwt.Sign(accessTokenJwt, jwt.WithKey(jwa.RS256, key))
+		signedAccessToken, err := jose.Sign(accessTokenJwt)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())

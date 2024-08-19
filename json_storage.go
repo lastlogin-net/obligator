@@ -126,10 +126,10 @@ func (s *JsonStorage) SetPrefix(prefix string) {
 	<-resp
 }
 
-func (s *JsonStorage) AddJWKKey(key jwk.Key) {
+func (s *JsonStorage) SetJWKS(jwks jwk.Set) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.Jwks.AddKey(key)
+	s.Jwks = jwks
 	s.persist()
 }
 

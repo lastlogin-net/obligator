@@ -2,11 +2,8 @@ package obligator
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"database/sql"
 	"embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -295,31 +292,12 @@ func NewServer(conf ServerConfig) *Server {
 		os.Exit(1)
 	}
 
-	if conf.JwksJson != "" {
-		keyset, err := jwk.Parse([]byte(conf.JwksJson))
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
+	jose, err := NewJOSE(db)
+	checkErr(err)
 
-		key, exists := keyset.Key(0)
-		if !exists {
-			fmt.Fprintln(os.Stderr, "No key in provided JWKS JSON")
-			os.Exit(1)
-		}
-
-		storage.AddJWKKey(key)
-	}
-
-	if storage.GetJWKSet().Len() == 0 {
-		key, err := GenerateJWK()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-
-		storage.AddJWKKey(key)
-	}
+	jwks, err := jose.getJwks()
+	checkErr(err)
+	storage.SetJWKS(jwks)
 
 	tmpl, err := template.ParseFS(fs, "templates/*")
 	if err != nil {
@@ -341,7 +319,7 @@ func NewServer(conf ServerConfig) *Server {
 	handler := NewHandler(db, storage, conf, tmpl)
 	mux.Handle("/", handler)
 
-	oidcHandler := NewOIDCHandler(storage, conf, tmpl)
+	oidcHandler := NewOIDCHandler(storage, conf, tmpl, jose)
 	mux.Handle("/.well-known/openid-configuration", oidcHandler)
 	mux.Handle("/jwks", oidcHandler)
 	mux.Handle("/register", oidcHandler)
@@ -517,54 +495,6 @@ func validate(storage Storage, r *http.Request) (*Validation, error) {
 	}
 
 	return v, nil
-}
-
-func GenerateJwksJson() (string, error) {
-
-	key, err := GenerateJWK()
-	if err != nil {
-		return "", err
-	}
-
-	keyset := jwk.NewSet()
-	keyset.AddKey(key)
-
-	jsonJwks, err := json.Marshal(keyset)
-	if err != nil {
-		return "", err
-	}
-
-	return string(jsonJwks), nil
-}
-
-func GenerateJWK() (jwk.Key, error) {
-	raw, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, err
-	}
-
-	key, err := jwk.FromRaw(raw)
-	if err != nil {
-		return nil, err
-	}
-
-	if _, ok := key.(jwk.RSAPrivateKey); !ok {
-		return nil, err
-	}
-
-	err = jwk.AssignKeyID(key)
-	if err != nil {
-		return nil, err
-	}
-
-	key.Set("alg", "RS256")
-
-	//key.Set(jwk.KeyUsageKey, "sig")
-	//keyset := jwk.NewSet()
-	//keyset.Add(key)
-	//return keyset, nil
-
-	return key, nil
 }
 
 func checkErr(err error) {
