@@ -17,7 +17,6 @@ import (
 	"time"
 	//"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
@@ -53,7 +52,7 @@ func buildProviderLogoMap(storage Storage) {
 	}
 }
 
-func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *OAuth2MetadataManager) *AddIdentityOauth2Handler {
+func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *OAuth2MetadataManager, jose *JOSE) *AddIdentityOauth2Handler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityOauth2Handler{
@@ -132,7 +131,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 		// extensions.
 		issuedAt := time.Now().UTC()
 		maxAge := 8 * time.Minute
-		reqJwt, err := jwt.NewBuilder().
+		reqJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(maxAge)).
 			Claim("provider_id", provider.ID).
@@ -146,7 +145,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 			return
 		}
 
-		setJwtCookie(r.Host, storage, reqJwt, prefix+"upstream_oauth2_request", maxAge, w, r)
+		setJwtCookie(db, r.Host, reqJwt, prefix+"upstream_oauth2_request", maxAge, w, r)
 
 		callbackUri := fmt.Sprintf("%s/callback", domainToUri(r.Host))
 
@@ -173,14 +172,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 			return
 		}
 
-		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		parsedUpstreamAuthReq, err := jwt.Parse([]byte(upstreamAuthReqCookie.Value), jwt.WithKeySet(publicJwks))
+		parsedUpstreamAuthReq, err := ParseJWT(db, upstreamAuthReqCookie.Value)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -358,7 +350,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 			EmailVerified: true,
 		}
 
-		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent)
+		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())

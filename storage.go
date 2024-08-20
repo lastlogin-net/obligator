@@ -1,8 +1,6 @@
 package obligator
 
-import (
-	"github.com/lestrrat-go/jwx/v2/jwk"
-)
+import ()
 
 type Storage interface {
 	GetPrefix() string
@@ -10,7 +8,6 @@ type Storage interface {
 	GetOAuth2ProviderByID(string) (OAuth2Provider, error)
 	SetOauth2Provider(OAuth2Provider) error
 	GetSmtpConfig() (SmtpConfig, error)
-	GetJWKSet() jwk.Set
 	GetDisplayName() string
 	SetDisplayName(string)
 	GetFedCmEnabled() bool

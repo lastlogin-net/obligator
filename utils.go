@@ -13,10 +13,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
 type commonData struct {
@@ -27,7 +23,7 @@ type commonData struct {
 	DisableHeaderButtons bool
 }
 
-func newCommonData(overrides *commonData, storage Storage, r *http.Request) *commonData {
+func newCommonData(overrides *commonData, db DatabaseIface, storage Storage, r *http.Request) *commonData {
 	d := &commonData{}
 
 	if overrides != nil {
@@ -47,14 +43,8 @@ func newCommonData(overrides *commonData, storage Storage, r *http.Request) *com
 	}
 
 	if overrides == nil || overrides.Identities == nil {
-
-		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-		if err != nil {
-			d.Identities = []*Identity{}
-		} else {
-			idents, _ := getIdentities(storage, r, publicJwks)
-			d.Identities = idents
-		}
+		idents, _ := getIdentities(db, storage, r)
+		d.Identities = idents
 	}
 
 	if overrides == nil || overrides.ReturnUri == "" {
@@ -144,24 +134,14 @@ func validUser(id string, users []*User) bool {
 	return false
 }
 
-func addIdentToCookie(domain string, storage Storage, cookieValue string, newIdent *Identity) (*http.Cookie, error) {
-
-	key, exists := storage.GetJWKSet().Key(0)
-	if !exists {
-		return nil, errors.New("No keys available")
-	}
+func addIdentToCookie(domain string, storage Storage, cookieValue string, newIdent *Identity, jose *JOSE) (*http.Cookie, error) {
 
 	idents := []*Identity{newIdent}
 
-	keyJwt := jwt.New()
+	keyJwt := NewJWT()
 
 	if cookieValue != "" {
-		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-		if err != nil {
-			return nil, err
-		}
-
-		parsed, err := jwt.Parse([]byte(cookieValue), jwt.WithKeySet(publicJwks))
+		parsed, err := jose.Parse(cookieValue)
 		if err != nil {
 			// Only add identities from current cookie if it's valid
 		} else {
@@ -200,7 +180,7 @@ func addIdentToCookie(domain string, storage Storage, cookieValue string, newIde
 		return nil, err
 	}
 
-	signed, err := jwt.Sign(keyJwt, jwt.WithKey(jwa.RS256, key))
+	signed, err := jose.Sign(keyJwt)
 	if err != nil {
 		return nil, err
 	}
@@ -236,11 +216,7 @@ func addIdentToCookie(domain string, storage Storage, cookieValue string, newIde
 	return cookie, nil
 }
 
-func addLoginToCookie(domain string, storage Storage, currentCookieValue, clientId string, newLogin *Login) (*http.Cookie, error) {
-	key, exists := storage.GetJWKSet().Key(0)
-	if !exists {
-		return nil, errors.New("No keys available")
-	}
+func addLoginToCookie(domain string, storage Storage, currentCookieValue, clientId string, newLogin *Login, jose *JOSE) (*http.Cookie, error) {
 
 	issuedAt := time.Now().UTC()
 
@@ -248,15 +224,10 @@ func addLoginToCookie(domain string, storage Storage, currentCookieValue, client
 
 	logins := make(map[string][]*Login)
 
-	keyJwt := jwt.New()
+	keyJwt := NewJWT()
 
 	if currentCookieValue != "" {
-		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-		if err != nil {
-			return nil, err
-		}
-
-		parsed, err := jwt.Parse([]byte(currentCookieValue), jwt.WithKeySet(publicJwks))
+		parsed, err := jose.Parse(currentCookieValue)
 		if err != nil {
 			// Only add identities from current cookie if it's valid
 		} else {
@@ -270,7 +241,7 @@ func addLoginToCookie(domain string, storage Storage, currentCookieValue, client
 		}
 	}
 
-	_, exists = logins[clientId]
+	_, exists := logins[clientId]
 	if exists {
 		// Search for and update existing login, otherwise add a new entry
 		found := false
@@ -306,7 +277,7 @@ func addLoginToCookie(domain string, storage Storage, currentCookieValue, client
 		return nil, err
 	}
 
-	signed, err := jwt.Sign(keyJwt, jwt.WithKey(jwa.RS256, key))
+	signed, err := jose.Sign(keyJwt)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +328,7 @@ func deleteLoginKeyCookie(domain string, storage Storage, w http.ResponseWriter)
 	return nil
 }
 
-func claimFromToken(claim string, token jwt.Token) string {
+func claimFromToken(claim string, token JWTToken) string {
 	valIface, exists := token.Get(claim)
 	if !exists {
 		return ""
@@ -371,17 +342,12 @@ func claimFromToken(claim string, token jwt.Token) string {
 	return val
 }
 
-func getJwtFromCookie(cookieKey string, storage Storage, w http.ResponseWriter, r *http.Request) (jwt.Token, error) {
+func getJwtFromCookie(cookieKey string, storage Storage, w http.ResponseWriter, r *http.Request, jose *JOSE) (JWTToken, error) {
 	// TODO: would tying to login key increase security?
 	//loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
 	//if err != nil {
 	//	return nil, err
 	//}
-
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-	if err != nil {
-		return nil, err
-	}
 
 	//hashedLoginKey := Hash(loginKeyCookie.Value)
 
@@ -390,7 +356,7 @@ func getJwtFromCookie(cookieKey string, storage Storage, w http.ResponseWriter, 
 		return nil, err
 	}
 
-	parsedAuthReq, err := jwt.Parse([]byte(authReqCookie.Value), jwt.WithKeySet(publicJwks))
+	parsedAuthReq, err := jose.Parse(authReqCookie.Value)
 	if err != nil {
 		return nil, err
 	}
@@ -404,15 +370,9 @@ func getJwtFromCookie(cookieKey string, storage Storage, w http.ResponseWriter, 
 	return parsedAuthReq, nil
 }
 
-func setJwtCookie(domain string, storage Storage, jot jwt.Token, cookieKey string, maxAge time.Duration, w http.ResponseWriter, r *http.Request) {
-	key, exists := storage.GetJWKSet().Key(0)
-	if !exists {
-		w.WriteHeader(500)
-		fmt.Fprintf(os.Stderr, "No keys available")
-		return
-	}
+func setJwtCookie(db DatabaseIface, domain string, jot JWTToken, cookieKey string, maxAge time.Duration, w http.ResponseWriter, r *http.Request) {
 
-	signedReqJwt, err := jwt.Sign(jot, jwt.WithKey(jwa.RS256, key))
+	signedReqJwt, err := SignJWT(db, jot)
 	if err != nil {
 		w.WriteHeader(400)
 		io.WriteString(w, err.Error())
@@ -474,7 +434,7 @@ func getRemoteIp(r *http.Request, behindProxy bool) (string, error) {
 	return remoteIp, nil
 }
 
-func getIdentities(storage Storage, r *http.Request, publicJwks jwk.Set) ([]*Identity, error) {
+func getIdentities(db DatabaseIface, storage Storage, r *http.Request) ([]*Identity, error) {
 
 	identities := []*Identity{}
 
@@ -492,7 +452,7 @@ func getIdentities(storage Storage, r *http.Request, publicJwks jwk.Set) ([]*Ide
 		return identities, errors.New("Blank jwt")
 	}
 
-	parsed, err := jwt.Parse([]byte(jwtStr), jwt.WithKeySet(publicJwks))
+	parsed, err := ParseJWT(db, jwtStr)
 	if err != nil {
 		return identities, errors.New("Invalid jwt")
 	}

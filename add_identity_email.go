@@ -35,7 +35,7 @@ func (h *AddIdentityEmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	h.mux.ServeHTTP(w, r)
 }
 
-func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster, tmpl *template.Template, behindProxy bool, geoDb *ip2location.DB) *AddIdentityEmailHandler {
+func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster, tmpl *template.Template, behindProxy bool, geoDb *ip2location.DB, jose *JOSE) *AddIdentityEmailHandler {
 	mux := http.NewServeMux()
 	h := &AddIdentityEmailHandler{
 		mux:           mux,
@@ -45,13 +45,11 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		pendingLogins: make(map[string]*PendingLogin),
 	}
 
-	privateJwks := storage.GetJWKSet()
+	privateJwks, err := GetJWKS(db)
+	checkErr(err)
 
 	publicJwks, err := jwk.PublicSetOf(privateJwks)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
+	checkErr(err)
 
 	privKey, exists := privateJwks.Key(0)
 	if !exists {
@@ -99,7 +97,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			return
 		}
 
-		templateData := newCommonData(nil, storage, r)
+		templateData := newCommonData(nil, db, storage, r)
 
 		err := tmpl.ExecuteTemplate(w, "login-email.html", templateData)
 		if err != nil {
@@ -160,7 +158,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 
 		issuedAt := time.Now().UTC()
 
-		emailCodeJwt, err := jwt.NewBuilder().
+		emailCodeJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(EmailTimeout)).
 			Subject(email).
@@ -175,7 +173,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 
 		// TODO: now that we're using magic links instead of codes,
 		// does it still add value for this to be encrypted?
-		encryptedJwt, err := jwt.NewSerializer().
+		encryptedJwt, err := NewJWTSerializer().
 			Sign(jwt.WithKey(jwa.RS256, privKey)).
 			Encrypt(jwt.WithKey(jwa.RSA_OAEP_256, pubKey)).
 			Serialize(emailCodeJwt)
@@ -208,7 +206,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		identities := []*Identity{}
 		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err == nil && loginKeyCookie.Value != "" {
-			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+			parsed, err := ParseJWT(db, loginKeyCookie.Value)
 			if err != nil {
 				// Only add identities from current cookie if it's valid
 			} else {
@@ -269,7 +267,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			fmt.Fprintf(os.Stderr, "Email validation attempted for non-existing user: %s\n", email)
 		}
 
-		data := newCommonData(nil, storage, r)
+		data := newCommonData(nil, db, storage, r)
 
 		err = tmpl.ExecuteTemplate(w, "email-sent.html", data)
 		if err != nil {
@@ -348,7 +346,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 				return
 			}
 
-			parsedJwt, err := jwt.Parse(decryptedJwt, jwt.WithKeySet(publicJwks))
+			parsedJwt, err := ParseJWT(db, string(decryptedJwt))
 			if err != nil {
 				w.WriteHeader(500)
 				io.WriteString(w, err.Error())
@@ -374,7 +372,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			MagicIpGeo        ip2location.IP2Locationrecord
 			InstanceId        string
 		}{
-			commonData:        newCommonData(nil, storage, r),
+			commonData:        newCommonData(nil, db, storage, r),
 			Key:               key,
 			DifferentIps:      differentIps,
 			DifferentBrowsers: differentBrowsers,
@@ -441,7 +439,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			EmailVerified: true,
 		}
 
-		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent)
+		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -465,7 +463,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 			return
 		} else {
-			templateData := newCommonData(nil, storage, r)
+			templateData := newCommonData(nil, db, storage, r)
 
 			err := tmpl.ExecuteTemplate(w, "confirm-magic.html", templateData)
 			if err != nil {

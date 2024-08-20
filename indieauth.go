@@ -6,12 +6,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
-	"os"
 	"time"
-
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
 type IndieAuthHandler struct {
@@ -22,15 +17,9 @@ type IndieAuthProfile struct {
 	MeUri string `json:"me"`
 }
 
-func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template, prefix string) *IndieAuthHandler {
+func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template, prefix string, jose *JOSE) *IndieAuthHandler {
 
 	mux := http.NewServeMux()
-
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
 
 	cookiePrefix := storage.GetPrefix()
 
@@ -39,7 +28,7 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 
 		codeJwt := r.Form.Get("code")
 
-		parsedCodeJwt, err := jwt.Parse([]byte(codeJwt), jwt.WithKeySet(publicJwks))
+		parsedCodeJwt, err := ParseJWT(db, codeJwt)
 		if err != nil {
 			fmt.Println(err.Error())
 			w.WriteHeader(401)
@@ -112,7 +101,7 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 			return
 		}
 
-		idents, _ := getIdentities(storage, r, publicJwks)
+		idents, _ := getIdentities(db, storage, r)
 
 		var matchIdent *Identity = nil
 		for _, ident := range idents {
@@ -131,7 +120,7 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 
 		maxAge := 8 * time.Minute
 		issuedAt := time.Now().UTC()
-		authRequestJwt, err := jwt.NewBuilder().
+		authRequestJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(maxAge)).
 			Claim("client_id", ar.ClientId).
@@ -148,7 +137,7 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 			return
 		}
 
-		setJwtCookie(r.Host, storage, authRequestJwt, cookiePrefix+"auth_request", maxAge, w, r)
+		setJwtCookie(db, r.Host, authRequestJwt, cookiePrefix+"auth_request", maxAge, w, r)
 
 		data := struct {
 			*commonData
@@ -156,7 +145,7 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 		}{
 			commonData: newCommonData(&commonData{
 				Identities: idents,
-			}, storage, r),
+			}, db, storage, r),
 			ClientId: ar.ClientId,
 		}
 
@@ -174,7 +163,7 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 
 		clearCookie(r.Host, storage, cookiePrefix+"auth_request", w)
 
-		parsedAuthReq, err := getJwtFromCookie(cookiePrefix+"auth_request", storage, w, r)
+		parsedAuthReq, err := getJwtFromCookie(cookiePrefix+"auth_request", storage, w, r, jose)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
@@ -182,7 +171,7 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 		}
 
 		issuedAt := time.Now().UTC()
-		codeJwt, err := jwt.NewBuilder().
+		codeJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(16*time.Second)).
 			//Subject(idToken.Email()).
@@ -195,14 +184,7 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 			return
 		}
 
-		key, exists := storage.GetJWKSet().Key(0)
-		if !exists {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "No keys available")
-			return
-		}
-
-		signedCode, err := jwt.Sign(codeJwt, jwt.WithKey(jwa.RS256, key))
+		signedCode, err := SignJWT(db, codeJwt)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())

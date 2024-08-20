@@ -13,7 +13,7 @@ type Handler struct {
 	mux *http.ServeMux
 }
 
-func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template.Template) *Handler {
+func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template.Template, jose *JOSE) *Handler {
 
 	mux := http.NewServeMux()
 
@@ -42,7 +42,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 		link := fmt.Sprintf("<%s>; rel=\"indieauth-metadata\"", uri)
 		w.Header().Set("Link", link)
 
-		tmplData := newCommonData(nil, storage, r)
+		tmplData := newCommonData(nil, db, storage, r)
 
 		err = tmpl.ExecuteTemplate(w, "user.html", tmplData)
 		if err != nil {
@@ -76,7 +76,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 			*commonData
 			RemoteIp string
 		}{
-			commonData: newCommonData(nil, storage, r),
+			commonData: newCommonData(nil, db, storage, r),
 			RemoteIp:   remoteIp,
 		}
 
@@ -99,7 +99,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 		url := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=code&state=&scope=",
 			domainToUri(authServer), redirectUri, redirectUri)
 
-		validation, err := validate(storage, r)
+		validation, err := validate(storage, r, jose)
 		if err != nil {
 			fmt.Println(err)
 			http.Redirect(w, r, url, 307)
@@ -170,7 +170,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 			commonData: newCommonData(&commonData{
 				ReturnUri:            returnUri,
 				DisableHeaderButtons: true,
-			}, storage, r),
+			}, db, storage, r),
 			CanEmail:        canEmail,
 			OAuth2Providers: providers,
 			LogoMap:         providerLogoMap,
@@ -214,7 +214,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 		data := struct {
 			*commonData
 		}{
-			commonData: newCommonData(nil, storage, r),
+			commonData: newCommonData(nil, db, storage, r),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "no-account.html", data)

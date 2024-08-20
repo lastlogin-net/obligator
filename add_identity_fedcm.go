@@ -16,7 +16,7 @@ type AddIdentityFedCmHandler struct {
 	mux *http.ServeMux
 }
 
-func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddIdentityFedCmHandler {
+func NewAddIdentityFedCmHandler(db DatabaseIface, storage Storage, tmpl *template.Template, jose *JOSE) *AddIdentityFedCmHandler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityFedCmHandler{
@@ -33,7 +33,7 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 		data := struct {
 			*commonData
 		}{
-			commonData: newCommonData(nil, storage, r),
+			commonData: newCommonData(nil, db, storage, r),
 		}
 
 		err := tmpl.ExecuteTemplate(w, "login-fedcm.html", data)
@@ -141,7 +141,7 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 			EmailVerified: true,
 		}
 
-		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent)
+		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())

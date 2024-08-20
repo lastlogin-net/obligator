@@ -8,9 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-
-	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
 type DomainHandler struct {
@@ -21,13 +18,7 @@ func (h *DomainHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
-func NewDomainHandler(db *Database, storage Storage, tmpl *template.Template, proxy Proxy) *DomainHandler {
-
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
+func NewDomainHandler(db *Database, storage Storage, tmpl *template.Template, proxy Proxy, jose *JOSE) *DomainHandler {
 
 	mux := http.NewServeMux()
 
@@ -57,7 +48,7 @@ func NewDomainHandler(db *Database, storage Storage, tmpl *template.Template, pr
 			Ipv4 string
 			Ipv6 string
 		}{
-			commonData: newCommonData(nil, storage, r),
+			commonData: newCommonData(nil, db, storage, r),
 			Host:       r.Host,
 			Ipv4:       ipv4.String(),
 			Ipv6:       ipv6.String(),
@@ -93,7 +84,7 @@ func NewDomainHandler(db *Database, storage Storage, tmpl *template.Template, pr
 
 		ownerId := r.Form.Get("owner_id")
 
-		idents, _ := getIdentities(storage, r, publicJwks)
+		idents, _ := getIdentities(db, storage, r)
 
 		match := false
 		for _, ident := range idents {

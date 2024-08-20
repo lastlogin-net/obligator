@@ -9,12 +9,6 @@ import (
 	"time"
 	//"time"
 	//"net/http/httputil"
-	"os"
-
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
-	//"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
 type FedCmWebId struct {
@@ -68,19 +62,12 @@ type IndieAuthFedCmResponse struct {
 	MetadataEndpoint string `json:"metadata_endpoint"`
 }
 
-func NewFedCmHandler(db *Database, storage Storage, loginEndpoint string) *FedCmHandler {
+func NewFedCmHandler(db *Database, storage Storage, loginEndpoint string, jose *JOSE) *FedCmHandler {
 
 	mux := http.NewServeMux()
 
 	h := &FedCmHandler{
 		mux: mux,
-	}
-
-	privateJwks := storage.GetJWKSet()
-	publicJwks, err := jwk.PublicSetOf(privateJwks)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
 	}
 
 	mux.HandleFunc("/.well-known/web-identity", func(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +117,7 @@ func NewFedCmHandler(db *Database, storage Storage, loginEndpoint string) *FedCm
 			return
 		}
 
-		idents, _ := getIdentities(storage, r, publicJwks)
+		idents, _ := getIdentities(db, storage, r)
 
 		if len(idents) == 0 {
 			w.WriteHeader(401)
@@ -159,7 +146,7 @@ func NewFedCmHandler(db *Database, storage Storage, loginEndpoint string) *FedCm
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		err = json.NewEncoder(w).Encode(accounts)
+		err := json.NewEncoder(w).Encode(accounts)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -226,13 +213,13 @@ func NewFedCmHandler(db *Database, storage Storage, loginEndpoint string) *FedCm
 			return
 		}
 
-		idents, _ := getIdentities(storage, r, publicJwks)
+		idents, _ := getIdentities(db, storage, r)
 
 		accountId := r.Form.Get("account_id")
 		pkceCodeChallenge := r.Form.Get("nonce")
 
 		issuedAt := time.Now().UTC()
-		codeJwt, err := jwt.NewBuilder().
+		codeJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			// TODO: make shorter
 			//Expiration(issuedAt.Add(16*time.Second)).
@@ -247,14 +234,7 @@ func NewFedCmHandler(db *Database, storage Storage, loginEndpoint string) *FedCm
 			return
 		}
 
-		key, exists := storage.GetJWKSet().Key(0)
-		if !exists {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "No keys available")
-			return
-		}
-
-		signedCode, err := jwt.Sign(codeJwt, jwt.WithKey(jwa.RS256, key))
+		signedCode, err := SignJWT(db, codeJwt)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())

@@ -9,6 +9,11 @@ import (
 	"github.com/mattn/go-sqlite3"
 )
 
+type DatabaseIface interface {
+	GetConfig() (*DbConfig, error)
+	GetJwksJson() (string, error)
+}
+
 type User struct {
 	IdType string `json:"id_type" db:"id_type"`
 	Id     string `json:"email" db:"id"`
@@ -39,7 +44,7 @@ func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
 	stmt := fmt.Sprintf(`
         CREATE TABLE IF NOT EXISTS %sconfig(
                 jwks_json TEXT UNIQUE DEFAULT "" NOT NULL,
-                public BOOLEAN UNIQUE
+                public BOOLEAN UNIQUE DEFAULT false NOT NULL
         );
         `, prefix)
 	_, err := db.Exec(stmt)
@@ -58,7 +63,7 @@ func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
 
 	if numRows == 0 {
 		stmt = fmt.Sprintf(`
-                INSERT INTO %sconfig (public) VALUES(false);
+                INSERT INTO %sconfig DEFAULT VALUES;
                 `, prefix)
 		_, err = db.Exec(stmt)
 		if err != nil {
@@ -121,9 +126,9 @@ func (s *Database) GetConfig() (*DbConfig, error) {
 func (d *Database) GetJwksJson() (string, error) {
 	var jwksJson string
 
-	stmt := `
-        SELECT jwks_json FROM config;
-        `
+	stmt := fmt.Sprintf(`
+        SELECT jwks_json FROM %sconfig;
+        `, d.prefix)
 	err := d.db.QueryRow(stmt).Scan(&jwksJson)
 	if err != nil {
 		return "", err
@@ -134,9 +139,9 @@ func (d *Database) GetJwksJson() (string, error) {
 
 func (d *Database) SetJwksJson(jwksJson string) error {
 
-	stmt := `
-        UPDATE config SET jwks_json=?;
-        `
+	stmt := fmt.Sprintf(`
+        UPDATE %sconfig SET jwks_json=?;
+        `, d.prefix)
 	_, err := d.db.Exec(stmt, jwksJson)
 	if err != nil {
 		return err

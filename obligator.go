@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/ip2location/ip2location-go/v9"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
 type Server struct {
@@ -24,6 +22,7 @@ type Server struct {
 	Mux     *ObligatorMux
 	storage Storage
 	db      *Database
+	jose    *JOSE
 	muxMap  map[string]http.Handler
 }
 
@@ -184,13 +183,6 @@ func NewServer(conf ServerConfig) *Server {
 		conf.ProxyType = "builtin"
 	}
 
-	var identsType []*Identity
-	jwt.RegisterCustomField("identities", identsType)
-	var loginsType map[string][]*Login
-	jwt.RegisterCustomField("logins", loginsType)
-	var idTokenType string
-	jwt.RegisterCustomField("id_token", idTokenType)
-
 	storagePath := filepath.Join(conf.StorageDir, conf.Prefix+"storage.json")
 	storage, err := NewJsonStorage(storagePath)
 	if err != nil {
@@ -295,10 +287,6 @@ func NewServer(conf ServerConfig) *Server {
 	jose, err := NewJOSE(db)
 	checkErr(err)
 
-	jwks, err := jose.getJwks()
-	checkErr(err)
-	storage.SetJWKS(jwks)
-
 	tmpl, err := template.ParseFS(fs, "templates/*")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
@@ -316,10 +304,10 @@ func NewServer(conf ServerConfig) *Server {
 		}
 	}
 
-	handler := NewHandler(db, storage, conf, tmpl)
+	handler := NewHandler(db, storage, conf, tmpl, jose)
 	mux.Handle("/", handler)
 
-	oidcHandler := NewOIDCHandler(storage, conf, tmpl, jose)
+	oidcHandler := NewOIDCHandler(db, storage, conf, tmpl, jose)
 	mux.Handle("/.well-known/openid-configuration", oidcHandler)
 	mux.Handle("/jwks", oidcHandler)
 	mux.Handle("/register", oidcHandler)
@@ -329,45 +317,45 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/token", oidcHandler)
 	mux.Handle("/end-session", oidcHandler)
 
-	addIdentityOauth2Handler := NewAddIdentityOauth2Handler(storage, db, oauth2MetaMan)
+	addIdentityOauth2Handler := NewAddIdentityOauth2Handler(storage, db, oauth2MetaMan, jose)
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)
 	mux.Handle("/callback", addIdentityOauth2Handler)
 
-	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl, conf.BehindProxy, geoDb)
+	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl, conf.BehindProxy, geoDb, jose)
 	mux.Handle("/login-email", addIdentityEmailHandler)
 	mux.Handle("/email-sent", addIdentityEmailHandler)
 	mux.Handle("/magic", addIdentityEmailHandler)
 	mux.Handle("/confirm-magic", addIdentityEmailHandler)
 	mux.Handle("/complete-email-login", addIdentityEmailHandler)
 
-	addIdentityGamlHandler := NewAddIdentityGamlHandler(storage, cluster, tmpl)
+	addIdentityGamlHandler := NewAddIdentityGamlHandler(db, storage, cluster, tmpl, jose)
 	mux.Handle("/login-gaml", addIdentityGamlHandler)
 	mux.Handle("/gaml-code", addIdentityGamlHandler)
 	mux.Handle("/complete-gaml-login", addIdentityGamlHandler)
 
-	qrHandler := NewQrHandler(storage, cluster, tmpl)
+	qrHandler := NewQrHandler(db, storage, cluster, tmpl, jose)
 	mux.Handle("/login-qr", qrHandler)
 	mux.Handle("/qr", qrHandler)
 	mux.Handle("/send", qrHandler)
 	mux.Handle("/receive", qrHandler)
 
 	indieAuthPrefix := "/indieauth"
-	indieAuthHandler := NewIndieAuthHandler(db, storage, tmpl, indieAuthPrefix)
+	indieAuthHandler := NewIndieAuthHandler(db, storage, tmpl, indieAuthPrefix, jose)
 	mux.Handle("/users/", indieAuthHandler)
 	mux.Handle("/.well-known/oauth-authorization-server", indieAuthHandler)
 	mux.Handle(indieAuthPrefix+"/", http.StripPrefix(indieAuthPrefix, indieAuthHandler))
 
-	domainHandler := NewDomainHandler(db, storage, tmpl, proxy)
+	domainHandler := NewDomainHandler(db, storage, tmpl, proxy, jose)
 	mux.Handle("/domains", domainHandler)
 	mux.Handle("/add-domain", domainHandler)
 
 	if storage.GetFedCmEnabled() {
 		fedCmLoginEndpoint := "/login-fedcm-auto"
-		fedCmHandler := NewFedCmHandler(db, storage, fedCmLoginEndpoint)
+		fedCmHandler := NewFedCmHandler(db, storage, fedCmLoginEndpoint, jose)
 		mux.Handle("/.well-known/web-identity", fedCmHandler)
 		mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
 
-		addIdentityFedCmHandler := NewAddIdentityFedCmHandler(storage, tmpl)
+		addIdentityFedCmHandler := NewAddIdentityFedCmHandler(db, storage, tmpl, jose)
 		mux.Handle("/login-fedcm", addIdentityFedCmHandler)
 		mux.Handle("/complete-login-fedcm", addIdentityFedCmHandler)
 	}
@@ -378,6 +366,7 @@ func NewServer(conf ServerConfig) *Server {
 		api:     api,
 		storage: storage,
 		db:      db,
+		jose:    jose,
 		muxMap:  make(map[string]http.Handler),
 	}
 
@@ -438,7 +427,7 @@ func (s *Server) GetUsers() ([]*User, error) {
 }
 
 func (s *Server) Validate(r *http.Request) (*Validation, error) {
-	return validate(s.storage, r)
+	return validate(s.storage, r, s.jose)
 }
 
 func (s *Server) ProxyMux(domain string, mux http.Handler) error {
@@ -454,7 +443,7 @@ func checkErrPassthrough(err error, passthrough bool) (*Validation, error) {
 	}
 }
 
-func validate(storage Storage, r *http.Request) (*Validation, error) {
+func validate(storage Storage, r *http.Request, jose *JOSE) (*Validation, error) {
 
 	passthrough := storage.GetForwardAuthPassthrough()
 
@@ -465,13 +454,7 @@ func validate(storage Storage, r *http.Request) (*Validation, error) {
 		return checkErrPassthrough(err, passthrough)
 	}
 
-	// TODO: don't generate publicJwks every time
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-	if err != nil {
-		return checkErrPassthrough(err, passthrough)
-	}
-
-	parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+	parsed, err := jose.Parse(loginKeyCookie.Value)
 	if err != nil {
 		return checkErrPassthrough(err, passthrough)
 	}

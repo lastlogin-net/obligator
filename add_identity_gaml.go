@@ -10,16 +10,13 @@ import (
 	"os"
 	"sync"
 	"time"
-
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
 type AddIdentityGamlHandler struct {
 	mux *http.ServeMux
 }
 
-func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *AddIdentityGamlHandler {
+func NewAddIdentityGamlHandler(db DatabaseIface, storage Storage, cluster *Cluster, tmpl *template.Template, jose *JOSE) *AddIdentityGamlHandler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityGamlHandler{
@@ -39,7 +36,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 		templateData := struct {
 			*commonData
 		}{
-			commonData: newCommonData(nil, storage, r),
+			commonData: newCommonData(nil, db, storage, r),
 		}
 
 		err := tmpl.ExecuteTemplate(w, "login-gaml.html", templateData)
@@ -106,7 +103,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 
 		issuedAt := time.Now().UTC()
 		maxAge := 2 * time.Minute
-		reqJwt, err := jwt.NewBuilder().
+		reqJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(maxAge)).
 			Claim("url", urlId).
@@ -118,13 +115,13 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			return
 		}
 
-		setJwtCookie(r.Host, storage, reqJwt, prefix+"_gaml_login_state", maxAge, w, r)
+		setJwtCookie(db, r.Host, reqJwt, prefix+"_gaml_login_state", maxAge, w, r)
 
 		templateData := struct {
 			*commonData
 			GamlCode string
 		}{
-			commonData: newCommonData(nil, storage, r),
+			commonData: newCommonData(nil, db, storage, r),
 			GamlCode:   gamlCode,
 		}
 
@@ -149,14 +146,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			return
 		}
 
-		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		parsedUpstreamAuthReq, err := jwt.Parse([]byte(upstreamAuthReqCookie.Value), jwt.WithKeySet(publicJwks))
+		parsedUpstreamAuthReq, err := ParseJWT(db, upstreamAuthReqCookie.Value)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -193,7 +183,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			return
 		}
 
-		request, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
+		request, err := getJwtFromCookie(prefix+"auth_request", storage, w, r, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -212,7 +202,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			ProviderName: "URL",
 		}
 
-		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent)
+		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())

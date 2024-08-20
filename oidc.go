@@ -52,7 +52,7 @@ type OIDCRegistrationRequest struct {
 	RedirectUris []string `json:"redirect_uris"`
 }
 
-func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Template, jose *JOSE) *OIDCHandler {
+func NewOIDCHandler(db DatabaseIface, storage Storage, config ServerConfig, tmpl *template.Template, jose *JOSE) *OIDCHandler {
 	mux := http.NewServeMux()
 
 	h := &OIDCHandler{
@@ -108,7 +108,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 			RpDomain    string
 			RedirectUri string
 		}{
-			commonData:  newCommonData(nil, storage, r),
+			commonData:  newCommonData(nil, db, storage, r),
 			RpDomain:    parsedRedirUri.Host,
 			RedirectUri: redirUri,
 		}
@@ -288,7 +288,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 			return
 		}
 
-		setJwtCookie(r.Host, storage, authRequestJwt, prefix+"auth_request", maxAge, w, r)
+		setJwtCookie(db, r.Host, authRequestJwt, prefix+"auth_request", maxAge, w, r)
 
 		providers, err := storage.GetOAuth2Providers()
 		if err != nil {
@@ -324,7 +324,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 		}{
 			commonData: newCommonData(&commonData{
 				ReturnUri: returnUri,
-			}, storage, r),
+			}, db, storage, r),
 			ClientId:            parsedClientId.Host,
 			RemainingIdentities: remainingIdents,
 			PreviousLogins:      previousLogins,
@@ -369,7 +369,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 
 		clearCookie(r.Host, storage, prefix+"auth_request", w)
 
-		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
+		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", storage, w, r, jose)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
@@ -407,7 +407,7 @@ func NewOIDCHandler(storage Storage, config ServerConfig, tmpl *template.Templat
 
 		uri := domainToUri(r.Host)
 
-		newLoginCookie, err := addLoginToCookie(r.Host, storage, loginKeyCookie.Value, clientId, newLogin)
+		newLoginCookie, err := addLoginToCookie(r.Host, storage, loginKeyCookie.Value, clientId, newLogin, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())

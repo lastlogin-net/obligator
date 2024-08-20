@@ -5,8 +5,6 @@ import (
 	"errors"
 	"os"
 	"sync"
-
-	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
 type JsonStorage struct {
@@ -14,7 +12,6 @@ type JsonStorage struct {
 	Prefix                 string           `json:"prefix"`
 	OAuth2Providers        []OAuth2Provider `json:"oauth2_providers"`
 	Smtp                   *SmtpConfig      `json:"smtp"`
-	Jwks                   jwk.Set          `json:"jwks"`
 	FedCmEnabled           bool             `json:"fedcm_enabled"`
 	ForwardAuthPassthrough bool             `json:"forward_auth_passthrough"`
 	mutex                  *sync.Mutex
@@ -26,7 +23,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 	s := &JsonStorage{
 		DisplayName:     "obligator",
 		OAuth2Providers: []OAuth2Provider{},
-		Jwks:            jwk.NewSet(),
 		mutex:           &sync.Mutex{},
 		path:            path,
 		message_chan:    make(chan interface{}),
@@ -124,19 +120,6 @@ func (s *JsonStorage) SetPrefix(prefix string) {
 		resp,
 	}
 	<-resp
-}
-
-func (s *JsonStorage) SetJWKS(jwks jwk.Set) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.Jwks = jwks
-	s.persist()
-}
-
-func (s *JsonStorage) GetJWKSet() jwk.Set {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s.Jwks
 }
 
 func (s *JsonStorage) GetOAuth2ProviderByID(id string) (OAuth2Provider, error) {
