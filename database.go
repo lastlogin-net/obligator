@@ -10,6 +10,7 @@ import (
 )
 
 type DatabaseIface interface {
+	GetDisplayName() (string, error)
 	GetConfig() (*DbConfig, error)
 	GetJwksJson() (string, error)
 }
@@ -44,7 +45,8 @@ func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
 	stmt := fmt.Sprintf(`
         CREATE TABLE IF NOT EXISTS %sconfig(
                 jwks_json TEXT UNIQUE DEFAULT "" NOT NULL,
-                public BOOLEAN UNIQUE DEFAULT false NOT NULL
+                public BOOLEAN UNIQUE DEFAULT false NOT NULL,
+                display_name TEXT DEFAULT "obligator" NOT NULL
         );
         `, prefix)
 	_, err := db.Exec(stmt)
@@ -143,6 +145,31 @@ func (d *Database) SetJwksJson(jwksJson string) error {
         UPDATE %sconfig SET jwks_json=?;
         `, d.prefix)
 	_, err := d.db.Exec(stmt, jwksJson)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Database) GetDisplayName() (string, error) {
+	var value string
+
+	stmt := fmt.Sprintf(`
+        SELECT display_name FROM %sconfig;
+        `, d.prefix)
+	err := d.db.QueryRow(stmt).Scan(&value)
+	if err != nil {
+		return "", err
+	}
+
+	return value, nil
+}
+func (s *Database) SetDisplayName(value string) error {
+	stmt := fmt.Sprintf(`
+        UPDATE %sconfig SET display_name=?;
+        `, s.prefix)
+	_, err := s.db.Exec(stmt, value)
 	if err != nil {
 		return err
 	}

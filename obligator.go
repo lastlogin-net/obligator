@@ -222,7 +222,7 @@ func NewServer(conf ServerConfig) *Server {
 	proxy := NewProxy(&conf, prefix)
 
 	if conf.DisplayName != "obligator" {
-		storage.SetDisplayName(conf.DisplayName)
+		db.SetDisplayName(conf.DisplayName)
 	}
 
 	for _, domain := range conf.Domains {

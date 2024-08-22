@@ -37,7 +37,11 @@ func newCommonData(overrides *commonData, db DatabaseIface, storage Storage, r *
 	}
 
 	if overrides == nil || overrides.DisplayName == "" {
-		d.DisplayName = storage.GetDisplayName()
+		displayName, err := db.GetDisplayName()
+		if err != nil {
+			displayName = "Invalid display name"
+		}
+		d.DisplayName = displayName
 	} else {
 		d.DisplayName = overrides.DisplayName
 	}

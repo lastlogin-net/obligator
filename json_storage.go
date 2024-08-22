@@ -8,7 +8,6 @@ import (
 )
 
 type JsonStorage struct {
-	DisplayName            string           `json:"display_name"`
 	Prefix                 string           `json:"prefix"`
 	OAuth2Providers        []OAuth2Provider `json:"oauth2_providers"`
 	Smtp                   *SmtpConfig      `json:"smtp"`
@@ -21,7 +20,6 @@ type JsonStorage struct {
 
 func NewJsonStorage(path string) (*JsonStorage, error) {
 	s := &JsonStorage{
-		DisplayName:     "obligator",
 		OAuth2Providers: []OAuth2Provider{},
 		mutex:           &sync.Mutex{},
 		path:            path,
@@ -80,12 +78,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 				} else {
 					msg.resp <- &(*s.Smtp)
 				}
-			case getDisplayNameMessage:
-				msg.resp <- s.DisplayName
-			case setDisplayNameMessage:
-				s.DisplayName = msg.value
-				msg.resp <- nil
-				s.Persist()
 			}
 		}
 	}()
@@ -182,32 +174,6 @@ func (s *JsonStorage) GetSmtpConfig() (SmtpConfig, error) {
 	} else {
 		return *smtp, nil
 	}
-}
-
-type getDisplayNameMessage struct {
-	resp chan string
-}
-
-func (s *JsonStorage) GetDisplayName() string {
-	ch := make(chan string)
-	s.message_chan <- getDisplayNameMessage{
-		resp: ch,
-	}
-	return <-ch
-}
-
-type setDisplayNameMessage struct {
-	value string
-	resp  chan error
-}
-
-func (s *JsonStorage) SetDisplayName(value string) {
-	resp := make(chan error)
-	s.message_chan <- setDisplayNameMessage{
-		value,
-		resp,
-	}
-	<-resp
 }
 
 func (s *JsonStorage) Persist() {
