@@ -52,7 +52,7 @@ type OIDCRegistrationRequest struct {
 	RedirectUris []string `json:"redirect_uris"`
 }
 
-func NewOIDCHandler(db DatabaseIface, storage Storage, config ServerConfig, tmpl *template.Template, jose *JOSE) *OIDCHandler {
+func NewOIDCHandler(db DatabaseIface, config ServerConfig, tmpl *template.Template, jose *JOSE) *OIDCHandler {
 	mux := http.NewServeMux()
 
 	h := &OIDCHandler{
@@ -300,7 +300,7 @@ func NewOIDCHandler(db DatabaseIface, storage Storage, config ServerConfig, tmpl
 		}
 
 		canEmail := true
-		if _, err := storage.GetSmtpConfig(); err != nil {
+		if _, err := db.GetSmtpConfig(); err != nil {
 			canEmail = false
 		}
 

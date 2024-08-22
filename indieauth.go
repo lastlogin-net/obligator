@@ -17,7 +17,7 @@ type IndieAuthProfile struct {
 	MeUri string `json:"me"`
 }
 
-func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template, prefix string, jose *JOSE) *IndieAuthHandler {
+func NewIndieAuthHandler(db *Database, tmpl *template.Template, prefix string, jose *JOSE) *IndieAuthHandler {
 
 	mux := http.NewServeMux()
 

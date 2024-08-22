@@ -14,7 +14,6 @@ func main() {
 	configArg := flag.String("config", "", "Config path")
 	port := flag.Int("port", 1616, "Port")
 	prefix := flag.String("prefix", "obligator_", "Prefix for files and cookies")
-	storageDir := flag.String("storage-dir", "./", "Storage directory")
 	dbDir := flag.String("database-dir", "./", "Database directory")
 	apiSocketDir := flag.String("api-socket-dir", "./", "API socket directory")
 	behindProxy := flag.Bool("behind-proxy", false, "Whether we are behind a reverse proxy")
@@ -51,7 +50,6 @@ func main() {
 	conf := obligator.ServerConfig{
 		Port:                   *port,
 		Prefix:                 *prefix,
-		StorageDir:             *storageDir,
 		DatabaseDir:            *dbDir,
 		ApiSocketDir:           *apiSocketDir,
 		BehindProxy:            *behindProxy,
@@ -61,7 +59,15 @@ func main() {
 		Domains:                domains,
 		Users:                  users,
 		ProxyType:              *proxyType,
-		OAuth2Providers:        config.OAuth2Providers,
+	}
+
+	if config != nil {
+		if config.OAuth2Providers != nil {
+			conf.OAuth2Providers = config.OAuth2Providers
+		}
+		if config.Smtp != nil {
+			conf.Smtp = config.Smtp
+		}
 	}
 
 	server := obligator.NewServer(conf)

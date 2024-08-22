@@ -2,6 +2,7 @@ package obligator
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -16,6 +17,19 @@ type DatabaseIface interface {
 	GetForwardAuthPassthrough() (bool, error)
 	GetPrefix() (string, error)
 	GetOAuth2Providers() ([]*OAuth2Provider, error)
+	GetSmtpConfig() (*SmtpConfig, error)
+}
+
+type OAuth2Provider struct {
+	ID               string `json:"id" db:"id"`
+	Name             string `json:"name" db"name"`
+	URI              string `json:"uri" db "uri"`
+	ClientID         string `json:"client_id" db:"client_id"`
+	ClientSecret     string `json:"client_secret" db:"client_secret"`
+	AuthorizationURI string `json:"authorization_uri,omitempty" db:"authorization_uri"`
+	TokenURI         string `json:"token_uri,omitempty" db:"token_uri"`
+	Scope            string `json:"scope,omitempty" db:"scope"`
+	OpenIDConnect    bool   `json:"openid_connect" db:"supports_openid_connect"`
 }
 
 type User struct {
@@ -51,7 +65,8 @@ func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
                 public BOOLEAN UNIQUE DEFAULT false NOT NULL,
                 display_name TEXT UNIQUE DEFAULT "obligator" NOT NULL,
                 forward_auth_passthrough BOOLEAN UNIQUE DEFAULT false NOT NULL,
-                prefix TEXT UNIQUE DEFAULT "obligator_" NOT NULL
+                prefix TEXT UNIQUE DEFAULT "obligator_" NOT NULL,
+                smtp_config_json TEXT UNIQUE DEFAULT "{}" NOT NULL
         );
         `, prefix)
 	_, err := db.Exec(stmt)
@@ -168,6 +183,45 @@ func (d *Database) SetJwksJson(jwksJson string) error {
         UPDATE %sconfig SET jwks_json=?;
         `, d.prefix)
 	_, err := d.db.Exec(stmt, jwksJson)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Database) GetSmtpConfig() (*SmtpConfig, error) {
+	var smtpJson string
+
+	stmt := fmt.Sprintf(`
+        SELECT smtp_config_json FROM %sconfig;
+        `, d.prefix)
+	err := d.db.QueryRow(stmt).Scan(&smtpJson)
+	if err != nil {
+		return nil, err
+	}
+
+	c := &SmtpConfig{}
+
+	err = json.Unmarshal([]byte(smtpJson), &c)
+	if err != nil {
+		return nil, err
+	}
+
+	return c, nil
+}
+
+func (d *Database) SetSmtpConfig(smtp *SmtpConfig) error {
+
+	smtpJson, err := json.Marshal(smtp)
+	if err != nil {
+		return err
+	}
+
+	stmt := fmt.Sprintf(`
+        UPDATE %sconfig SET smtp_config_json=?;
+        `, d.prefix)
+	_, err = d.db.Exec(stmt, smtpJson)
 	if err != nil {
 		return err
 	}

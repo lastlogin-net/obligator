@@ -16,14 +16,29 @@ import (
 	"github.com/ip2location/ip2location-go/v9"
 )
 
+type Identity struct {
+	IdType        string `json:"id_type"`
+	Id            string `json:"id"`
+	ProviderName  string `json:"provider_name"`
+	Name          string `json:"name,omitempty"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+}
+
+type Login struct {
+	IdType       string `json:"id_type"`
+	Id           string `json:"id"`
+	ProviderName string `json:"provider_name"`
+	Timestamp    string `json:"ts"`
+}
+
 type Server struct {
-	api     *Api
-	Config  ServerConfig
-	Mux     *ObligatorMux
-	storage Storage
-	db      *Database
-	jose    *JOSE
-	muxMap  map[string]http.Handler
+	api    *Api
+	Config ServerConfig
+	Mux    *ObligatorMux
+	db     *Database
+	jose   *JOSE
+	muxMap map[string]http.Handler
 }
 
 type ServerConfig struct {
@@ -32,7 +47,6 @@ type ServerConfig struct {
 	Prefix                 string
 	DbPrefix               string
 	Database               *sql.DB
-	StorageDir             string
 	DatabaseDir            string
 	ApiSocketDir           string
 	BehindProxy            bool
@@ -47,6 +61,7 @@ type ServerConfig struct {
 	DisableQrLogin         bool
 	JwksJson               string
 	OAuth2Providers        []*OAuth2Provider `json:"oauth2_providers"`
+	Smtp                   *SmtpConfig       `json:"smtp"`
 }
 
 type StringList []string
@@ -183,18 +198,7 @@ func NewServer(conf ServerConfig) *Server {
 		conf.ProxyType = "builtin"
 	}
 
-	storagePath := filepath.Join(conf.StorageDir, conf.Prefix+"storage.json")
-	storage, err := NewJsonStorage(storagePath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
-	//sqliteStorage, err := NewSqliteStorage(prefix + "storage.sqlite")
-	//if err != nil {
-	//	fmt.Fprintln(os.Stderr, err.Error())
-	//	os.Exit(1)
-	//}
+	var err error
 
 	var db *Database
 	if conf.Database != nil {
@@ -210,6 +214,11 @@ func NewServer(conf ServerConfig) *Server {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
+	}
+
+	if conf.Smtp != nil {
+		err := db.SetSmtpConfig(conf.Smtp)
+		checkErr(err)
 	}
 
 	prefix, err := db.GetPrefix()
@@ -311,10 +320,10 @@ func NewServer(conf ServerConfig) *Server {
 		}
 	}
 
-	handler := NewHandler(db, storage, conf, tmpl, jose)
+	handler := NewHandler(db, conf, tmpl, jose)
 	mux.Handle("/", handler)
 
-	oidcHandler := NewOIDCHandler(db, storage, conf, tmpl, jose)
+	oidcHandler := NewOIDCHandler(db, conf, tmpl, jose)
 	mux.Handle("/.well-known/openid-configuration", oidcHandler)
 	mux.Handle("/jwks", oidcHandler)
 	mux.Handle("/register", oidcHandler)
@@ -328,7 +337,7 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)
 	mux.Handle("/callback", addIdentityOauth2Handler)
 
-	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl, conf.BehindProxy, geoDb, jose)
+	addIdentityEmailHandler := NewAddIdentityEmailHandler(db, cluster, tmpl, conf.BehindProxy, geoDb, jose)
 	mux.Handle("/login-email", addIdentityEmailHandler)
 	mux.Handle("/email-sent", addIdentityEmailHandler)
 	mux.Handle("/magic", addIdentityEmailHandler)
@@ -340,25 +349,25 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/gaml-code", addIdentityGamlHandler)
 	mux.Handle("/complete-gaml-login", addIdentityGamlHandler)
 
-	qrHandler := NewQrHandler(db, storage, cluster, tmpl, jose)
+	qrHandler := NewQrHandler(db, cluster, tmpl, jose)
 	mux.Handle("/login-qr", qrHandler)
 	mux.Handle("/qr", qrHandler)
 	mux.Handle("/send", qrHandler)
 	mux.Handle("/receive", qrHandler)
 
 	indieAuthPrefix := "/indieauth"
-	indieAuthHandler := NewIndieAuthHandler(db, storage, tmpl, indieAuthPrefix, jose)
+	indieAuthHandler := NewIndieAuthHandler(db, tmpl, indieAuthPrefix, jose)
 	mux.Handle("/users/", indieAuthHandler)
 	mux.Handle("/.well-known/oauth-authorization-server", indieAuthHandler)
 	mux.Handle(indieAuthPrefix+"/", http.StripPrefix(indieAuthPrefix, indieAuthHandler))
 
-	domainHandler := NewDomainHandler(db, storage, tmpl, proxy, jose)
+	domainHandler := NewDomainHandler(db, tmpl, proxy, jose)
 	mux.Handle("/domains", domainHandler)
 	mux.Handle("/add-domain", domainHandler)
 
 	if os.Getenv("FEDCM_ENABLED") == "true" {
 		fedCmLoginEndpoint := "/login-fedcm-auto"
-		fedCmHandler := NewFedCmHandler(db, storage, fedCmLoginEndpoint, jose)
+		fedCmHandler := NewFedCmHandler(db, fedCmLoginEndpoint, jose)
 		mux.Handle("/.well-known/web-identity", fedCmHandler)
 		mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
 
@@ -368,13 +377,12 @@ func NewServer(conf ServerConfig) *Server {
 	}
 
 	s := &Server{
-		Config:  conf,
-		Mux:     mux,
-		api:     api,
-		storage: storage,
-		db:      db,
-		jose:    jose,
-		muxMap:  make(map[string]http.Handler),
+		Config: conf,
+		Mux:    mux,
+		api:    api,
+		db:     db,
+		jose:   jose,
+		muxMap: make(map[string]http.Handler),
 	}
 
 	// TODO: very hacky
@@ -435,7 +443,7 @@ func (s *Server) GetUsers() ([]*User, error) {
 }
 
 func (s *Server) Validate(r *http.Request) (*Validation, error) {
-	return validate(s.db, s.storage, r, s.jose)
+	return validate(s.db, r, s.jose)
 }
 
 func (s *Server) ProxyMux(domain string, mux http.Handler) error {
@@ -451,7 +459,7 @@ func checkErrPassthrough(err error, passthrough bool) (*Validation, error) {
 	}
 }
 
-func validate(db DatabaseIface, storage Storage, r *http.Request, jose *JOSE) (*Validation, error) {
+func validate(db DatabaseIface, r *http.Request, jose *JOSE) (*Validation, error) {
 
 	passthrough, err := db.GetForwardAuthPassthrough()
 	if err != nil {

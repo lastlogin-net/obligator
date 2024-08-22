@@ -19,7 +19,6 @@ import (
 
 type AddIdentityEmailHandler struct {
 	mux           *http.ServeMux
-	storage       Storage
 	db            *Database
 	pendingLogins map[string]*PendingLogin
 	mut           *sync.Mutex
@@ -35,11 +34,10 @@ func (h *AddIdentityEmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	h.mux.ServeHTTP(w, r)
 }
 
-func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster, tmpl *template.Template, behindProxy bool, geoDb *ip2location.DB, jose *JOSE) *AddIdentityEmailHandler {
+func NewAddIdentityEmailHandler(db *Database, cluster *Cluster, tmpl *template.Template, behindProxy bool, geoDb *ip2location.DB, jose *JOSE) *AddIdentityEmailHandler {
 	mux := http.NewServeMux()
 	h := &AddIdentityEmailHandler{
 		mux:           mux,
-		storage:       storage,
 		db:            db,
 		mut:           &sync.Mutex{},
 		pendingLogins: make(map[string]*PendingLogin),
@@ -495,7 +493,7 @@ func (h *AddIdentityEmailHandler) StartEmailValidation(email, rootUri, magicLink
 		"This is an email validation request from %s. Use the link below to prove you have access to %s." +
 		"\r\n\r\n%s"
 
-	smtpConfig, err := h.storage.GetSmtpConfig()
+	smtpConfig, err := h.db.GetSmtpConfig()
 	if err != nil {
 		return err
 	}
