@@ -68,11 +68,6 @@ func NewAddIdentityOauth2Handler(db *Database, oauth2MetaMan *OAuth2MetadataMana
 
 	loginKeyName := prefix + "login_key"
 
-	// TODO: This is not thread-safe to run in a goroutine. It creates a
-	// race condition with any incoming requests. But this speeds up
-	// startup for development.
-	go oauth2MetaMan.Update()
-
 	mux.HandleFunc("/login-oauth2", func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()

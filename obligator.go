@@ -288,6 +288,7 @@ func NewServer(conf ServerConfig) *Server {
 	}
 
 	oauth2MetaMan := NewOAuth2MetadataManager(db)
+
 	err = oauth2MetaMan.Update()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
