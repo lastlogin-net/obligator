@@ -14,6 +14,7 @@ type DatabaseIface interface {
 	GetConfig() (*DbConfig, error)
 	GetJwksJson() (string, error)
 	GetForwardAuthPassthrough() (bool, error)
+	GetPrefix() (string, error)
 }
 
 type User struct {
@@ -48,7 +49,8 @@ func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
                 jwks_json TEXT UNIQUE DEFAULT "" NOT NULL,
                 public BOOLEAN UNIQUE DEFAULT false NOT NULL,
                 display_name TEXT UNIQUE DEFAULT "obligator" NOT NULL,
-                forward_auth_passthrough BOOLEAN UNIQUE DEFAULT false NOT NULL
+                forward_auth_passthrough BOOLEAN UNIQUE DEFAULT false NOT NULL,
+                prefix TEXT UNIQUE DEFAULT "obligator_" NOT NULL
         );
         `, prefix)
 	_, err := db.Exec(stmt)
@@ -207,6 +209,31 @@ func (d *Database) GetForwardAuthPassthrough() (bool, error) {
 func (s *Database) SetForwardAuthPassthrough(value bool) error {
 	stmt := fmt.Sprintf(`
         UPDATE %sconfig SET forward_auth_passthrough=?;
+        `, s.prefix)
+	_, err := s.db.Exec(stmt, value)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Database) GetPrefix() (string, error) {
+	var value string
+
+	stmt := fmt.Sprintf(`
+        SELECT prefix FROM %sconfig;
+        `, d.prefix)
+	err := d.db.QueryRow(stmt).Scan(&value)
+	if err != nil {
+		return "", err
+	}
+
+	return value, nil
+}
+func (s *Database) SetPrefix(value string) error {
+	stmt := fmt.Sprintf(`
+        UPDATE %sconfig SET prefix=?;
         `, s.prefix)
 	_, err := s.db.Exec(stmt, value)
 	if err != nil {

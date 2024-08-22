@@ -8,12 +8,11 @@ import (
 )
 
 type JsonStorage struct {
-	Prefix                 string           `json:"prefix"`
-	OAuth2Providers        []OAuth2Provider `json:"oauth2_providers"`
-	Smtp                   *SmtpConfig      `json:"smtp"`
-	mutex                  *sync.Mutex
-	path                   string
-	message_chan           chan interface{}
+	OAuth2Providers []OAuth2Provider `json:"oauth2_providers"`
+	Smtp            *SmtpConfig      `json:"smtp"`
+	mutex           *sync.Mutex
+	path            string
+	message_chan    chan interface{}
 }
 
 func NewJsonStorage(path string) (*JsonStorage, error) {
@@ -36,12 +35,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 		for {
 			rawMessage := <-s.message_chan
 			switch msg := rawMessage.(type) {
-			case getPrefixMessage:
-				msg.resp <- s.Prefix
-			case setPrefixMessage:
-				s.Prefix = msg.prefix
-				msg.resp <- nil
-				s.Persist()
 			case getOauth2ProvidersMessage:
 				providers := []OAuth2Provider{}
 				for _, prov := range s.OAuth2Providers {
@@ -83,33 +76,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 	s.persist()
 
 	return s, nil
-}
-
-type getPrefixMessage struct {
-	resp chan string
-}
-
-func (s *JsonStorage) GetPrefix() string {
-	ch := make(chan string)
-	s.message_chan <- getPrefixMessage{
-		resp: ch,
-	}
-	result := <-ch
-	return result
-}
-
-type setPrefixMessage struct {
-	prefix string
-	resp   chan error
-}
-
-func (s *JsonStorage) SetPrefix(prefix string) {
-	resp := make(chan error)
-	s.message_chan <- setPrefixMessage{
-		prefix,
-		resp,
-	}
-	<-resp
 }
 
 func (s *JsonStorage) GetOAuth2ProviderByID(id string) (OAuth2Provider, error) {

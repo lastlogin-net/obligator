@@ -42,7 +42,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 		link := fmt.Sprintf("<%s>; rel=\"indieauth-metadata\"", uri)
 		w.Header().Set("Link", link)
 
-		tmplData := newCommonData(nil, db, storage, r)
+		tmplData := newCommonData(nil, db, r)
 
 		err = tmpl.ExecuteTemplate(w, "user.html", tmplData)
 		if err != nil {
@@ -76,7 +76,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 			*commonData
 			RemoteIp string
 		}{
-			commonData: newCommonData(nil, db, storage, r),
+			commonData: newCommonData(nil, db, r),
 			RemoteIp:   remoteIp,
 		}
 
@@ -157,7 +157,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 			}
 		}
 
-		setReturnUriCookie(r.Host, storage, returnUri, w)
+		setReturnUriCookie(r.Host, db, returnUri, w)
 
 		data := struct {
 			*commonData
@@ -170,7 +170,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 			commonData: newCommonData(&commonData{
 				ReturnUri:            returnUri,
 				DisableHeaderButtons: true,
-			}, db, storage, r),
+			}, db, r),
 			CanEmail:        canEmail,
 			OAuth2Providers: providers,
 			LogoMap:         providerLogoMap,
@@ -199,7 +199,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 
 		redirect := r.Form.Get("prev_page")
 
-		err = deleteLoginKeyCookie(r.Host, storage, w)
+		err = deleteLoginKeyCookie(r.Host, db, w)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -214,7 +214,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 		data := struct {
 			*commonData
 		}{
-			commonData: newCommonData(nil, db, storage, r),
+			commonData: newCommonData(nil, db, r),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "no-account.html", data)

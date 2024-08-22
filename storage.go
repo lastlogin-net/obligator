@@ -3,7 +3,6 @@ package obligator
 import ()
 
 type Storage interface {
-	GetPrefix() string
 	GetOAuth2Providers() ([]OAuth2Provider, error)
 	GetOAuth2ProviderByID(string) (OAuth2Provider, error)
 	SetOauth2Provider(OAuth2Provider) error

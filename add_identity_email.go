@@ -64,7 +64,9 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 	}
 
 	const EmailTimeout = 5 * time.Minute
-	prefix := storage.GetPrefix()
+	prefix, err := db.GetPrefix()
+	checkErr(err)
+
 	loginKeyName := prefix + "login_key"
 
 	// Periodically clean up expired shares
@@ -97,7 +99,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			return
 		}
 
-		templateData := newCommonData(nil, db, storage, r)
+		templateData := newCommonData(nil, db, r)
 
 		err := tmpl.ExecuteTemplate(w, "login-email.html", templateData)
 		if err != nil {
@@ -267,7 +269,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			fmt.Fprintf(os.Stderr, "Email validation attempted for non-existing user: %s\n", email)
 		}
 
-		data := newCommonData(nil, db, storage, r)
+		data := newCommonData(nil, db, r)
 
 		err = tmpl.ExecuteTemplate(w, "email-sent.html", data)
 		if err != nil {
@@ -372,7 +374,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			MagicIpGeo        ip2location.IP2Locationrecord
 			InstanceId        string
 		}{
-			commonData:        newCommonData(nil, db, storage, r),
+			commonData:        newCommonData(nil, db, r),
 			Key:               key,
 			DifferentIps:      differentIps,
 			DifferentBrowsers: differentBrowsers,
@@ -439,7 +441,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 			EmailVerified: true,
 		}
 
-		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent, jose)
+		cookie, err := addIdentToCookie(r.Host, db, cookieValue, newIdent, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -449,7 +451,7 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		w.Header().Add("Set-Login", "logged-in")
 		http.SetCookie(w, cookie)
 
-		returnUri, err := getReturnUriCookie(storage, r)
+		returnUri, err := getReturnUriCookie(db, r)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -457,13 +459,13 @@ func NewAddIdentityEmailHandler(storage Storage, db *Database, cluster *Cluster,
 		}
 
 		if err == nil {
-			deleteReturnUriCookie(r.Host, storage, w)
+			deleteReturnUriCookie(r.Host, db, w)
 
 			redirUrl := fmt.Sprintf("%s", returnUri)
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 			return
 		} else {
-			templateData := newCommonData(nil, db, storage, r)
+			templateData := newCommonData(nil, db, r)
 
 			err := tmpl.ExecuteTemplate(w, "confirm-magic.html", templateData)
 			if err != nil {

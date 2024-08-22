@@ -16,14 +16,16 @@ type AddIdentityFedCmHandler struct {
 	mux *http.ServeMux
 }
 
-func NewAddIdentityFedCmHandler(db DatabaseIface, storage Storage, tmpl *template.Template, jose *JOSE) *AddIdentityFedCmHandler {
+func NewAddIdentityFedCmHandler(db DatabaseIface, tmpl *template.Template, jose *JOSE) *AddIdentityFedCmHandler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityFedCmHandler{
 		mux: mux,
 	}
 
-	prefix := storage.GetPrefix()
+	prefix, err := db.GetPrefix()
+	checkErr(err)
+
 	loginKeyName := prefix + "login_key"
 
 	mux.HandleFunc("/login-fedcm", func(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +35,7 @@ func NewAddIdentityFedCmHandler(db DatabaseIface, storage Storage, tmpl *templat
 		data := struct {
 			*commonData
 		}{
-			commonData: newCommonData(nil, db, storage, r),
+			commonData: newCommonData(nil, db, r),
 		}
 
 		err := tmpl.ExecuteTemplate(w, "login-fedcm.html", data)
@@ -141,20 +143,20 @@ func NewAddIdentityFedCmHandler(db DatabaseIface, storage Storage, tmpl *templat
 			EmailVerified: true,
 		}
 
-		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent, jose)
+		cookie, err := addIdentToCookie(r.Host, db, cookieValue, newIdent, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		returnUri, err := getReturnUriCookie(storage, r)
+		returnUri, err := getReturnUriCookie(db, r)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
-		deleteReturnUriCookie(r.Host, storage, w)
+		deleteReturnUriCookie(r.Host, db, w)
 
 		w.Header().Add("Set-Login", "logged-in")
 		http.SetCookie(w, cookie)

@@ -16,7 +16,7 @@ type AddIdentityGamlHandler struct {
 	mux *http.ServeMux
 }
 
-func NewAddIdentityGamlHandler(db DatabaseIface, storage Storage, cluster *Cluster, tmpl *template.Template, jose *JOSE) *AddIdentityGamlHandler {
+func NewAddIdentityGamlHandler(db DatabaseIface, cluster *Cluster, tmpl *template.Template, jose *JOSE) *AddIdentityGamlHandler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityGamlHandler{
@@ -28,7 +28,9 @@ func NewAddIdentityGamlHandler(db DatabaseIface, storage Storage, cluster *Clust
 	pendingCodes := make(map[string]string)
 	mut := &sync.Mutex{}
 
-	prefix := storage.GetPrefix()
+	prefix, err := db.GetPrefix()
+	checkErr(err)
+
 	loginKeyName := prefix + "login_key"
 
 	mux.HandleFunc("/login-gaml", func(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +38,7 @@ func NewAddIdentityGamlHandler(db DatabaseIface, storage Storage, cluster *Clust
 		templateData := struct {
 			*commonData
 		}{
-			commonData: newCommonData(nil, db, storage, r),
+			commonData: newCommonData(nil, db, r),
 		}
 
 		err := tmpl.ExecuteTemplate(w, "login-gaml.html", templateData)
@@ -121,7 +123,7 @@ func NewAddIdentityGamlHandler(db DatabaseIface, storage Storage, cluster *Clust
 			*commonData
 			GamlCode string
 		}{
-			commonData: newCommonData(nil, db, storage, r),
+			commonData: newCommonData(nil, db, r),
 			GamlCode:   gamlCode,
 		}
 
@@ -183,7 +185,7 @@ func NewAddIdentityGamlHandler(db DatabaseIface, storage Storage, cluster *Clust
 			return
 		}
 
-		request, err := getJwtFromCookie(prefix+"auth_request", storage, w, r, jose)
+		request, err := getJwtFromCookie(prefix+"auth_request", w, r, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -202,7 +204,7 @@ func NewAddIdentityGamlHandler(db DatabaseIface, storage Storage, cluster *Clust
 			ProviderName: "URL",
 		}
 
-		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent, jose)
+		cookie, err := addIdentToCookie(r.Host, db, cookieValue, newIdent, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())

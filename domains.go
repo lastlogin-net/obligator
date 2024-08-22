@@ -48,7 +48,7 @@ func NewDomainHandler(db *Database, storage Storage, tmpl *template.Template, pr
 			Ipv4 string
 			Ipv6 string
 		}{
-			commonData: newCommonData(nil, db, storage, r),
+			commonData: newCommonData(nil, db, r),
 			Host:       r.Host,
 			Ipv4:       ipv4.String(),
 			Ipv6:       ipv6.String(),
@@ -84,7 +84,7 @@ func NewDomainHandler(db *Database, storage Storage, tmpl *template.Template, pr
 
 		ownerId := r.Form.Get("owner_id")
 
-		idents, _ := getIdentities(db, storage, r)
+		idents, _ := getIdentities(db, r)
 
 		match := false
 		for _, ident := range idents {

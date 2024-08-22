@@ -59,7 +59,9 @@ func NewOIDCHandler(db DatabaseIface, storage Storage, config ServerConfig, tmpl
 		mux: mux,
 	}
 
-	prefix := storage.GetPrefix()
+	prefix, err := db.GetPrefix()
+	checkErr(err)
+
 	loginKeyName := prefix + "login_key"
 
 	// draft-ietf-oauth-security-topics-24 2.6
@@ -108,7 +110,7 @@ func NewOIDCHandler(db DatabaseIface, storage Storage, config ServerConfig, tmpl
 			RpDomain    string
 			RedirectUri string
 		}{
-			commonData:  newCommonData(nil, db, storage, r),
+			commonData:  newCommonData(nil, db, r),
 			RpDomain:    parsedRedirUri.Host,
 			RedirectUri: redirUri,
 		}
@@ -324,7 +326,7 @@ func NewOIDCHandler(db DatabaseIface, storage Storage, config ServerConfig, tmpl
 		}{
 			commonData: newCommonData(&commonData{
 				ReturnUri: returnUri,
-			}, db, storage, r),
+			}, db, r),
 			ClientId:            parsedClientId.Host,
 			RemainingIdentities: remainingIdents,
 			PreviousLogins:      previousLogins,
@@ -334,7 +336,7 @@ func NewOIDCHandler(db DatabaseIface, storage Storage, config ServerConfig, tmpl
 			DisableQrLogin:      config.DisableQrLogin,
 		}
 
-		setReturnUriCookie(r.Host, storage, returnUri, w)
+		setReturnUriCookie(r.Host, db, returnUri, w)
 
 		err = tmpl.ExecuteTemplate(w, "auth.html", data)
 		if err != nil {
@@ -367,9 +369,9 @@ func NewOIDCHandler(db DatabaseIface, storage Storage, config ServerConfig, tmpl
 			return
 		}
 
-		clearCookie(r.Host, storage, prefix+"auth_request", w)
+		clearCookie(r.Host, prefix+"auth_request", w)
 
-		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", storage, w, r, jose)
+		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", w, r, jose)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
@@ -407,7 +409,7 @@ func NewOIDCHandler(db DatabaseIface, storage Storage, config ServerConfig, tmpl
 
 		uri := domainToUri(r.Host)
 
-		newLoginCookie, err := addLoginToCookie(r.Host, storage, loginKeyCookie.Value, clientId, newLogin, jose)
+		newLoginCookie, err := addLoginToCookie(r.Host, db, loginKeyCookie.Value, clientId, newLogin, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())

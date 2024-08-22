@@ -21,7 +21,8 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 
 	mux := http.NewServeMux()
 
-	cookiePrefix := storage.GetPrefix()
+	cookiePrefix, err := db.GetPrefix()
+	checkErr(err)
 
 	handleToken := func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
@@ -101,7 +102,7 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 			return
 		}
 
-		idents, _ := getIdentities(db, storage, r)
+		idents, _ := getIdentities(db, r)
 
 		var matchIdent *Identity = nil
 		for _, ident := range idents {
@@ -145,7 +146,7 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 		}{
 			commonData: newCommonData(&commonData{
 				Identities: idents,
-			}, db, storage, r),
+			}, db, r),
 			ClientId: ar.ClientId,
 		}
 
@@ -161,9 +162,9 @@ func NewIndieAuthHandler(db *Database, storage Storage, tmpl *template.Template,
 
 	mux.HandleFunc("/confirm", func(w http.ResponseWriter, r *http.Request) {
 
-		clearCookie(r.Host, storage, cookiePrefix+"auth_request", w)
+		clearCookie(r.Host, cookiePrefix+"auth_request", w)
 
-		parsedAuthReq, err := getJwtFromCookie(cookiePrefix+"auth_request", storage, w, r, jose)
+		parsedAuthReq, err := getJwtFromCookie(cookiePrefix+"auth_request", w, r, jose)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())

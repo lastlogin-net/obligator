@@ -189,12 +189,6 @@ func NewServer(conf ServerConfig) *Server {
 		os.Exit(1)
 	}
 
-	if conf.Prefix != "obligator_" || storage.GetPrefix() == "" {
-		storage.SetPrefix(conf.Prefix)
-	}
-
-	prefix := storage.GetPrefix()
-
 	//sqliteStorage, err := NewSqliteStorage(prefix + "storage.sqlite")
 	//if err != nil {
 	//	fmt.Fprintln(os.Stderr, err.Error())
@@ -216,6 +210,16 @@ func NewServer(conf ServerConfig) *Server {
 			os.Exit(1)
 		}
 	}
+
+	prefix, err := db.GetPrefix()
+	checkErr(err)
+
+	if conf.Prefix != "obligator_" || prefix == "" {
+		db.SetPrefix(conf.Prefix)
+	}
+
+	prefix, err = db.GetPrefix()
+	checkErr(err)
 
 	cluster := NewCluster()
 	proxy := NewProxy(&conf, prefix)
@@ -323,7 +327,7 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/confirm-magic", addIdentityEmailHandler)
 	mux.Handle("/complete-email-login", addIdentityEmailHandler)
 
-	addIdentityGamlHandler := NewAddIdentityGamlHandler(db, storage, cluster, tmpl, jose)
+	addIdentityGamlHandler := NewAddIdentityGamlHandler(db, cluster, tmpl, jose)
 	mux.Handle("/login-gaml", addIdentityGamlHandler)
 	mux.Handle("/gaml-code", addIdentityGamlHandler)
 	mux.Handle("/complete-gaml-login", addIdentityGamlHandler)
@@ -350,7 +354,7 @@ func NewServer(conf ServerConfig) *Server {
 		mux.Handle("/.well-known/web-identity", fedCmHandler)
 		mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
 
-		addIdentityFedCmHandler := NewAddIdentityFedCmHandler(db, storage, tmpl, jose)
+		addIdentityFedCmHandler := NewAddIdentityFedCmHandler(db, tmpl, jose)
 		mux.Handle("/login-fedcm", addIdentityFedCmHandler)
 		mux.Handle("/complete-login-fedcm", addIdentityFedCmHandler)
 	}
@@ -445,7 +449,12 @@ func validate(db DatabaseIface, storage Storage, r *http.Request, jose *JOSE) (*
 		return nil, err
 	}
 
-	loginKeyName := storage.GetPrefix() + "login_key"
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		return nil, err
+	}
+
+	loginKeyName := prefix + "login_key"
 
 	loginKeyCookie, err := r.Cookie(loginKeyName)
 	if err != nil {

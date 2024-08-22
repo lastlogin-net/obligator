@@ -23,7 +23,7 @@ type commonData struct {
 	DisableHeaderButtons bool
 }
 
-func newCommonData(overrides *commonData, db DatabaseIface, storage Storage, r *http.Request) *commonData {
+func newCommonData(overrides *commonData, db DatabaseIface, r *http.Request) *commonData {
 	d := &commonData{}
 
 	if overrides != nil {
@@ -47,13 +47,13 @@ func newCommonData(overrides *commonData, db DatabaseIface, storage Storage, r *
 	}
 
 	if overrides == nil || overrides.Identities == nil {
-		idents, _ := getIdentities(db, storage, r)
+		idents, _ := getIdentities(db, r)
 		d.Identities = idents
 	}
 
 	if overrides == nil || overrides.ReturnUri == "" {
 		var err error
-		d.ReturnUri, err = getReturnUriCookie(storage, r)
+		d.ReturnUri, err = getReturnUriCookie(db, r)
 		if err != nil {
 			d.ReturnUri = "/"
 		}
@@ -138,7 +138,7 @@ func validUser(id string, users []*User) bool {
 	return false
 }
 
-func addIdentToCookie(domain string, storage Storage, cookieValue string, newIdent *Identity, jose *JOSE) (*http.Cookie, error) {
+func addIdentToCookie(domain string, db DatabaseIface, cookieValue string, newIdent *Identity, jose *JOSE) (*http.Cookie, error) {
 
 	idents := []*Identity{newIdent}
 
@@ -196,7 +196,12 @@ func addIdentToCookie(domain string, storage Storage, cookieValue string, newIde
 		return nil, err
 	}
 
-	loginKeyName := storage.GetPrefix() + "login_key"
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		return nil, err
+	}
+
+	loginKeyName := prefix + "login_key"
 
 	sameSiteMode := http.SameSiteLaxMode
 
@@ -220,7 +225,7 @@ func addIdentToCookie(domain string, storage Storage, cookieValue string, newIde
 	return cookie, nil
 }
 
-func addLoginToCookie(domain string, storage Storage, currentCookieValue, clientId string, newLogin *Login, jose *JOSE) (*http.Cookie, error) {
+func addLoginToCookie(domain string, db DatabaseIface, currentCookieValue, clientId string, newLogin *Login, jose *JOSE) (*http.Cookie, error) {
 
 	issuedAt := time.Now().UTC()
 
@@ -293,7 +298,12 @@ func addLoginToCookie(domain string, storage Storage, currentCookieValue, client
 		return nil, err
 	}
 
-	loginKeyName := storage.GetPrefix() + "login_key"
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		return nil, err
+	}
+
+	loginKeyName := prefix + "login_key"
 
 	cookie := &http.Cookie{
 		Domain:   cookieDomain,
@@ -310,13 +320,18 @@ func addLoginToCookie(domain string, storage Storage, currentCookieValue, client
 	return cookie, nil
 }
 
-func deleteLoginKeyCookie(domain string, storage Storage, w http.ResponseWriter) error {
+func deleteLoginKeyCookie(domain string, db DatabaseIface, w http.ResponseWriter) error {
 	cookieDomain, err := buildCookieDomain(domain)
 	if err != nil {
 		return err
 	}
 
-	loginKeyName := storage.GetPrefix() + "login_key"
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		return err
+	}
+
+	loginKeyName := prefix + "login_key"
 
 	cookie := &http.Cookie{
 		Domain:   cookieDomain,
@@ -346,7 +361,7 @@ func claimFromToken(claim string, token JWTToken) string {
 	return val
 }
 
-func getJwtFromCookie(cookieKey string, storage Storage, w http.ResponseWriter, r *http.Request, jose *JOSE) (JWTToken, error) {
+func getJwtFromCookie(cookieKey string, w http.ResponseWriter, r *http.Request, jose *JOSE) (JWTToken, error) {
 	// TODO: would tying to login key increase security?
 	//loginKeyCookie, err := r.Cookie(storage.GetLoginKeyName())
 	//if err != nil {
@@ -403,7 +418,7 @@ func setJwtCookie(db DatabaseIface, domain string, jot JWTToken, cookieKey strin
 	http.SetCookie(w, cookie)
 }
 
-func clearCookie(domain string, storage Storage, cookieKey string, w http.ResponseWriter) {
+func clearCookie(domain string, cookieKey string, w http.ResponseWriter) {
 	cookieDomain, err := buildCookieDomain(domain)
 	if err != nil {
 		w.WriteHeader(500)
@@ -438,11 +453,15 @@ func getRemoteIp(r *http.Request, behindProxy bool) (string, error) {
 	return remoteIp, nil
 }
 
-func getIdentities(db DatabaseIface, storage Storage, r *http.Request) ([]*Identity, error) {
+func getIdentities(db DatabaseIface, r *http.Request) ([]*Identity, error) {
 
 	identities := []*Identity{}
 
-	prefix := storage.GetPrefix()
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		return nil, err
+	}
+
 	loginKeyName := prefix + "login_key"
 
 	loginKeyCookie, err := r.Cookie(loginKeyName)
@@ -473,8 +492,14 @@ func getIdentities(db DatabaseIface, storage Storage, r *http.Request) ([]*Ident
 	return identities, nil
 }
 
-func getReturnUriCookie(storage Storage, r *http.Request) (string, error) {
-	name := storage.GetPrefix() + "return_uri"
+func getReturnUriCookie(db DatabaseIface, r *http.Request) (string, error) {
+
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		return "", err
+	}
+
+	name := prefix + "return_uri"
 
 	cookie, err := r.Cookie(name)
 	if err != nil {
@@ -483,14 +508,19 @@ func getReturnUriCookie(storage Storage, r *http.Request) (string, error) {
 
 	return cookie.Value, nil
 }
-func setReturnUriCookie(domain string, storage Storage, uri string, w http.ResponseWriter) error {
+func setReturnUriCookie(domain string, db DatabaseIface, uri string, w http.ResponseWriter) error {
 
 	cookieDomain, err := buildCookieDomain(domain)
 	if err != nil {
 		return err
 	}
 
-	name := storage.GetPrefix() + "return_uri"
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		return err
+	}
+
+	name := prefix + "return_uri"
 
 	cookie := &http.Cookie{
 		Domain:   cookieDomain,
@@ -506,11 +536,17 @@ func setReturnUriCookie(domain string, storage Storage, uri string, w http.Respo
 	return nil
 }
 
-func deleteReturnUriCookie(domain string, storage Storage, w http.ResponseWriter) {
+func deleteReturnUriCookie(domain string, db DatabaseIface, w http.ResponseWriter) {
 
-	name := storage.GetPrefix() + "return_uri"
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		fmt.Println("deleteReturnUriCookie: failed to get prefix")
+		return
+	}
 
-	clearCookie(domain, storage, name, w)
+	name := prefix + "return_uri"
+
+	clearCookie(domain, name, w)
 }
 
 func domainToUri(host string) string {

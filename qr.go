@@ -50,7 +50,9 @@ func NewQrHandler(db DatabaseIface, storage Storage, cluster *Cluster, tmpl *tem
 
 	const ShareTimeout = 2 * time.Minute
 
-	prefix := storage.GetPrefix()
+	prefix, err := db.GetPrefix()
+	checkErr(err)
+
 	loginKeyName := prefix + "login_key"
 
 	// Periodically clean up expired shares
@@ -102,7 +104,7 @@ func NewQrHandler(db DatabaseIface, storage Storage, cluster *Cluster, tmpl *tem
 			QrKey        string
 			ErrorMessage string
 		}{
-			commonData:   newCommonData(nil, db, storage, r),
+			commonData:   newCommonData(nil, db, r),
 			QrDataUri:    qrDataUri,
 			QrKey:        qrKey,
 			ErrorMessage: "",
@@ -124,7 +126,7 @@ func NewQrHandler(db DatabaseIface, storage Storage, cluster *Cluster, tmpl *tem
 		instanceId := r.Form.Get("instance_id")
 
 		templateData := QrTemplateData{
-			commonData:   newCommonData(nil, db, storage, r),
+			commonData:   newCommonData(nil, db, r),
 			QrKey:        qrKey,
 			InstanceId:   instanceId,
 			ErrorMessage: "",
@@ -213,7 +215,7 @@ func NewQrHandler(db DatabaseIface, storage Storage, cluster *Cluster, tmpl *tem
 			w.WriteHeader(400)
 
 			templateData := QrTemplateData{
-				commonData:   newCommonData(nil, db, storage, r),
+				commonData:   newCommonData(nil, db, r),
 				QrKey:        qrKey,
 				InstanceId:   ogInstanceId,
 				ErrorMessage: "You must select at least one identity",
@@ -237,7 +239,7 @@ func NewQrHandler(db DatabaseIface, storage Storage, cluster *Cluster, tmpl *tem
 		templateData := struct {
 			*commonData
 		}{
-			commonData: newCommonData(nil, db, storage, r),
+			commonData: newCommonData(nil, db, r),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "send-success.html", templateData)
@@ -278,7 +280,7 @@ func NewQrHandler(db DatabaseIface, storage Storage, cluster *Cluster, tmpl *tem
 				QrDataUri    template.URL
 				ErrorMessage string
 			}{
-				commonData:   newCommonData(nil, db, storage, r),
+				commonData:   newCommonData(nil, db, r),
 				QrKey:        qrKey,
 				QrDataUri:    qrDataUri,
 				ErrorMessage: "No share found. Make sure you've scanned the QR code on the sharing device and confirmed",
@@ -301,7 +303,7 @@ func NewQrHandler(db DatabaseIface, storage Storage, cluster *Cluster, tmpl *tem
 		}
 
 		for _, ident := range share.Identities {
-			cookie, err = addIdentToCookie(r.Host, storage, cookie.Value, ident, jose)
+			cookie, err = addIdentToCookie(r.Host, db, cookie.Value, ident, jose)
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
@@ -311,7 +313,7 @@ func NewQrHandler(db DatabaseIface, storage Storage, cluster *Cluster, tmpl *tem
 
 		for clientId, clientLogins := range share.Logins {
 			for _, login := range clientLogins {
-				cookie, err = addLoginToCookie(r.Host, storage, cookie.Value, clientId, login, jose)
+				cookie, err = addLoginToCookie(r.Host, db, cookie.Value, clientId, login, jose)
 				if err != nil {
 					w.WriteHeader(500)
 					fmt.Fprintf(os.Stderr, err.Error())
@@ -322,13 +324,13 @@ func NewQrHandler(db DatabaseIface, storage Storage, cluster *Cluster, tmpl *tem
 
 		http.SetCookie(w, cookie)
 
-		returnUri, err := getReturnUriCookie(storage, r)
+		returnUri, err := getReturnUriCookie(db, r)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
-		deleteReturnUriCookie(r.Host, storage, w)
+		deleteReturnUriCookie(r.Host, db, w)
 
 		redirUrl := fmt.Sprintf("%s", returnUri)
 

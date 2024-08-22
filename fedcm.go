@@ -117,7 +117,7 @@ func NewFedCmHandler(db *Database, storage Storage, loginEndpoint string, jose *
 			return
 		}
 
-		idents, _ := getIdentities(db, storage, r)
+		idents, _ := getIdentities(db, r)
 
 		if len(idents) == 0 {
 			w.WriteHeader(401)
@@ -213,7 +213,7 @@ func NewFedCmHandler(db *Database, storage Storage, loginEndpoint string, jose *
 			return
 		}
 
-		idents, _ := getIdentities(db, storage, r)
+		idents, _ := getIdentities(db, r)
 
 		accountId := r.Form.Get("account_id")
 		pkceCodeChallenge := r.Form.Get("nonce")

@@ -63,7 +63,9 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 
 	buildProviderLogoMap(storage)
 
-	prefix := storage.GetPrefix()
+	prefix, err := db.GetPrefix()
+	checkErr(err)
+
 	loginKeyName := prefix + "login_key"
 
 	// TODO: This is not thread-safe to run in a goroutine. It creates a
@@ -313,7 +315,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 			return
 		}
 
-		returnUri, err := getReturnUriCookie(storage, r)
+		returnUri, err := getReturnUriCookie(db, r)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -333,7 +335,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 			return
 		}
 
-		deleteReturnUriCookie(r.Host, storage, w)
+		deleteReturnUriCookie(r.Host, db, w)
 
 		cookieValue := ""
 		loginKeyCookie, err := r.Cookie(loginKeyName)
@@ -350,7 +352,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 			EmailVerified: true,
 		}
 
-		cookie, err := addIdentToCookie(r.Host, storage, cookieValue, newIdent, jose)
+		cookie, err := addIdentToCookie(r.Host, db, cookieValue, newIdent, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -362,7 +364,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 
 		redirUrl := fmt.Sprintf("%s", returnUri)
 
-		clearCookie(r.Host, storage, prefix+"upstream_oauth2_request", w)
+		clearCookie(r.Host, prefix+"upstream_oauth2_request", w)
 
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})
