@@ -13,6 +13,7 @@ type DatabaseIface interface {
 	GetDisplayName() (string, error)
 	GetConfig() (*DbConfig, error)
 	GetJwksJson() (string, error)
+	GetForwardAuthPassthrough() (bool, error)
 }
 
 type User struct {
@@ -46,7 +47,8 @@ func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
         CREATE TABLE IF NOT EXISTS %sconfig(
                 jwks_json TEXT UNIQUE DEFAULT "" NOT NULL,
                 public BOOLEAN UNIQUE DEFAULT false NOT NULL,
-                display_name TEXT DEFAULT "obligator" NOT NULL
+                display_name TEXT UNIQUE DEFAULT "obligator" NOT NULL,
+                forward_auth_passthrough BOOLEAN UNIQUE DEFAULT false NOT NULL
         );
         `, prefix)
 	_, err := db.Exec(stmt)
@@ -182,6 +184,31 @@ func (s *Database) SetPublic(public bool) error {
         UPDATE %sconfig SET public=?;
         `, s.prefix)
 	_, err := s.db.Exec(stmt, public)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Database) GetForwardAuthPassthrough() (bool, error) {
+	var value bool
+
+	stmt := fmt.Sprintf(`
+        SELECT forward_auth_passthrough FROM %sconfig;
+        `, d.prefix)
+	err := d.db.QueryRow(stmt).Scan(&value)
+	if err != nil {
+		return false, err
+	}
+
+	return value, nil
+}
+func (s *Database) SetForwardAuthPassthrough(value bool) error {
+	stmt := fmt.Sprintf(`
+        UPDATE %sconfig SET forward_auth_passthrough=?;
+        `, s.prefix)
+	_, err := s.db.Exec(stmt, value)
 	if err != nil {
 		return err
 	}

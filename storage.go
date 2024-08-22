@@ -8,8 +8,6 @@ type Storage interface {
 	GetOAuth2ProviderByID(string) (OAuth2Provider, error)
 	SetOauth2Provider(OAuth2Provider) error
 	GetSmtpConfig() (SmtpConfig, error)
-	GetForwardAuthPassthrough() bool
-	SetForwardAuthPassthrough(bool)
 }
 
 type Identity struct {

@@ -259,7 +259,7 @@ func NewServer(conf ServerConfig) *Server {
 	//conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
 
 	if conf.ForwardAuthPassthrough {
-		storage.SetForwardAuthPassthrough(true)
+		db.SetForwardAuthPassthrough(true)
 	}
 
 	if conf.Public {
@@ -422,7 +422,7 @@ func (s *Server) GetUsers() ([]*User, error) {
 }
 
 func (s *Server) Validate(r *http.Request) (*Validation, error) {
-	return validate(s.storage, r, s.jose)
+	return validate(s.db, s.storage, r, s.jose)
 }
 
 func (s *Server) ProxyMux(domain string, mux http.Handler) error {
@@ -438,9 +438,12 @@ func checkErrPassthrough(err error, passthrough bool) (*Validation, error) {
 	}
 }
 
-func validate(storage Storage, r *http.Request, jose *JOSE) (*Validation, error) {
+func validate(db DatabaseIface, storage Storage, r *http.Request, jose *JOSE) (*Validation, error) {
 
-	passthrough := storage.GetForwardAuthPassthrough()
+	passthrough, err := db.GetForwardAuthPassthrough()
+	if err != nil {
+		return nil, err
+	}
 
 	loginKeyName := storage.GetPrefix() + "login_key"
 

@@ -99,7 +99,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 		url := fmt.Sprintf("%s/auth?client_id=%s&redirect_uri=%s&response_type=code&state=&scope=",
 			domainToUri(authServer), redirectUri, redirectUri)
 
-		validation, err := validate(storage, r, jose)
+		validation, err := validate(db, storage, r, jose)
 		if err != nil {
 			fmt.Println(err)
 			http.Redirect(w, r, url, 307)
