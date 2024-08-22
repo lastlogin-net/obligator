@@ -27,10 +27,10 @@ type AddIdentityOauth2Handler struct {
 
 var providerLogoMap map[string]template.HTML
 
-func buildProviderLogoMap(storage Storage) {
+func buildProviderLogoMap(db DatabaseIface) {
 	providerLogoMap = make(map[string]template.HTML)
 
-	providers, err := storage.GetOAuth2Providers()
+	providers, err := db.GetOAuth2Providers()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -52,7 +52,7 @@ func buildProviderLogoMap(storage Storage) {
 	}
 }
 
-func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *OAuth2MetadataManager, jose *JOSE) *AddIdentityOauth2Handler {
+func NewAddIdentityOauth2Handler(db *Database, oauth2MetaMan *OAuth2MetadataManager, jose *JOSE) *AddIdentityOauth2Handler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityOauth2Handler{
@@ -61,7 +61,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 
 	httpClient := &http.Client{}
 
-	buildProviderLogoMap(storage)
+	buildProviderLogoMap(db)
 
 	prefix, err := db.GetPrefix()
 	checkErr(err)
@@ -79,7 +79,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 
 		oauth2ProviderId := r.Form.Get("oauth2_provider_id")
 
-		provider, err := storage.GetOAuth2ProviderByID(oauth2ProviderId)
+		provider, err := db.GetOAuth2ProviderByID(oauth2ProviderId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -181,7 +181,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 			return
 		}
 
-		oauth2Provider, err := storage.GetOAuth2ProviderByID(claimFromToken("provider_id", parsedUpstreamAuthReq))
+		oauth2Provider, err := db.GetOAuth2ProviderByID(claimFromToken("provider_id", parsedUpstreamAuthReq))
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -305,7 +305,7 @@ func NewAddIdentityOauth2Handler(storage Storage, db *Database, oauth2MetaMan *O
 			email = providerOidcToken.Email()
 			name = providerOidcToken.Name()
 		} else {
-			_, email, _ = GetProfile(&oauth2Provider, tokenRes.AccessToken)
+			_, email, _ = GetProfile(oauth2Provider, tokenRes.AccessToken)
 		}
 
 		users, err := db.GetUsers()

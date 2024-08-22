@@ -7,20 +7,20 @@ import (
 	"sync"
 )
 
+type Config JsonStorage
+
 type JsonStorage struct {
-	OAuth2Providers []OAuth2Provider `json:"oauth2_providers"`
-	Smtp            *SmtpConfig      `json:"smtp"`
-	mutex           *sync.Mutex
-	path            string
-	message_chan    chan interface{}
+	Smtp         *SmtpConfig `json:"smtp"`
+	mutex        *sync.Mutex
+	path         string
+	message_chan chan interface{}
 }
 
 func NewJsonStorage(path string) (*JsonStorage, error) {
 	s := &JsonStorage{
-		OAuth2Providers: []OAuth2Provider{},
-		mutex:           &sync.Mutex{},
-		path:            path,
-		message_chan:    make(chan interface{}),
+		mutex:        &sync.Mutex{},
+		path:         path,
+		message_chan: make(chan interface{}),
 	}
 
 	dbJson, err := os.ReadFile(path)
@@ -35,34 +35,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 		for {
 			rawMessage := <-s.message_chan
 			switch msg := rawMessage.(type) {
-			case getOauth2ProvidersMessage:
-				providers := []OAuth2Provider{}
-				for _, prov := range s.OAuth2Providers {
-					providers = append(providers, prov)
-				}
-				msg.resp <- providers
-			case setOauth2ProviderMessage:
-
-				foundIdx := -1
-				for i, prov := range s.OAuth2Providers {
-					if prov.ID == msg.provider.ID {
-						foundIdx = i
-						break
-					}
-				}
-
-				if foundIdx != -1 {
-					// replace
-					tmp := append(s.OAuth2Providers[:foundIdx], msg.provider)
-					s.OAuth2Providers = append(tmp, s.OAuth2Providers[foundIdx+1:]...)
-				} else {
-					// append a new one
-					s.OAuth2Providers = append(s.OAuth2Providers, msg.provider)
-				}
-
-				s.Persist()
-
-				msg.resp <- nil
 			case getSmtpConfigMessage:
 				if s.Smtp == nil {
 					msg.resp <- nil
@@ -76,50 +48,6 @@ func NewJsonStorage(path string) (*JsonStorage, error) {
 	s.persist()
 
 	return s, nil
-}
-
-func (s *JsonStorage) GetOAuth2ProviderByID(id string) (OAuth2Provider, error) {
-
-	providers, err := s.GetOAuth2Providers()
-	if err != nil {
-		return OAuth2Provider{}, err
-	}
-
-	for _, provider := range providers {
-		if provider.ID == id {
-			provCopy := provider
-			return provCopy, nil
-		}
-	}
-
-	return OAuth2Provider{}, errors.New("No such provider")
-}
-
-type getOauth2ProvidersMessage struct {
-	resp chan []OAuth2Provider
-}
-
-func (s *JsonStorage) GetOAuth2Providers() ([]OAuth2Provider, error) {
-	ch := make(chan []OAuth2Provider)
-	s.message_chan <- getOauth2ProvidersMessage{
-		resp: ch,
-	}
-	return <-ch, nil
-}
-
-type setOauth2ProviderMessage struct {
-	provider OAuth2Provider
-	resp     chan error
-}
-
-func (s *JsonStorage) SetOauth2Provider(provider OAuth2Provider) error {
-	resp := make(chan error)
-	s.message_chan <- setOauth2ProviderMessage{
-		provider,
-		resp,
-	}
-	err := <-resp
-	return err
 }
 
 type getSmtpConfigMessage struct {

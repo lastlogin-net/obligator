@@ -1,13 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
+	"fmt"
+	"os"
 
 	"github.com/lastlogin-io/obligator"
 )
 
 func main() {
 
+	configArg := flag.String("config", "", "Config path")
 	port := flag.Int("port", 1616, "Port")
 	prefix := flag.String("prefix", "obligator_", "Prefix for files and cookies")
 	storageDir := flag.String("storage-dir", "./", "Storage directory")
@@ -26,6 +30,24 @@ func main() {
 
 	flag.Parse()
 
+	configPath := *configArg
+
+	var config *obligator.ServerConfig
+
+	if configPath != "" {
+		configJson, err := os.ReadFile(configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to read config\n")
+			os.Exit(1)
+		}
+
+		err = json.Unmarshal(configJson, &config)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed parse JSON\n")
+			os.Exit(1)
+		}
+	}
+
 	conf := obligator.ServerConfig{
 		Port:                   *port,
 		Prefix:                 *prefix,
@@ -39,6 +61,7 @@ func main() {
 		Domains:                domains,
 		Users:                  users,
 		ProxyType:              *proxyType,
+		OAuth2Providers:        config.OAuth2Providers,
 	}
 
 	server := obligator.NewServer(conf)

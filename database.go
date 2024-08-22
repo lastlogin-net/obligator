@@ -15,6 +15,7 @@ type DatabaseIface interface {
 	GetJwksJson() (string, error)
 	GetForwardAuthPassthrough() (bool, error)
 	GetPrefix() (string, error)
+	GetOAuth2Providers() ([]*OAuth2Provider, error)
 }
 
 type User struct {
@@ -102,6 +103,24 @@ func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
         CREATE TABLE IF NOT EXISTS %susers(
                 id TEXT PRIMARY KEY,
                 id_type TEXT
+        );
+        `, prefix)
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return nil, err
+	}
+
+	stmt = fmt.Sprintf(`
+        CREATE TABLE IF NOT EXISTS %soauth2_providers(
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                uri TEXT,
+                client_id TEXT,
+                client_secret TEXT,
+                authorization_uri TEXT,
+                token_uri TEXT,
+                scope TEXT,
+                supports_openid_connect BOOLEAN
         );
         `, prefix)
 	_, err = db.Exec(stmt)
@@ -365,6 +384,47 @@ func (d *Database) SetUser(u *User) error {
         INSERT OR REPLACE INTO %susers(id_type,id) VALUES(?,?);
         `, d.prefix)
 	_, err := d.db.Exec(stmt, u.IdType, u.Id)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Database) GetOAuth2Providers() ([]*OAuth2Provider, error) {
+
+	stmt := fmt.Sprintf(`
+        SELECT * FROM %soauth2_providers;
+        `, d.prefix)
+
+	var values []*OAuth2Provider
+
+	err := d.db.Select(&values, stmt)
+	if err != nil {
+		return nil, err
+	}
+
+	return values, nil
+}
+
+func (s *Database) GetOAuth2ProviderByID(id string) (*OAuth2Provider, error) {
+
+	var p OAuth2Provider
+
+	stmt := fmt.Sprintf("SELECT * FROM %soauth2_providers WHERE id = ?", s.prefix)
+	err := s.db.Get(&p, stmt, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &p, nil
+}
+
+func (d *Database) SetOAuth2Provider(p *OAuth2Provider) error {
+	stmt := fmt.Sprintf(`
+        INSERT OR REPLACE INTO %soauth2_providers(id,name,uri,client_id,client_secret,authorization_uri,token_uri,scope,supports_openid_connect) VALUES(?,?,?,?,?,?,?,?,?);
+        `, d.prefix)
+	_, err := d.db.Exec(stmt, p.ID, p.Name, p.URI, p.ClientID, p.ClientSecret, p.AuthorizationURI, p.TokenURI, p.Scope, p.OpenIDConnect)
 	if err != nil {
 		return err
 	}

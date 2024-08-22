@@ -46,6 +46,7 @@ type ServerConfig struct {
 	LogoPng                []byte
 	DisableQrLogin         bool
 	JwksJson               string
+	OAuth2Providers        []*OAuth2Provider `json:"oauth2_providers"`
 }
 
 type StringList []string
@@ -270,14 +271,21 @@ func NewServer(conf ServerConfig) *Server {
 		db.SetPublic(true)
 	}
 
-	oauth2MetaMan := NewOAuth2MetadataManager(storage)
+	if conf.OAuth2Providers != nil {
+		for _, p := range conf.OAuth2Providers {
+			err := db.SetOAuth2Provider(p)
+			checkErr(err)
+		}
+	}
+
+	oauth2MetaMan := NewOAuth2MetadataManager(db)
 	err = oauth2MetaMan.Update()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
-	api, err := NewApi(db, storage, conf.ApiSocketDir, oauth2MetaMan)
+	api, err := NewApi(db, conf.ApiSocketDir, oauth2MetaMan)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -316,7 +324,7 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/token", oidcHandler)
 	mux.Handle("/end-session", oidcHandler)
 
-	addIdentityOauth2Handler := NewAddIdentityOauth2Handler(storage, db, oauth2MetaMan, jose)
+	addIdentityOauth2Handler := NewAddIdentityOauth2Handler(db, oauth2MetaMan, jose)
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)
 	mux.Handle("/callback", addIdentityOauth2Handler)
 
@@ -413,8 +421,9 @@ func (s *Server) AuthDomains() []string {
 	return s.Config.AuthDomains
 }
 
+// TODO: use pointer
 func (s *Server) SetOAuth2Provider(prov OAuth2Provider) error {
-	return s.api.SetOAuth2Provider(prov)
+	return s.api.SetOAuth2Provider(&prov)
 }
 
 func (s *Server) AddUser(user User) error {

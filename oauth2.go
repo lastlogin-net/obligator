@@ -3,21 +3,22 @@ package obligator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
 type OAuth2MetadataManager struct {
-	storage        Storage
+	db             DatabaseIface
 	oidcConfigs    map[string]*OAuth2ServerMetadata
 	jwksRefreshers map[string]*jwk.Cache
 	mut            *sync.Mutex
 }
 
-func NewOAuth2MetadataManager(storage Storage) *OAuth2MetadataManager {
+func NewOAuth2MetadataManager(db DatabaseIface) *OAuth2MetadataManager {
 	m := &OAuth2MetadataManager{
-		storage:     storage,
+		db:          db,
 		oidcConfigs: make(map[string]*OAuth2ServerMetadata),
 		mut:         &sync.Mutex{},
 	}
@@ -59,12 +60,13 @@ func (m *OAuth2MetadataManager) Update() error {
 
 	ctx := context.Background()
 
-	providers, err := m.storage.GetOAuth2Providers()
+	providers, err := m.db.GetOAuth2Providers()
 	if err != nil {
 		return err
 	}
 
 	for _, oidcProvider := range providers {
+		fmt.Println(oidcProvider.Name)
 		if !oidcProvider.OpenIDConnect {
 			continue
 		}

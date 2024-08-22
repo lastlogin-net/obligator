@@ -14,24 +14,22 @@ import (
 
 type Api struct {
 	db            *Database
-	storage       Storage
 	oauth2MetaMan *OAuth2MetadataManager
 }
 
-func NewApi(db *Database, storage Storage, dir string, oauth2MetaMan *OAuth2MetadataManager) (*Api, error) {
+func NewApi(db *Database, dir string, oauth2MetaMan *OAuth2MetadataManager) (*Api, error) {
 
 	mux := http.NewServeMux()
 
 	a := &Api{
 		db,
-		storage,
 		oauth2MetaMan,
 	}
 
 	mux.HandleFunc("/oauth2-providers", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			providers, err := storage.GetOAuth2Providers()
+			providers, err := db.GetOAuth2Providers()
 			if err != nil {
 				w.WriteHeader(500)
 				io.WriteString(w, err.Error())
@@ -69,7 +67,7 @@ func NewApi(db *Database, storage Storage, dir string, oauth2MetaMan *OAuth2Meta
 				return
 			}
 
-			err = a.SetOAuth2Provider(prov)
+			err = a.db.SetOAuth2Provider(&prov)
 			if err != nil {
 				w.WriteHeader(500)
 				io.WriteString(w, err.Error())
@@ -128,7 +126,7 @@ func NewApi(db *Database, storage Storage, dir string, oauth2MetaMan *OAuth2Meta
 	return a, nil
 }
 
-func (a *Api) SetOAuth2Provider(prov OAuth2Provider) error {
+func (a *Api) SetOAuth2Provider(prov *OAuth2Provider) error {
 	if prov.ID == "" {
 		return errors.New("Missing ID")
 	}
@@ -145,7 +143,7 @@ func (a *Api) SetOAuth2Provider(prov OAuth2Provider) error {
 		return errors.New("Missing client_id")
 	}
 
-	err := a.storage.SetOauth2Provider(prov)
+	err := a.db.SetOAuth2Provider(prov)
 	if err != nil {
 		return err
 	}

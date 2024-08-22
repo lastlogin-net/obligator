@@ -292,7 +292,7 @@ func NewOIDCHandler(db DatabaseIface, storage Storage, config ServerConfig, tmpl
 
 		setJwtCookie(db, r.Host, authRequestJwt, prefix+"auth_request", maxAge, w, r)
 
-		providers, err := storage.GetOAuth2Providers()
+		providers, err := db.GetOAuth2Providers()
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -318,7 +318,7 @@ func NewOIDCHandler(db DatabaseIface, storage Storage, config ServerConfig, tmpl
 			ClientId            string
 			RemainingIdentities []*Identity
 			PreviousLogins      []*Login
-			OAuth2Providers     []OAuth2Provider
+			OAuth2Providers     []*OAuth2Provider
 			LogoMap             map[string]template.HTML
 			URL                 string
 			CanEmail            bool

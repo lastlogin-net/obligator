@@ -124,7 +124,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 			canEmail = false
 		}
 
-		providers, err := storage.GetOAuth2Providers()
+		providers, err := db.GetOAuth2Providers()
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -162,7 +162,7 @@ func NewHandler(db *Database, storage Storage, conf ServerConfig, tmpl *template
 		data := struct {
 			*commonData
 			CanEmail        bool
-			OAuth2Providers []OAuth2Provider
+			OAuth2Providers []*OAuth2Provider
 			LogoMap         map[string]template.HTML
 			FedCm           bool
 			DisableQrLogin  bool
