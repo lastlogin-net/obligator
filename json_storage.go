@@ -11,7 +11,6 @@ type JsonStorage struct {
 	Prefix                 string           `json:"prefix"`
 	OAuth2Providers        []OAuth2Provider `json:"oauth2_providers"`
 	Smtp                   *SmtpConfig      `json:"smtp"`
-	FedCmEnabled           bool             `json:"fedcm_enabled"`
 	ForwardAuthPassthrough bool             `json:"forward_auth_passthrough"`
 	mutex                  *sync.Mutex
 	path                   string
@@ -184,18 +183,6 @@ func (s *JsonStorage) Persist() {
 
 func (s *JsonStorage) persist() {
 	saveJson(s, s.path)
-}
-
-func (s *JsonStorage) SetFedCmEnable(enable bool) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.FedCmEnabled = enable
-	s.persist()
-}
-func (s *JsonStorage) GetFedCmEnabled() bool {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s.FedCmEnabled
 }
 
 func (s *JsonStorage) SetForwardAuthPassthrough(enable bool) {

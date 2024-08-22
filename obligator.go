@@ -38,7 +38,6 @@ type ServerConfig struct {
 	BehindProxy            bool
 	DisplayName            string
 	GeoDbPath              string
-	FedCm                  bool
 	ForwardAuthPassthrough bool
 	Domains                StringList
 	Users                  StringList
@@ -259,10 +258,6 @@ func NewServer(conf ServerConfig) *Server {
 	// TODO: re-enable
 	//conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
 
-	if conf.FedCm {
-		storage.SetFedCmEnable(true)
-	}
-
 	if conf.ForwardAuthPassthrough {
 		storage.SetForwardAuthPassthrough(true)
 	}
@@ -349,7 +344,7 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/domains", domainHandler)
 	mux.Handle("/add-domain", domainHandler)
 
-	if storage.GetFedCmEnabled() {
+	if os.Getenv("FEDCM_ENABLED") == "true" {
 		fedCmLoginEndpoint := "/login-fedcm-auto"
 		fedCmHandler := NewFedCmHandler(db, storage, fedCmLoginEndpoint, jose)
 		mux.Handle("/.well-known/web-identity", fedCmHandler)

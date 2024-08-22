@@ -200,7 +200,7 @@ func addIdentToCookie(domain string, storage Storage, cookieValue string, newIde
 
 	sameSiteMode := http.SameSiteLaxMode
 
-	if storage.GetFedCmEnabled() {
+	if os.Getenv("FEDCM_ENABLED") == "true" {
 		sameSiteMode = http.SameSiteNoneMode
 	}
 
