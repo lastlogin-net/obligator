@@ -1,43 +1,81 @@
 package obligator
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
+	"context"
 	"embed"
 	"errors"
 	"fmt"
 	"html/template"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/ip2location/ip2location-go/v9"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
+type Identity struct {
+	IdType        string `json:"id_type"`
+	Id            string `json:"id"`
+	ProviderName  string `json:"provider_name"`
+	Name          string `json:"name,omitempty"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+}
+
+type Login struct {
+	IdType       string `json:"id_type"`
+	Id           string `json:"id"`
+	ProviderName string `json:"provider_name"`
+	Timestamp    string `json:"ts"`
+}
+
 type Server struct {
-	api     *Api
-	Config  ServerConfig
-	Mux     *ObligatorMux
-	storage Storage
+	api    *Api
+	Config ServerConfig
+	Mux    *ObligatorMux
+	db     Database
+	jose   *JOSE
+	muxMap map[string]http.Handler
 }
 
 type ServerConfig struct {
-	Port         int
-	RootUri      string
-	AuthDomains  []string
-	Prefix       string
-	StorageDir   string
-	DatabaseDir  string
-	ApiSocketDir string
-	BehindProxy  bool
-	DisplayName  string
-	GeoDbPath    string
-	FedCm        bool
+	Port                   int
+	AuthDomains            []string
+	Prefix                 string
+	DbPrefix               string
+	Database               Database
+	DatabaseDir            string
+	ApiSocketDir           string
+	BehindProxy            bool
+	DisplayName            string
+	GeoDbPath              string
+	ForwardAuthPassthrough bool
+	Domains                StringList
+	Users                  StringList
+	Public                 bool
+	ProxyType              string
+	LogoPng                []byte
+	DisableQrLogin         bool
+	JwksJson               string
+	OAuth2Providers        []*OAuth2Provider `json:"oauth2_providers"`
+	Smtp                   *SmtpConfig       `json:"smtp"`
+}
+
+type StringList []string
+
+func (d *StringList) String() string {
+	s := ""
+	for _, domain := range *d {
+		s = s + " " + domain
+	}
+	return s
+}
+
+func (d *StringList) Set(value string) error {
+	*d = append(*d, value)
+	return nil
 }
 
 type SmtpConfig struct {
@@ -57,6 +95,7 @@ type OAuth2TokenResponse struct {
 }
 
 type ObligatorMux struct {
+	server      *Server
 	behindProxy bool
 	mux         *http.ServeMux
 }
@@ -86,6 +125,31 @@ func NewObligatorMux(behindProxy bool) *ObligatorMux {
 }
 
 func (s *ObligatorMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	// TODO: mutex?
+	mux, exists := s.server.muxMap[r.Host]
+	if exists {
+		validation, err := s.server.Validate(r)
+		if err != nil {
+			w.WriteHeader(401)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		newReq := r.Clone(context.Background())
+
+		if validation != nil {
+			newReq.Header.Set("Remote-Id-Type", validation.IdType)
+			newReq.Header.Set("Remote-Id", validation.Id)
+		} else {
+			newReq.Header.Set("Remote-Id-Type", "")
+			newReq.Header.Set("Remote-Id", "")
+		}
+
+		mux.ServeHTTP(w, newReq)
+		return
+	}
+
 	// TODO: see if we can re-enable script-src none. Removed it for FedCM support
 	//w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'; script-src 'none'")
 	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
@@ -122,94 +186,124 @@ func NewServer(conf ServerConfig) *Server {
 	}
 
 	if conf.Prefix == "" {
-		conf.Prefix = "obligator"
+		conf.Prefix = "obligator_"
 	}
 
 	if conf.DisplayName == "" {
 		conf.DisplayName = "obligator"
 	}
 
-	var identsType []*Identity
-	jwt.RegisterCustomField("identities", identsType)
-	var loginsType map[string][]*Login
-	jwt.RegisterCustomField("logins", loginsType)
-	var idTokenType string
-	jwt.RegisterCustomField("id_token", idTokenType)
-
-	storagePath := filepath.Join(conf.StorageDir, conf.Prefix+"storage.json")
-	storage, err := NewJsonStorage(storagePath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
+	if conf.ProxyType == "" {
+		conf.ProxyType = "builtin"
 	}
 
-	if conf.Prefix != "obligator" || storage.GetPrefix() == "" {
-		storage.SetPrefix(conf.Prefix)
+	var err error
+
+	var db Database
+	if conf.Database != nil {
+		db = conf.Database
+	} else {
+		dbPath := filepath.Join(conf.DatabaseDir, conf.DbPrefix+"db.sqlite")
+		db, err = NewSqliteDatabase(dbPath, conf.DbPrefix)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
 	}
 
-	prefix := storage.GetPrefix()
-
-	//sqliteStorage, err := NewSqliteStorage(prefix + "storage.sqlite")
-	//if err != nil {
-	//	fmt.Fprintln(os.Stderr, err.Error())
-	//	os.Exit(1)
-	//}
-
-	dbPath := filepath.Join(conf.DatabaseDir, prefix+"db.sqlite")
-	db, err := NewDatabase(dbPath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
+	prefix, err := db.GetPrefix()
+	checkErr(err)
 
 	cluster := NewCluster()
+	writable := cluster.IAmThePrimary()
 
-	if conf.DisplayName != "obligator" {
-		storage.SetDisplayName(conf.DisplayName)
+	if writable {
+
+		if conf.Smtp != nil {
+			err := db.SetSmtpConfig(conf.Smtp)
+			checkErr(err)
+		}
+
+		if conf.Prefix != "obligator_" || prefix == "" {
+			db.SetPrefix(conf.Prefix)
+		}
+
+		if conf.DisplayName != "obligator" {
+			db.SetDisplayName(conf.DisplayName)
+		}
+
+		for _, domain := range conf.Domains {
+			db.AddDomain(domain, "root")
+		}
+
+		for _, userId := range conf.Users {
+			err := db.SetUser(&User{
+				IdType: "email",
+				Id:     userId,
+			})
+			checkErr(err)
+		}
+
+		// TODO: re-enable
+		//conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
+
+		if conf.ForwardAuthPassthrough {
+			db.SetForwardAuthPassthrough(true)
+		}
+
+		if conf.Public {
+			db.SetPublic(true)
+		}
+
+		if conf.OAuth2Providers != nil {
+			for _, p := range conf.OAuth2Providers {
+				err := db.SetOAuth2Provider(p)
+				checkErr(err)
+			}
+		}
+
 	}
 
-	if conf.RootUri != "" {
-		storage.SetRootUri(conf.RootUri)
-	}
-
-	rootUrl, err := url.Parse(conf.RootUri)
+	domains, err := db.GetDomains()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
 	}
 
-	conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
-
-	if storage.GetRootUri() == "" {
-		fmt.Fprintln(os.Stderr, "WARNING: No root URI set")
+	if len(domains) == 0 {
+		fmt.Fprintln(os.Stderr, "WARNING: No domains set")
 	}
 
-	if conf.FedCm {
-		storage.SetFedCmEnable(true)
+	prefix, err = db.GetPrefix()
+	checkErr(err)
+
+	proxy := NewProxy(&conf, prefix)
+
+	for _, d := range domains {
+		// TODO: was running this in goroutines, but not all the
+		// domains were making it into Caddy. Need to make it work
+		// in parallel
+		err = proxy.AddDomain(d.Domain)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+		}
 	}
 
-	oauth2MetaMan := NewOAuth2MetadataManager(storage)
+	oauth2MetaMan := NewOAuth2MetadataManager(db)
+
 	err = oauth2MetaMan.Update()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
-	api, err := NewApi(storage, conf.ApiSocketDir, oauth2MetaMan)
+	api, err := NewApi(db, conf.ApiSocketDir, oauth2MetaMan)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 
-	if storage.GetJWKSet().Len() == 0 {
-		key, err := GenerateJWK()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
-
-		storage.AddJWKKey(key)
-	}
+	jose, err := NewJOSE(db, cluster)
+	checkErr(err)
 
 	tmpl, err := template.ParseFS(fs, "templates/*")
 	if err != nil {
@@ -228,10 +322,10 @@ func NewServer(conf ServerConfig) *Server {
 		}
 	}
 
-	handler := NewHandler(storage, conf, tmpl)
+	handler := NewHandler(db, conf, tmpl, jose)
 	mux.Handle("/", handler)
 
-	oidcHandler := NewOIDCHandler(storage, tmpl)
+	oidcHandler := NewOIDCHandler(db, conf, tmpl, jose)
 	mux.Handle("/.well-known/openid-configuration", oidcHandler)
 	mux.Handle("/jwks", oidcHandler)
 	mux.Handle("/register", oidcHandler)
@@ -239,46 +333,62 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/auth", oidcHandler)
 	mux.Handle("/approve", oidcHandler)
 	mux.Handle("/token", oidcHandler)
+	mux.Handle("/end-session", oidcHandler)
 
-	addIdentityOauth2Handler := NewAddIdentityOauth2Handler(storage, oauth2MetaMan)
+	addIdentityOauth2Handler := NewAddIdentityOauth2Handler(db, oauth2MetaMan, jose)
 	mux.Handle("/login-oauth2", addIdentityOauth2Handler)
 	mux.Handle("/callback", addIdentityOauth2Handler)
 
-	addIdentityEmailHandler := NewAddIdentityEmailHandler(storage, db, cluster, tmpl, conf.BehindProxy, geoDb)
+	addIdentityEmailHandler := NewAddIdentityEmailHandler(db, cluster, tmpl, conf.BehindProxy, geoDb, jose)
 	mux.Handle("/login-email", addIdentityEmailHandler)
 	mux.Handle("/email-sent", addIdentityEmailHandler)
 	mux.Handle("/magic", addIdentityEmailHandler)
 	mux.Handle("/confirm-magic", addIdentityEmailHandler)
 	mux.Handle("/complete-email-login", addIdentityEmailHandler)
 
-	addIdentityGamlHandler := NewAddIdentityGamlHandler(storage, cluster, tmpl)
+	addIdentityGamlHandler := NewAddIdentityGamlHandler(db, cluster, tmpl, jose)
 	mux.Handle("/login-gaml", addIdentityGamlHandler)
 	mux.Handle("/gaml-code", addIdentityGamlHandler)
 	mux.Handle("/complete-gaml-login", addIdentityGamlHandler)
 
-	qrHandler := NewQrHandler(storage, cluster, tmpl)
+	qrHandler := NewQrHandler(db, cluster, tmpl, jose)
 	mux.Handle("/login-qr", qrHandler)
 	mux.Handle("/qr", qrHandler)
 	mux.Handle("/send", qrHandler)
 	mux.Handle("/receive", qrHandler)
 
-	if storage.GetFedCmEnabled() {
+	indieAuthPrefix := "/indieauth"
+	indieAuthHandler := NewIndieAuthHandler(db, tmpl, indieAuthPrefix, jose)
+	mux.Handle("/users/", indieAuthHandler)
+	mux.Handle("/.well-known/oauth-authorization-server", indieAuthHandler)
+	mux.Handle(indieAuthPrefix+"/", http.StripPrefix(indieAuthPrefix, indieAuthHandler))
+
+	domainHandler := NewDomainHandler(db, tmpl, cluster, proxy, jose)
+	mux.Handle("/domains", domainHandler)
+	mux.Handle("/add-domain", domainHandler)
+
+	if os.Getenv("FEDCM_ENABLED") == "true" {
 		fedCmLoginEndpoint := "/login-fedcm-auto"
-		fedCmHandler := NewFedCmHandler(storage, fedCmLoginEndpoint)
+		fedCmHandler := NewFedCmHandler(db, fedCmLoginEndpoint, jose)
 		mux.Handle("/.well-known/web-identity", fedCmHandler)
 		mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
 
-		addIdentityFedCmHandler := NewAddIdentityFedCmHandler(storage, tmpl)
+		addIdentityFedCmHandler := NewAddIdentityFedCmHandler(db, tmpl, jose)
 		mux.Handle("/login-fedcm", addIdentityFedCmHandler)
 		mux.Handle("/complete-login-fedcm", addIdentityFedCmHandler)
 	}
 
 	s := &Server{
-		Config:  conf,
-		Mux:     mux,
-		api:     api,
-		storage: storage,
+		Config: conf,
+		Mux:    mux,
+		api:    api,
+		db:     db,
+		jose:   jose,
+		muxMap: make(map[string]http.Handler),
 	}
+
+	// TODO: very hacky
+	mux.server = s
 
 	return s
 }
@@ -288,6 +398,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) Start() error {
+
 	server := http.Server{
 		Addr:    fmt.Sprintf(":%d", s.Config.Port),
 		Handler: s.Mux,
@@ -304,9 +415,10 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) AuthUri(authReq *OAuth2AuthRequest) string {
-	return AuthUri(s.Config.RootUri+"/auth", authReq)
-}
+// TODO: re-enable
+//func (s *Server) AuthUri(authReq *OAuth2AuthRequest) string {
+//	return AuthUri(s.Config.RootUri+"/auth", authReq)
+//}
 
 func AuthUri(serverUri string, authReq *OAuth2AuthRequest) string {
 	uri := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&response_type=%s&state=%s&scope=%s",
@@ -319,49 +431,71 @@ func (s *Server) AuthDomains() []string {
 	return s.Config.AuthDomains
 }
 
+// TODO: use pointer
 func (s *Server) SetOAuth2Provider(prov OAuth2Provider) error {
-	return s.api.SetOAuth2Provider(prov)
+	return s.api.SetOAuth2Provider(&prov)
 }
 
 func (s *Server) AddUser(user User) error {
 	return s.api.AddUser(user)
 }
 
-func (s *Server) GetUsers() ([]User, error) {
+func (s *Server) GetUsers() ([]*User, error) {
 	return s.api.GetUsers()
 }
 
 func (s *Server) Validate(r *http.Request) (*Validation, error) {
-	r.ParseForm()
+	return validate(s.db, r, s.jose)
+}
 
-	loginKeyName := s.storage.GetPrefix() + "login_key"
+func (s *Server) ProxyMux(domain string, mux http.Handler) error {
+	s.muxMap[domain] = mux
+	return nil
+}
+
+func checkErrPassthrough(err error, passthrough bool) (*Validation, error) {
+	if passthrough {
+		return nil, nil
+	} else {
+		return nil, err
+	}
+}
+
+func validate(db Database, r *http.Request, jose *JOSE) (*Validation, error) {
+
+	passthrough, err := db.GetForwardAuthPassthrough()
+	if err != nil {
+		return nil, err
+	}
+
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		return nil, err
+	}
+
+	loginKeyName := prefix + "login_key"
 
 	loginKeyCookie, err := r.Cookie(loginKeyName)
 	if err != nil {
-		return nil, err
+		return checkErrPassthrough(err, passthrough)
 	}
 
-	// TODO: don't generate publicJwks every time
-	publicJwks, err := jwk.PublicSetOf(s.storage.GetJWKSet())
+	parsed, err := jose.Parse(loginKeyCookie.Value)
 	if err != nil {
-		return nil, err
-	}
-
-	parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
-	if err != nil {
-		return nil, err
+		return checkErrPassthrough(err, passthrough)
 	}
 
 	tokIdentsInterface, exists := parsed.Get("identities")
 	if !exists {
-		return nil, errors.New("No identities")
+		return checkErrPassthrough(errors.New("No identities"), passthrough)
 	}
 
 	tokIdents, ok := tokIdentsInterface.([]*Identity)
 	if !ok {
-		return nil, errors.New("No identities")
+		return checkErrPassthrough(errors.New("No identities"), passthrough)
 	}
 
+	// TODO: maybe return whole list of identities?
 	ident := tokIdents[0]
 
 	v := &Validation{
@@ -372,32 +506,9 @@ func (s *Server) Validate(r *http.Request) (*Validation, error) {
 	return v, nil
 }
 
-func GenerateJWK() (jwk.Key, error) {
-	raw, err := rsa.GenerateKey(rand.Reader, 2048)
+func checkErr(err error) {
 	if err != nil {
-		return nil, err
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
 	}
-
-	key, err := jwk.FromRaw(raw)
-	if err != nil {
-		return nil, err
-	}
-
-	if _, ok := key.(jwk.RSAPrivateKey); !ok {
-		return nil, err
-	}
-
-	err = jwk.AssignKeyID(key)
-	if err != nil {
-		return nil, err
-	}
-
-	key.Set("alg", "RS256")
-
-	//key.Set(jwk.KeyUsageKey, "sig")
-	//keyset := jwk.NewSet()
-	//keyset.Add(key)
-	//return keyset, nil
-
-	return key, nil
 }

@@ -11,8 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/skip2/go-qrcode"
 )
 
@@ -27,13 +25,10 @@ type PendingShare struct {
 }
 
 type QrTemplateData struct {
-	DisplayName  string
-	RootUri      string
-	Identities   []*Identity
+	*commonData
 	QrKey        string
 	InstanceId   string
 	ErrorMessage string
-	ReturnUri    string
 }
 
 func (h *QrHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +37,7 @@ func (h *QrHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 const checkboxPrefix = "checkbox_"
 
-func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *QrHandler {
+func NewQrHandler(db Database, cluster *Cluster, tmpl *template.Template, jose *JOSE) *QrHandler {
 
 	pendingShares := make(map[string]PendingShare)
 	mut := &sync.Mutex{}
@@ -53,15 +48,11 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		mux,
 	}
 
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
 	const ShareTimeout = 2 * time.Minute
 
-	prefix := storage.GetPrefix()
+	prefix, err := db.GetPrefix()
+	checkErr(err)
+
 	loginKeyName := prefix + "login_key"
 
 	// Periodically clean up expired shares
@@ -94,7 +85,8 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 			return
 		}
 
-		qrUrl := fmt.Sprintf("%s/qr?key=%s&instance_id=%s", storage.GetRootUri(), qrKey, cluster.GetLocalId())
+		rootUri := domainToUri(r.Host)
+		qrUrl := fmt.Sprintf("%s/qr?key=%s&instance_id=%s", rootUri, qrKey, cluster.GetLocalId())
 
 		qrCode, err := qrcode.Encode(qrUrl, qrcode.Medium, 256)
 		if err != nil {
@@ -106,24 +98,16 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		qrPng := base64.StdEncoding.EncodeToString(qrCode)
 		qrDataUri := template.URL("data:image/png;base64," + qrPng)
 
-		idents, _ := getIdentities(storage, r, publicJwks)
-
 		templateData := struct {
-			DisplayName  string
-			RootUri      string
+			*commonData
 			QrDataUri    template.URL
 			QrKey        string
 			ErrorMessage string
-			Identities   []*Identity
-			ReturnUri    string
 		}{
-			DisplayName:  storage.GetDisplayName(),
-			RootUri:      storage.GetRootUri(),
+			commonData:   newCommonData(nil, db, r),
 			QrDataUri:    qrDataUri,
 			QrKey:        qrKey,
 			ErrorMessage: "",
-			Identities:   idents,
-			ReturnUri:    "/login",
 		}
 
 		err = tmpl.ExecuteTemplate(w, "login-qr.html", templateData)
@@ -141,37 +125,14 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		qrKey := r.Form.Get("key")
 		instanceId := r.Form.Get("instance_id")
 
-		identities := []*Identity{}
-
-		loginKeyCookie, err := r.Cookie(loginKeyName)
-		if err == nil && loginKeyCookie.Value != "" {
-			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
-			if err != nil {
-				w.WriteHeader(401)
-				io.WriteString(w, err.Error())
-				return
-			} else {
-				tokIdentsInterface, exists := parsed.Get("identities")
-				if exists {
-					if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
-						identities = tokIdents
-					}
-				}
-			}
-
-		}
-
 		templateData := QrTemplateData{
-			DisplayName:  storage.GetDisplayName(),
-			RootUri:      storage.GetRootUri(),
-			Identities:   identities,
+			commonData:   newCommonData(nil, db, r),
 			QrKey:        qrKey,
 			InstanceId:   instanceId,
 			ErrorMessage: "",
-			ReturnUri:    "/login",
 		}
 
-		err = tmpl.ExecuteTemplate(w, "qr.html", templateData)
+		err := tmpl.ExecuteTemplate(w, "qr.html", templateData)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
@@ -195,7 +156,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 
 		loginKeyCookie, err := r.Cookie(loginKeyName)
 		if err == nil && loginKeyCookie.Value != "" {
-			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+			parsed, err := ParseJWT(db, loginKeyCookie.Value)
 			if err != nil {
 				w.WriteHeader(401)
 				io.WriteString(w, err.Error())
@@ -254,13 +215,10 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 			w.WriteHeader(400)
 
 			templateData := QrTemplateData{
-				DisplayName:  storage.GetDisplayName(),
-				RootUri:      storage.GetRootUri(),
-				Identities:   identities,
+				commonData:   newCommonData(nil, db, r),
 				QrKey:        qrKey,
 				InstanceId:   ogInstanceId,
 				ErrorMessage: "You must select at least one identity",
-				ReturnUri:    "/login",
 			}
 
 			err = tmpl.ExecuteTemplate(w, "qr.html", templateData)
@@ -278,18 +236,10 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		defer mut.Unlock()
 		pendingShares[qrKey] = share
 
-		idents, _ := getIdentities(storage, r, publicJwks)
-
 		templateData := struct {
-			DisplayName string
-			RootUri     string
-			Identities  []*Identity
-			ReturnUri   string
+			*commonData
 		}{
-			DisplayName: storage.GetDisplayName(),
-			RootUri:     storage.GetRootUri(),
-			Identities:  idents,
-			ReturnUri:   "/login",
+			commonData: newCommonData(nil, db, r),
 		}
 
 		err = tmpl.ExecuteTemplate(w, "send-success.html", templateData)
@@ -304,13 +254,15 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		r.ParseForm()
 		qrKey := r.Form.Get("qr_key")
 
+		serverUri := domainToUri(r.Host)
+
 		mut.Lock()
 		share, exists := pendingShares[qrKey]
 		mut.Unlock()
 		if !exists {
 			w.WriteHeader(400)
 
-			qrUrl := fmt.Sprintf("%s/qr/%s", storage.GetRootUri(), qrKey)
+			qrUrl := fmt.Sprintf("%s/qr/%s", serverUri, qrKey)
 
 			qrCode, err := qrcode.Encode(qrUrl, qrcode.Medium, 256)
 			if err != nil {
@@ -323,19 +275,15 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 			qrDataUri := template.URL("data:image/png;base64," + qrPng)
 
 			templateData := struct {
-				DisplayName  string
-				RootUri      string
+				*commonData
 				QrKey        string
 				QrDataUri    template.URL
 				ErrorMessage string
-				ReturnUri    string
 			}{
-				DisplayName:  storage.GetDisplayName(),
-				RootUri:      storage.GetRootUri(),
+				commonData:   newCommonData(nil, db, r),
 				QrKey:        qrKey,
 				QrDataUri:    qrDataUri,
 				ErrorMessage: "No share found. Make sure you've scanned the QR code on the sharing device and confirmed",
-				ReturnUri:    "/login",
 			}
 
 			err = tmpl.ExecuteTemplate(w, "login-qr.html", templateData)
@@ -355,7 +303,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 		}
 
 		for _, ident := range share.Identities {
-			cookie, err = addIdentToCookie(storage, cookie.Value, ident)
+			cookie, err = addIdentToCookie(r.Host, db, cookie.Value, ident, jose)
 			if err != nil {
 				w.WriteHeader(500)
 				fmt.Fprintf(os.Stderr, err.Error())
@@ -365,7 +313,7 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 
 		for clientId, clientLogins := range share.Logins {
 			for _, login := range clientLogins {
-				cookie, err = addLoginToCookie(storage, cookie.Value, clientId, login)
+				cookie, err = addLoginToCookie(r.Host, db, cookie.Value, clientId, login, jose)
 				if err != nil {
 					w.WriteHeader(500)
 					fmt.Fprintf(os.Stderr, err.Error())
@@ -376,13 +324,13 @@ func NewQrHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *Q
 
 		http.SetCookie(w, cookie)
 
-		returnUri, err := getReturnUriCookie(storage, r)
+		returnUri, err := getReturnUriCookie(db, r)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
-		deleteReturnUriCookie(storage, w)
+		deleteReturnUriCookie(r.Host, db, w)
 
 		redirUrl := fmt.Sprintf("%s", returnUri)
 

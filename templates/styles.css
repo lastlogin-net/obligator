@@ -252,7 +252,6 @@ table, th, td {
   align-items: center;
   border: 1px solid var(--line-color);
   border-radius: var(--border-radius);
-  padding: 0 5px;
 }
 
 .og-banner-link {
@@ -260,6 +259,10 @@ table, th, td {
   align-items: center;
   color: var(--main-color);
   text-decoration: none;
+}
+
+.og-banner-link-img {
+  padding: 8px;
 }
 
 .og-auth-client-id {

@@ -5,14 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
+	//"time"
 	//"net/http/httputil"
-	"os"
-
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
-	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
 type FedCmWebId struct {
@@ -20,10 +16,11 @@ type FedCmWebId struct {
 }
 
 type FedCmConfig struct {
-	AccountsEndpoint       string `json:"accounts_endpoint,omitempty"`
-	ClientMetadataEndpoint string `json:"client_metadata_endpoint,omitempty"`
-	IdAssertionEndpoint    string `json:"id_assertion_endpoint,omitempty"`
-	LoginUrl               string `json:"login_url,omitempty"`
+	AccountsEndpoint       string   `json:"accounts_endpoint,omitempty"`
+	ClientMetadataEndpoint string   `json:"client_metadata_endpoint,omitempty"`
+	IdAssertionEndpoint    string   `json:"id_assertion_endpoint,omitempty"`
+	LoginUrl               string   `json:"login_url,omitempty"`
+	Types                  []string `json:"types"`
 }
 
 type FedCmAccounts struct {
@@ -60,7 +57,12 @@ type FedCmHandler struct {
 	mux *http.ServeMux
 }
 
-func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
+type IndieAuthFedCmResponse struct {
+	Code             string `json:"code"`
+	MetadataEndpoint string `json:"metadata_endpoint"`
+}
+
+func NewFedCmHandler(db Database, loginEndpoint string, jose *JOSE) *FedCmHandler {
 
 	mux := http.NewServeMux()
 
@@ -68,18 +70,11 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 		mux: mux,
 	}
 
-	privateJwks := storage.GetJWKSet()
-	publicJwks, err := jwk.PublicSetOf(privateJwks)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
 	mux.HandleFunc("/.well-known/web-identity", func(w http.ResponseWriter, r *http.Request) {
 
 		webId := FedCmWebId{
 			ProviderUrls: []string{
-				fmt.Sprintf("%s/fedcm/config.json", storage.GetRootUri()),
+				fmt.Sprintf("%s/fedcm/config.json", domainToUri(r.Host)),
 			},
 		}
 
@@ -93,11 +88,17 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 		}
 	})
 	mux.HandleFunc("/config.json", func(w http.ResponseWriter, r *http.Request) {
+
+		uri := domainToUri(r.Host)
+
 		config := FedCmConfig{
-			AccountsEndpoint: fmt.Sprintf("%s/fedcm/accounts", storage.GetRootUri()),
-			//ClientMetadataEndpoint: fmt.Sprintf("%s/fedcm/client-metadata", storage.GetRootUri()),
-			IdAssertionEndpoint: fmt.Sprintf("%s/fedcm/id-assertion", storage.GetRootUri()),
-			LoginUrl:            fmt.Sprintf("%s%s", storage.GetRootUri(), loginEndpoint),
+			AccountsEndpoint: fmt.Sprintf("%s/fedcm/accounts", uri),
+			//ClientMetadataEndpoint: fmt.Sprintf("%s/fedcm/client-metadata", uri),
+			IdAssertionEndpoint: fmt.Sprintf("%s/fedcm/id-assertion", uri),
+			LoginUrl:            fmt.Sprintf("%s%s", uri, loginEndpoint),
+			Types: []string{
+				"indieauth",
+			},
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -116,7 +117,7 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 			return
 		}
 
-		idents, _ := getIdentities(storage, r, publicJwks)
+		idents, _ := getIdentities(db, r)
 
 		if len(idents) == 0 {
 			w.WriteHeader(401)
@@ -145,7 +146,7 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		err = json.NewEncoder(w).Encode(accounts)
+		err := json.NewEncoder(w).Encode(accounts)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -154,9 +155,11 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 	})
 	mux.HandleFunc("/client-metadata", func(w http.ResponseWriter, r *http.Request) {
 
+		uri := domainToUri(r.Host)
+
 		md := FedCmClientMetadata{
-			PrivacyPolicyUrl:  storage.GetRootUri(),
-			TermsOfServiceUrl: storage.GetRootUri(),
+			PrivacyPolicyUrl:  uri,
+			TermsOfServiceUrl: uri,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -173,19 +176,23 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 
 		clientId := r.Form.Get("client_id")
 
-		w.Header().Set("Access-Control-Allow-Origin", clientId)
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Content-Type", "application/json")
+		origin := r.Header.Get("Origin")
 
-		if r.Header.Get("Sec-Fetch-Dest") != "webidentity" {
-			w.WriteHeader(401)
-			io.WriteString(w, "Sec-Fetch-Dest != webidentity")
+		parsedOrigin, err := url.Parse(origin)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
 			return
 		}
 
-		origin := r.Header.Get("Origin")
+		parsedClientId, err := url.Parse(clientId)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
 
-		if origin != clientId {
+		if parsedOrigin.Host != parsedClientId.Host {
 			w.WriteHeader(401)
 			res := FedCmIdAssertionErrorResponse{
 				Error: FedCmIdAssertionError{
@@ -196,55 +203,129 @@ func NewFedCmHandler(storage Storage, loginEndpoint string) *FedCmHandler {
 			return
 		}
 
-		accountId := r.Form.Get("account_id")
+		w.Header().Set("Access-Control-Allow-Origin", "https://"+parsedClientId.Host)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Content-Type", "application/json")
 
-		idents, _ := getIdentities(storage, r, publicJwks)
+		if r.Header.Get("Sec-Fetch-Dest") != "webidentity" {
+			w.WriteHeader(401)
+			io.WriteString(w, "Sec-Fetch-Dest != webidentity")
+			return
+		}
+
+		idents, _ := getIdentities(db, r)
+
+		accountId := r.Form.Get("account_id")
+		pkceCodeChallenge := r.Form.Get("nonce")
+
+		issuedAt := time.Now().UTC()
+		codeJwt, err := NewJWTBuilder().
+			IssuedAt(issuedAt).
+			// TODO: make shorter
+			//Expiration(issuedAt.Add(16*time.Second)).
+			Expiration(issuedAt.Add(5*time.Minute)).
+			//Subject(idToken.Email()).
+			Claim("domain", r.Host).
+			Claim("pkce_code_challenge", pkceCodeChallenge).
+			Build()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		signedCode, err := SignJWT(db, codeJwt)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		payload := IndieAuthFedCmResponse{
+			Code:             string(signedCode),
+			MetadataEndpoint: fmt.Sprintf("https://%s/.well-known/oauth-authorization-server", r.Host),
+		}
+
+		payloadJson, err := json.Marshal(payload)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
 
 		res := FedCmIdAssertionSuccessResponse{
-			Token: "fake-token",
+			Token: string(payloadJson),
 		}
+
+		//uri := domainToUri(r.Host)
 
 		// TODO: Multiple idents might map to the same email. might
 		// need to start using unique random IDs for accounts.
+		var foundIdent *Identity = nil
 		for _, ident := range idents {
 			if accountId == ident.Id {
 
-				issuedAt := time.Now().UTC()
-				expiresAt := issuedAt.Add(8 * time.Minute)
-
-				idTokenBuilder := openid.NewBuilder().
-					Email(ident.Id).
-					Subject(ident.Id).
-					Audience([]string{clientId}).
-					Issuer(storage.GetRootUri()).
-					IssuedAt(issuedAt).
-					Expiration(expiresAt)
-					//Claim("nonce", claimFromToken("nonce", parsedAuthReq))
-				if ident.Name != "" {
-					idTokenBuilder.Name(ident.Name)
-				}
-
-				idToken, err := idTokenBuilder.Build()
-				if err != nil {
-					fmt.Fprintf(os.Stderr, err.Error())
-					break
-				}
-
-				key, exists := storage.GetJWKSet().Key(0)
-				if !exists {
-					fmt.Fprintf(os.Stderr, "No keys available")
-					break
-				}
-
-				signedIdToken, err := jwt.Sign(idToken, jwt.WithKey(jwa.RS256, key))
-				if err != nil {
-					fmt.Fprintf(os.Stderr, err.Error())
-					break
-				}
-
-				res.Token = string(signedIdToken)
+				foundIdent = ident
 				break
+
+				// TODO: this code is for directly returning the ID token. We're currently
+				// hard coded for IndieAuth.
+
+				//issuedAt := time.Now().UTC()
+				//expiresAt := issuedAt.Add(8 * time.Minute)
+
+				//idTokenBuilder := openid.NewBuilder().
+				//	Email(ident.Id).
+				//	Subject(ident.Id).
+				//	Audience([]string{clientId}).
+				//	Issuer(uri).
+				//	IssuedAt(issuedAt).
+				//	Expiration(expiresAt)
+				//	//Claim("nonce", claimFromToken("nonce", parsedAuthReq))
+				//if ident.Name != "" {
+				//	idTokenBuilder.Name(ident.Name)
+				//}
+
+				//idToken, err := idTokenBuilder.Build()
+				//if err != nil {
+				//	fmt.Fprintf(os.Stderr, err.Error())
+				//	break
+				//}
+
+				//key, exists := storage.GetJWKSet().Key(0)
+				//if !exists {
+				//	fmt.Fprintf(os.Stderr, "No keys available")
+				//	break
+				//}
+
+				//signedIdToken, err := jwt.Sign(idToken, jwt.WithKey(jwa.RS256, key))
+				//if err != nil {
+				//	fmt.Fprintf(os.Stderr, err.Error())
+				//	break
+				//}
+
+				//res.Token = string(signedIdToken)
+				//break
 			}
+		}
+
+		if foundIdent == nil {
+			w.WriteHeader(403)
+			io.WriteString(w, "No proper identity found")
+			return
+		}
+
+		domain, err := db.GetDomain(r.Host)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		if domain.HashedOwnerId != Hash(foundIdent.Id) {
+			w.WriteHeader(403)
+			io.WriteString(w, "You don't own this domain")
+			return
 		}
 
 		err = json.NewEncoder(w).Encode(res)

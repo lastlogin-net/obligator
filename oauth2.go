@@ -3,21 +3,23 @@ package obligator
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"sync"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
 type OAuth2MetadataManager struct {
-	storage        Storage
+	db             Database
 	oidcConfigs    map[string]*OAuth2ServerMetadata
 	jwksRefreshers map[string]*jwk.Cache
 	mut            *sync.Mutex
 }
 
-func NewOAuth2MetadataManager(storage Storage) *OAuth2MetadataManager {
+func NewOAuth2MetadataManager(db Database) *OAuth2MetadataManager {
 	m := &OAuth2MetadataManager{
-		storage:     storage,
+		db:          db,
 		oidcConfigs: make(map[string]*OAuth2ServerMetadata),
 		mut:         &sync.Mutex{},
 	}
@@ -51,38 +53,48 @@ func (m *OAuth2MetadataManager) GetKeyset(providerId string) (jwk.Set, error) {
 }
 
 func (m *OAuth2MetadataManager) Update() error {
+
+	// TODO: Make this more robust. We're holding the lock until the update
+	// completes. It will either succeed or we exit
 	m.mut.Lock()
-	defer m.mut.Unlock()
 
-	m.oidcConfigs = make(map[string]*OAuth2ServerMetadata)
-	m.jwksRefreshers = make(map[string]*jwk.Cache)
+	go func() {
+		defer m.mut.Unlock()
 
-	ctx := context.Background()
+		m.oidcConfigs = make(map[string]*OAuth2ServerMetadata)
+		m.jwksRefreshers = make(map[string]*jwk.Cache)
 
-	providers, err := m.storage.GetOAuth2Providers()
-	if err != nil {
-		return err
-	}
+		ctx := context.Background()
 
-	for _, oidcProvider := range providers {
-		if !oidcProvider.OpenIDConnect {
-			continue
-		}
-
-		var err error
-		m.oidcConfigs[oidcProvider.ID], err = GetOidcConfiguration(oidcProvider.URI)
+		providers, err := m.db.GetOAuth2Providers()
 		if err != nil {
-			return err
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
 		}
 
-		m.jwksRefreshers[oidcProvider.ID] = jwk.NewCache(ctx)
-		m.jwksRefreshers[oidcProvider.ID].Register(m.oidcConfigs[oidcProvider.ID].JwksUri)
+		for _, oidcProvider := range providers {
+			if !oidcProvider.OpenIDConnect {
+				continue
+			}
 
-		_, err = m.jwksRefreshers[oidcProvider.ID].Refresh(ctx, m.oidcConfigs[oidcProvider.ID].JwksUri)
-		if err != nil {
-			return err
+			var err error
+			m.oidcConfigs[oidcProvider.ID], err = GetOidcConfiguration(oidcProvider.URI)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+				os.Exit(1)
+			}
+
+			m.jwksRefreshers[oidcProvider.ID] = jwk.NewCache(ctx)
+			m.jwksRefreshers[oidcProvider.ID].Register(m.oidcConfigs[oidcProvider.ID].JwksUri)
+
+			_, err = m.jwksRefreshers[oidcProvider.ID].Refresh(ctx, m.oidcConfigs[oidcProvider.ID].JwksUri)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+				os.Exit(1)
+			}
 		}
-	}
+
+	}()
 
 	return nil
 }

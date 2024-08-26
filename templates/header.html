@@ -23,12 +23,13 @@
 
   <div class='og-banner-container'>
     <a class='og-banner-link' href='/'>
-      <img src='/logo.png' width=64 height=64 />
+      <img class='og-banner-link-img' src='/logo.png' width=64 height=64 />
       {{.DisplayName}}
     </a>
   </div>
 
   <div class='og-top-button-container'>
+    {{if not $.DisableHeaderButtons}}
     {{if $.Identities}}
     <form action="/logout" method="POST">
       {{if $.ReturnUri}}
@@ -38,6 +39,14 @@
       {{end}}
       <button class='og-button' type="submit">Log out</button>
     </form>
+    {{else}}
+    <a href='/login'>
+      <button class='og-button'>Login</button>
+    </a>
     {{end}}
+    <a href='/domains'>
+      <button class='og-button'>Domains</button>
+    </a>
     <button id='og-register-fedcm-button' class='og-button og-remove'>Register FedCM</button>
+    {{end}}
   </div>

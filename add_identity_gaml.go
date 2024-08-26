@@ -10,16 +10,13 @@ import (
 	"os"
 	"sync"
 	"time"
-
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
 type AddIdentityGamlHandler struct {
 	mux *http.ServeMux
 }
 
-func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template.Template) *AddIdentityGamlHandler {
+func NewAddIdentityGamlHandler(db Database, cluster *Cluster, tmpl *template.Template, jose *JOSE) *AddIdentityGamlHandler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityGamlHandler{
@@ -31,19 +28,17 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 	pendingCodes := make(map[string]string)
 	mut := &sync.Mutex{}
 
-	prefix := storage.GetPrefix()
+	prefix, err := db.GetPrefix()
+	checkErr(err)
+
 	loginKeyName := prefix + "login_key"
 
 	mux.HandleFunc("/login-gaml", func(w http.ResponseWriter, r *http.Request) {
 
 		templateData := struct {
-			DisplayName string
-			RootUri     string
-			ReturnUri   string
+			*commonData
 		}{
-			DisplayName: storage.GetDisplayName(),
-			RootUri:     storage.GetRootUri(),
-			ReturnUri:   "/login",
+			commonData: newCommonData(nil, db, r),
 		}
 
 		err := tmpl.ExecuteTemplate(w, "login-gaml.html", templateData)
@@ -110,7 +105,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 
 		issuedAt := time.Now().UTC()
 		maxAge := 2 * time.Minute
-		reqJwt, err := jwt.NewBuilder().
+		reqJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(maxAge)).
 			Claim("url", urlId).
@@ -122,18 +117,14 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			return
 		}
 
-		setJwtCookie(storage, reqJwt, prefix+"_gaml_login_state", maxAge, w, r)
+		setJwtCookie(db, r.Host, reqJwt, prefix+"_gaml_login_state", maxAge, w, r)
 
 		templateData := struct {
-			DisplayName string
-			RootUri     string
-			GamlCode    string
-			ReturnUri   string
+			*commonData
+			GamlCode string
 		}{
-			DisplayName: storage.GetDisplayName(),
-			RootUri:     storage.GetRootUri(),
-			GamlCode:    gamlCode,
-			ReturnUri:   "/login",
+			commonData: newCommonData(nil, db, r),
+			GamlCode:   gamlCode,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "gaml-code.html", templateData)
@@ -157,14 +148,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			return
 		}
 
-		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		parsedUpstreamAuthReq, err := jwt.Parse([]byte(upstreamAuthReqCookie.Value), jwt.WithKeySet(publicJwks))
+		parsedUpstreamAuthReq, err := ParseJWT(db, upstreamAuthReqCookie.Value)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -201,7 +185,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			return
 		}
 
-		request, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
+		request, err := getJwtFromCookie(prefix+"auth_request", w, r, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -214,7 +198,13 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 			cookieValue = loginKeyCookie.Value
 		}
 
-		cookie, err := addIdentityToCookie(storage, "URL", urlId, "", cookieValue, false)
+		newIdent := &Identity{
+			IdType:       "url",
+			Id:           urlId,
+			ProviderName: "URL",
+		}
+
+		cookie, err := addIdentToCookie(r.Host, db, cookieValue, newIdent, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -223,7 +213,7 @@ func NewAddIdentityGamlHandler(storage Storage, cluster *Cluster, tmpl *template
 
 		http.SetCookie(w, cookie)
 
-		redirUrl := fmt.Sprintf("%s/auth?%s", storage.GetRootUri(), claimFromToken("raw_query", request))
+		redirUrl := fmt.Sprintf("%s/auth?%s", domainToUri(r.Host), claimFromToken("raw_query", request))
 
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})

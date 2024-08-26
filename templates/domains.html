@@ -1,0 +1,66 @@
+{{ template "header.html" . }}
+
+<p>
+  You can use this form to add a domain, which you can then use as your own
+  identity server. <strong>NOTE:</strong> this feature is experimental, and
+  there are caveats:
+</p>
+
+<ul>
+  <li>
+    Upstream social login providers won't work, because the redirect URIs won't
+    be properly set. This limits you to email, QR, or LastLogin.io login.
+  </li>
+  <li>
+    FedCM will only work if you use an "eTLD+1" domain. See
+    <a href="https://developers.google.com/privacy-sandbox/3pcd/fedcm-developer-guide#use-api">here</a>.
+    This means you have to commit your apex domain to LastLogin, or
+    you have to host your FedCM metadata yourself.
+  </li>
+</ul>
+
+<p>
+  First you need to point your domain
+  to our servers. You can either set a <strong>CNAME</strong> record to
+  <strong>{{.Host}}</strong>, or set both of the following:
+</p>
+
+<ul>
+  <li>
+    An <strong>A</strong> record to <strong>{{.Ipv4}}</strong>
+  </li>
+
+  <li>
+    An <strong>AAAA</strong> record to <strong>{{.Ipv6}}</strong>
+  </li>
+</ul>
+
+<p>
+  After that's done and the DNS has had time to propagate (see
+  <a href="https://takingnames.io/blog/dns-propagation">here</a>), you can submit
+  your domain below. After you're redirected, you'll probably need to refresh
+  the page a few times before it works. It needs time to get the TLS certs.
+</p>
+
+<form class='tn-form' action="/add-domain" method="POST">
+  <p>
+    Select an identity to be the admin for this domain:
+  </p>
+
+  <select name='owner_id'>
+    {{range .Identities}}
+    <option>{{.Id}}</option>
+    {{end}}
+  </select>
+
+  <p>
+    Enter the domain to add:
+  </p>
+  <input type='text' name='domain' placeholder="Enter a domain" />
+
+  <button class='og-formbutton' type="submit">
+    Submit
+  </button>
+</form>
+
+{{ template "footer.html" . }}

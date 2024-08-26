@@ -4,32 +4,32 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
+	//"net"
 	"net/http"
 	"net/mail"
-	"os"
-	"path/filepath"
+	//"os"
+	//"path/filepath"
 	"strings"
 )
 
 type Api struct {
-	storage       Storage
+	db            Database
 	oauth2MetaMan *OAuth2MetadataManager
 }
 
-func NewApi(storage Storage, dir string, oauth2MetaMan *OAuth2MetadataManager) (*Api, error) {
+func NewApi(db Database, dir string, oauth2MetaMan *OAuth2MetadataManager) (*Api, error) {
 
 	mux := http.NewServeMux()
 
 	a := &Api{
-		storage,
+		db,
 		oauth2MetaMan,
 	}
 
 	mux.HandleFunc("/oauth2-providers", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			providers, err := storage.GetOAuth2Providers()
+			providers, err := db.GetOAuth2Providers()
 			if err != nil {
 				w.WriteHeader(500)
 				io.WriteString(w, err.Error())
@@ -67,33 +67,13 @@ func NewApi(storage Storage, dir string, oauth2MetaMan *OAuth2MetadataManager) (
 				return
 			}
 
-			err = a.SetOAuth2Provider(prov)
+			err = a.db.SetOAuth2Provider(&prov)
 			if err != nil {
 				w.WriteHeader(500)
 				io.WriteString(w, err.Error())
 				return
 			}
 
-		}
-	})
-
-	mux.HandleFunc("/root-uri", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case "PUT":
-			r.ParseForm()
-			rootUri := r.Form.Get("root_uri")
-			if rootUri == "" {
-				w.WriteHeader(400)
-				io.WriteString(w, "Missing root_uri")
-				return
-			}
-
-			err := storage.SetRootUri(rootUri)
-			if err != nil {
-				w.WriteHeader(400)
-				io.WriteString(w, err.Error())
-				return
-			}
 		}
 	})
 
@@ -126,27 +106,27 @@ func NewApi(storage Storage, dir string, oauth2MetaMan *OAuth2MetadataManager) (
 		}
 	})
 
-	server := http.Server{
-		Handler: mux,
-	}
+	//server := http.Server{
+	//	Handler: mux,
+	//}
 
-	sockPath := filepath.Join(dir, storage.GetPrefix()+"api.sock")
+	//sockPath := filepath.Join(dir, storage.GetPrefix()+"api.sock")
 
-	os.Remove(sockPath)
+	//os.Remove(sockPath)
 
-	listener, err := net.Listen("unix", sockPath)
-	if err != nil {
-		return nil, err
-	}
+	//listener, err := net.Listen("unix", sockPath)
+	//if err != nil {
+	//	return nil, err
+	//}
 
-	go func() {
-		server.Serve(listener)
-	}()
+	//go func() {
+	//	server.Serve(listener)
+	//}()
 
 	return a, nil
 }
 
-func (a *Api) SetOAuth2Provider(prov OAuth2Provider) error {
+func (a *Api) SetOAuth2Provider(prov *OAuth2Provider) error {
 	if prov.ID == "" {
 		return errors.New("Missing ID")
 	}
@@ -163,7 +143,7 @@ func (a *Api) SetOAuth2Provider(prov OAuth2Provider) error {
 		return errors.New("Missing client_id")
 	}
 
-	err := a.storage.SetOauth2Provider(prov)
+	err := a.db.SetOAuth2Provider(prov)
 	if err != nil {
 		return err
 	}
@@ -177,24 +157,18 @@ func (a *Api) SetOAuth2Provider(prov OAuth2Provider) error {
 }
 
 func (a *Api) AddUser(user User) error {
-	_, err := mail.ParseAddress(user.Email)
+	_, err := mail.ParseAddress(user.Id)
 	if err != nil {
 		return err
 	}
 
-	err = a.storage.CreateUser(user)
+	err = a.db.SetUser(&user)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (a *Api) GetUsers() ([]User, error) {
-
-	users, err := a.storage.GetUsers()
-	if err != nil {
-		return nil, err
-	}
-
-	return users, nil
+func (a *Api) GetUsers() ([]*User, error) {
+	return a.db.GetUsers()
 }

@@ -12,11 +12,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
-	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
 
 type OAuth2ServerMetadata struct {
@@ -32,6 +27,8 @@ type OAuth2ServerMetadata struct {
 	SubjectTypesSupported             []string `json:"subject_types_supported"`
 	RegistrationEndpoint              string   `json:"registration_endpoint"`
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
+	IntrospectionEndpoint             string   `json:"introspection_endpoint,omitempty"`
+	EndSessionEndpoint                string   `json:"end_session_endpoint"`
 }
 
 type OAuth2AuthRequest struct {
@@ -55,20 +52,16 @@ type OIDCRegistrationRequest struct {
 	RedirectUris []string `json:"redirect_uris"`
 }
 
-func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
+func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, jose *JOSE) *OIDCHandler {
 	mux := http.NewServeMux()
 
 	h := &OIDCHandler{
 		mux: mux,
 	}
 
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
+	prefix, err := db.GetPrefix()
+	checkErr(err)
 
-	prefix := storage.GetPrefix()
 	loginKeyName := prefix + "login_key"
 
 	// draft-ietf-oauth-security-topics-24 2.6
@@ -77,14 +70,14 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 
-		rootUri := storage.GetRootUri()
+		uri := fmt.Sprintf("https://%s", r.Host)
 
 		doc := OAuth2ServerMetadata{
-			Issuer:                           rootUri,
-			AuthorizationEndpoint:            fmt.Sprintf("%s/auth", rootUri),
-			TokenEndpoint:                    fmt.Sprintf("%s/token", rootUri),
-			UserinfoEndpoint:                 fmt.Sprintf("%s/userinfo", rootUri),
-			JwksUri:                          fmt.Sprintf("%s/jwks", rootUri),
+			Issuer:                           uri,
+			AuthorizationEndpoint:            fmt.Sprintf("%s/auth", uri),
+			TokenEndpoint:                    fmt.Sprintf("%s/token", uri),
+			UserinfoEndpoint:                 fmt.Sprintf("%s/userinfo", uri),
+			JwksUri:                          fmt.Sprintf("%s/jwks", uri),
 			ScopesSupported:                  []string{"openid", "email", "profile"},
 			ResponseTypesSupported:           []string{"code"},
 			IdTokenSigningAlgValuesSupported: []string{"RS256"},
@@ -92,17 +85,54 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			CodeChallengeMethodsSupported: []string{"S256"},
 			// https://openid.net/specs/openid-connect-core-1_0.html#SubjectIDTypes
 			SubjectTypesSupported:             []string{"public"},
-			RegistrationEndpoint:              fmt.Sprintf("%s/register", rootUri),
+			RegistrationEndpoint:              fmt.Sprintf("%s/register", uri),
 			TokenEndpointAuthMethodsSupported: []string{"none"},
+			EndSessionEndpoint:                fmt.Sprintf("%s/end-session", uri),
 		}
 
 		json.NewEncoder(w).Encode(doc)
+	})
+
+	mux.HandleFunc("/end-session", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+
+		redirUri := r.Form.Get("post_logout_redirect_uri")
+
+		parsedRedirUri, err := url.Parse(redirUri)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		data := struct {
+			*commonData
+			RpDomain    string
+			RedirectUri string
+		}{
+			commonData:  newCommonData(nil, db, r),
+			RpDomain:    parsedRedirUri.Host,
+			RedirectUri: redirUri,
+		}
+
+		err = tmpl.ExecuteTemplate(w, "logout.html", data)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
 	})
 
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
+
+		publicJwks, err := jose.GetPublicJwks()
+		if err != nil {
+			w.WriteHeader(500)
+			return
+		}
 
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
@@ -113,7 +143,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		var regReq OIDCRegistrationRequest
 
-		err = json.NewDecoder(r.Body).Decode(&regReq)
+		err := json.NewDecoder(r.Body).Decode(&regReq)
 		if err != nil {
 			w.WriteHeader(400)
 			return
@@ -158,7 +188,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		accessToken := parts[1]
 
-		parsed, err := jwt.Parse([]byte(accessToken), jwt.WithKeySet(publicJwks))
+		parsed, err := jose.Parse(accessToken)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
@@ -195,7 +225,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		if err == nil && loginKeyCookie.Value != "" {
 			hashedLoginKey = Hash(loginKeyCookie.Value)
 
-			parsed, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+			parsed, err := jose.Parse(loginKeyCookie.Value)
 			if err != nil {
 				// Only add identities from current cookie if it's valid
 			} else {
@@ -241,9 +271,10 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		maxAge := 8 * time.Minute
 		issuedAt := time.Now().UTC()
-		authRequestJwt, err := jwt.NewBuilder().
+		authRequestJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(maxAge)).
+			// TODO: should we be checking login_key_hash?
 			Claim("login_key_hash", hashedLoginKey).
 			Claim("client_id", ar.ClientId).
 			Claim("redirect_uri", ar.RedirectUri).
@@ -259,9 +290,9 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		setJwtCookie(storage, authRequestJwt, prefix+"auth_request", maxAge, w, r)
+		setJwtCookie(db, r.Host, authRequestJwt, prefix+"auth_request", maxAge, w, r)
 
-		providers, err := storage.GetOAuth2Providers()
+		providers, err := db.GetOAuth2Providers()
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -269,7 +300,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		}
 
 		canEmail := true
-		if _, err := storage.GetSmtpConfig(); err != nil {
+		if _, err := db.GetSmtpConfig(); err != nil {
 			canEmail = false
 		}
 
@@ -283,31 +314,29 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		returnUri := fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery)
 
 		data := struct {
-			RootUri             string
-			DisplayName         string
+			*commonData
 			ClientId            string
-			Identities          []*Identity
 			RemainingIdentities []*Identity
 			PreviousLogins      []*Login
-			OAuth2Providers     []OAuth2Provider
+			OAuth2Providers     []*OAuth2Provider
 			LogoMap             map[string]template.HTML
 			URL                 string
 			CanEmail            bool
-			ReturnUri           string
+			DisableQrLogin      bool
 		}{
-			RootUri:             storage.GetRootUri(),
-			DisplayName:         storage.GetDisplayName(),
+			commonData: newCommonData(&commonData{
+				ReturnUri: returnUri,
+			}, db, r),
 			ClientId:            parsedClientId.Host,
-			Identities:          identities,
 			RemainingIdentities: remainingIdents,
 			PreviousLogins:      previousLogins,
 			OAuth2Providers:     providers,
 			LogoMap:             providerLogoMap,
 			CanEmail:            canEmail,
-			ReturnUri:           returnUri,
+			DisableQrLogin:      config.DisableQrLogin,
 		}
 
-		setReturnUriCookie(storage, returnUri, w)
+		setReturnUriCookie(r.Host, db, returnUri, w)
 
 		err = tmpl.ExecuteTemplate(w, "auth.html", data)
 		if err != nil {
@@ -322,7 +351,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		if r.Method != http.MethodPost {
 			w.WriteHeader(405)
-			io.WriteString(w, err.Error())
+			io.WriteString(w, "Invalid method")
 			return
 		}
 
@@ -333,16 +362,16 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		parsedLoginKey, err := jwt.Parse([]byte(loginKeyCookie.Value), jwt.WithKeySet(publicJwks))
+		parsedLoginKey, err := jose.Parse(loginKeyCookie.Value)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		clearCookie(storage, prefix+"auth_request", w)
+		clearCookie(r.Host, prefix+"auth_request", w)
 
-		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", storage, w, r)
+		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", w, r, jose)
 		if err != nil {
 			w.WriteHeader(401)
 			io.WriteString(w, err.Error())
@@ -378,7 +407,9 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			ProviderName: identity.ProviderName,
 		}
 
-		newLoginCookie, err := addLoginToCookie(storage, loginKeyCookie.Value, clientId, newLogin)
+		uri := domainToUri(r.Host)
+
+		newLoginCookie, err := addLoginToCookie(r.Host, db, loginKeyCookie.Value, clientId, newLogin, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -403,10 +434,10 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		issuedAt := time.Now().UTC()
 		expiresAt := issuedAt.Add(24 * time.Hour)
 
-		idTokenBuilder := openid.NewBuilder().
+		idTokenBuilder := NewOIDCTokenBuilder().
 			Subject(identId).
 			Audience([]string{clientId}).
-			Issuer(storage.GetRootUri()).
+			Issuer(uri).
 			IssuedAt(issuedAt).
 			Expiration(expiresAt).
 			Claim("nonce", claimFromToken("nonce", parsedAuthReq))
@@ -427,14 +458,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		key, exists := storage.GetJWKSet().Key(0)
-		if !exists {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "No keys available")
-			return
-		}
-
-		signedIdToken, err := jwt.Sign(idToken, jwt.WithKey(jwa.RS256, key))
+		signedIdToken, err := jose.Sign(idToken)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -442,7 +466,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 		}
 
 		// TODO: should maybe be encrypting this
-		codeJwt, err := jwt.NewBuilder().
+		codeJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(16*time.Second)).
 			Subject(idToken.Email()).
@@ -455,7 +479,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		signedCode, err := jwt.Sign(codeJwt, jwt.WithKey(jwa.RS256, key))
+		signedCode, err := jose.Sign(codeJwt)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
@@ -487,7 +511,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 
 		codeJwt := r.Form.Get("code")
 
-		parsedCodeJwt, err := jwt.Parse([]byte(codeJwt), jwt.WithKeySet(publicJwks))
+		parsedCodeJwt, err := jose.Parse(codeJwt)
 		if err != nil {
 			fmt.Println(err.Error())
 			w.WriteHeader(401)
@@ -534,15 +558,8 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			}
 		}
 
-		key, exists := storage.GetJWKSet().Key(0)
-		if !exists {
-			w.WriteHeader(500)
-			fmt.Fprintf(os.Stderr, "No keys available")
-			return
-		}
-
 		issuedAt := time.Now().UTC()
-		accessTokenJwt, err := jwt.NewBuilder().
+		accessTokenJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(16 * time.Second)).
 			Subject(parsedCodeJwt.Subject()).
@@ -553,7 +570,7 @@ func NewOIDCHandler(storage Storage, tmpl *template.Template) *OIDCHandler {
 			return
 		}
 
-		signedAccessToken, err := jwt.Sign(accessTokenJwt, jwt.WithKey(jwa.RS256, key))
+		signedAccessToken, err := jose.Sign(accessTokenJwt)
 		if err != nil {
 			w.WriteHeader(400)
 			io.WriteString(w, err.Error())
@@ -596,10 +613,27 @@ func ParseAuthRequest(w http.ResponseWriter, r *http.Request) (*OAuth2AuthReques
 		return nil, errors.New("redirect_uri missing")
 	}
 
+	parsedClientIdUri, err := url.Parse(clientId)
+	if err != nil {
+		w.WriteHeader(400)
+		msg := "client_id is not a valid URI"
+		io.WriteString(w, msg)
+		return nil, errors.New(msg)
+	}
+
+	parsedRedirectUri, err := url.Parse(redirectUri)
+	if err != nil {
+		w.WriteHeader(400)
+		msg := "redirect_uri is not a valid URI"
+		io.WriteString(w, msg)
+		return nil, errors.New(msg)
+	}
+
 	// draft-ietf-oauth-security-topics-24 4.1
-	if !strings.HasPrefix(redirectUri, clientId) {
+	if parsedClientIdUri.Host != parsedRedirectUri.Host {
 		w.WriteHeader(400)
 		io.WriteString(w, "redirect_uri must be on the same domain as client_id")
+		fmt.Println(redirectUri, clientId)
 		return nil, errors.New("redirect_uri must be on the same domain as client_id")
 	}
 
@@ -622,12 +656,15 @@ func ParseAuthRequest(w http.ResponseWriter, r *http.Request) (*OAuth2AuthReques
 		return nil, errors.New("unsupported_response_type")
 	}
 
+	pkceCodeChallenge := r.Form.Get("code_challenge")
+
 	return &OAuth2AuthRequest{
-		ClientId:     clientId,
-		RedirectUri:  redirectUri,
-		ResponseType: responseType,
-		Scope:        scope,
-		State:        state,
+		ClientId:      clientId,
+		RedirectUri:   redirectUri,
+		ResponseType:  responseType,
+		Scope:         scope,
+		State:         state,
+		CodeChallenge: pkceCodeChallenge,
 	}, nil
 }
 

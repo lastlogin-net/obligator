@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
@@ -17,38 +16,26 @@ type AddIdentityFedCmHandler struct {
 	mux *http.ServeMux
 }
 
-func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddIdentityFedCmHandler {
+func NewAddIdentityFedCmHandler(db Database, tmpl *template.Template, jose *JOSE) *AddIdentityFedCmHandler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityFedCmHandler{
 		mux: mux,
 	}
 
-	publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
+	prefix, err := db.GetPrefix()
+	checkErr(err)
 
-	prefix := storage.GetPrefix()
 	loginKeyName := prefix + "login_key"
 
 	mux.HandleFunc("/login-fedcm", func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
 
-		idents, _ := getIdentities(storage, r, publicJwks)
-
 		data := struct {
-			RootUri     string
-			DisplayName string
-			Identities  []*Identity
-			ReturnUri   string
+			*commonData
 		}{
-			RootUri:     storage.GetRootUri(),
-			DisplayName: storage.GetDisplayName(),
-			Identities:  idents,
-			ReturnUri:   "/login",
+			commonData: newCommonData(nil, db, r),
 		}
 
 		err := tmpl.ExecuteTemplate(w, "login-fedcm.html", data)
@@ -133,7 +120,7 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 			return
 		}
 
-		if oidcToken.Audience()[0] != storage.GetRootUri() {
+		if oidcToken.Audience()[0] != domainToUri(r.Host) {
 			w.WriteHeader(401)
 			io.WriteString(w, "FedCM: Wrong aud in OIDC token")
 			return
@@ -156,20 +143,20 @@ func NewAddIdentityFedCmHandler(storage Storage, tmpl *template.Template) *AddId
 			EmailVerified: true,
 		}
 
-		cookie, err := addIdentToCookie(storage, cookieValue, newIdent)
+		cookie, err := addIdentToCookie(r.Host, db, cookieValue, newIdent, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		returnUri, err := getReturnUriCookie(storage, r)
+		returnUri, err := getReturnUriCookie(db, r)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
-		deleteReturnUriCookie(storage, w)
+		deleteReturnUriCookie(r.Host, db, w)
 
 		w.Header().Add("Set-Login", "logged-in")
 		http.SetCookie(w, cookie)

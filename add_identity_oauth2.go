@@ -17,7 +17,6 @@ import (
 	"time"
 	//"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
 )
@@ -28,10 +27,10 @@ type AddIdentityOauth2Handler struct {
 
 var providerLogoMap map[string]template.HTML
 
-func buildProviderLogoMap(storage Storage) {
+func buildProviderLogoMap(db Database) {
 	providerLogoMap = make(map[string]template.HTML)
 
-	providers, err := storage.GetOAuth2Providers()
+	providers, err := db.GetOAuth2Providers()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -53,7 +52,7 @@ func buildProviderLogoMap(storage Storage) {
 	}
 }
 
-func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataManager) *AddIdentityOauth2Handler {
+func NewAddIdentityOauth2Handler(db Database, oauth2MetaMan *OAuth2MetadataManager, jose *JOSE) *AddIdentityOauth2Handler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityOauth2Handler{
@@ -62,15 +61,12 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 
 	httpClient := &http.Client{}
 
-	buildProviderLogoMap(storage)
+	buildProviderLogoMap(db)
 
-	prefix := storage.GetPrefix()
+	prefix, err := db.GetPrefix()
+	checkErr(err)
+
 	loginKeyName := prefix + "login_key"
-
-	// TODO: This is not thread-safe to run in a goroutine. It creates a
-	// race condition with any incoming requests. But this speeds up
-	// startup for development.
-	go oauth2MetaMan.Update()
 
 	mux.HandleFunc("/login-oauth2", func(w http.ResponseWriter, r *http.Request) {
 
@@ -78,7 +74,7 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 
 		oauth2ProviderId := r.Form.Get("oauth2_provider_id")
 
-		provider, err := storage.GetOAuth2ProviderByID(oauth2ProviderId)
+		provider, err := db.GetOAuth2ProviderByID(oauth2ProviderId)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -132,7 +128,7 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 		// extensions.
 		issuedAt := time.Now().UTC()
 		maxAge := 8 * time.Minute
-		reqJwt, err := jwt.NewBuilder().
+		reqJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(maxAge)).
 			Claim("provider_id", provider.ID).
@@ -146,12 +142,17 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			return
 		}
 
-		setJwtCookie(storage, reqJwt, prefix+"upstream_oauth2_request", maxAge, w, r)
+		setJwtCookie(db, r.Host, reqJwt, prefix+"upstream_oauth2_request", maxAge, w, r)
 
-		callbackUri := fmt.Sprintf("%s/callback", storage.GetRootUri())
+		callbackUri := fmt.Sprintf("%s/callback", domainToUri(r.Host))
+
+		clientId := domainToUri(r.Host)
+		if provider.ClientID != "" {
+			clientId = provider.ClientID
+		}
 
 		url := fmt.Sprintf("%s?client_id=%s&redirect_uri=%s&state=%s&scope=%s&response_type=code&code_challenge_method=S256&code_challenge=%s&nonce=%s&prompt=consent",
-			authURL, provider.ClientID, callbackUri, state,
+			authURL, clientId, callbackUri, state,
 			scope, pkceCodeChallenge, nonce)
 
 		http.Redirect(w, r, url, http.StatusSeeOther)
@@ -168,21 +169,14 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			return
 		}
 
-		publicJwks, err := jwk.PublicSetOf(storage.GetJWKSet())
+		parsedUpstreamAuthReq, err := ParseJWT(db, upstreamAuthReqCookie.Value)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		parsedUpstreamAuthReq, err := jwt.Parse([]byte(upstreamAuthReqCookie.Value), jwt.WithKeySet(publicJwks))
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		oauth2Provider, err := storage.GetOAuth2ProviderByID(claimFromToken("provider_id", parsedUpstreamAuthReq))
+		oauth2Provider, err := db.GetOAuth2ProviderByID(claimFromToken("provider_id", parsedUpstreamAuthReq))
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
@@ -191,8 +185,7 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 
 		providerCode := r.Form.Get("code")
 
-		rootUri := storage.GetRootUri()
-		callbackUri := fmt.Sprintf("%s/callback", rootUri)
+		callbackUri := fmt.Sprintf("%s/callback", domainToUri(r.Host))
 
 		body := url.Values{}
 		body.Set("code", providerCode)
@@ -307,29 +300,37 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			email = providerOidcToken.Email()
 			name = providerOidcToken.Name()
 		} else {
-			_, email, _ = GetProfile(&oauth2Provider, tokenRes.AccessToken)
+			_, email, _ = GetProfile(oauth2Provider, tokenRes.AccessToken)
 		}
 
-		users, err := storage.GetUsers()
+		users, err := db.GetUsers()
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
 
-		returnUri, err := getReturnUriCookie(storage, r)
+		returnUri, err := getReturnUriCookie(db, r)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
-		deleteReturnUriCookie(storage, w)
 
-		if !storage.GetPublic() && !validUser(email, users) {
-			redirUrl := fmt.Sprintf("%s/no-account?%s", rootUri, returnUri)
+		config, err := db.GetConfig()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			w.WriteHeader(500)
+			return
+		}
+
+		if !config.Public && !validUser(email, users) {
+			redirUrl := fmt.Sprintf("%s/no-account?%s", domainToUri(r.Host), returnUri)
 			http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 			return
 		}
+
+		deleteReturnUriCookie(r.Host, db, w)
 
 		cookieValue := ""
 		loginKeyCookie, err := r.Cookie(loginKeyName)
@@ -346,7 +347,7 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 			EmailVerified: true,
 		}
 
-		cookie, err := addIdentToCookie(storage, cookieValue, newIdent)
+		cookie, err := addIdentToCookie(r.Host, db, cookieValue, newIdent, jose)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
@@ -358,7 +359,7 @@ func NewAddIdentityOauth2Handler(storage Storage, oauth2MetaMan *OAuth2MetadataM
 
 		redirUrl := fmt.Sprintf("%s", returnUri)
 
-		clearCookie(storage, prefix+"upstream_oauth2_request", w)
+		clearCookie(r.Host, prefix+"upstream_oauth2_request", w)
 
 		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
 	})

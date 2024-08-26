@@ -10,11 +10,6 @@
     <strong>{{.Id}}</strong> ({{.ProviderName}})
   </div>
   {{end}}
-
-  {{else}}
-  <p>
-    No available identities.
-  </p>
   {{end}}
 
   {{ template "add-identities.html" . }}

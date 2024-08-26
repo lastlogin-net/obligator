@@ -1,5 +1,5 @@
 <p>
-  Add an identity using a provider below:
+  To log in, add an identity:
 </p>
 
 <div class='og-button-list'>
@@ -29,6 +29,7 @@
   </div>
   -->
   
+  {{if not .DisableQrLogin}}
   <div>
     <form action="/login-qr" method="POST">
       <button class='og-formbutton' type="submit">
@@ -39,6 +40,7 @@
       </button>
     </form>
   </div>
+  {{end}}
 
   {{range $.OAuth2Providers}}
   <div>
