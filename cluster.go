@@ -38,6 +38,15 @@ func (c *Cluster) GetLocalId() string {
 	return c.localId
 }
 
+func (c *Cluster) IAmThePrimary() bool {
+	_, err := c.PrimaryHost()
+	if err != nil {
+		return true
+	} else {
+		return false
+	}
+}
+
 // TODO: currently hits filesystem for every request. Might be able to listen
 // for primary change events and only update periodically
 func (c *Cluster) PrimaryHost() (string, error) {

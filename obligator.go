@@ -211,30 +211,57 @@ func NewServer(conf ServerConfig) *Server {
 		}
 	}
 
-	if conf.Smtp != nil {
-		err := db.SetSmtpConfig(conf.Smtp)
-		checkErr(err)
-	}
-
 	prefix, err := db.GetPrefix()
 	checkErr(err)
 
-	if conf.Prefix != "obligator_" || prefix == "" {
-		db.SetPrefix(conf.Prefix)
-	}
-
-	prefix, err = db.GetPrefix()
-	checkErr(err)
-
 	cluster := NewCluster()
-	proxy := NewProxy(&conf, prefix)
+	writable := cluster.IAmThePrimary()
 
-	if conf.DisplayName != "obligator" {
-		db.SetDisplayName(conf.DisplayName)
-	}
+	if writable {
 
-	for _, domain := range conf.Domains {
-		db.AddDomain(domain, "root")
+		if conf.Smtp != nil {
+			err := db.SetSmtpConfig(conf.Smtp)
+			checkErr(err)
+		}
+
+		if conf.Prefix != "obligator_" || prefix == "" {
+			db.SetPrefix(conf.Prefix)
+		}
+
+		if conf.DisplayName != "obligator" {
+			db.SetDisplayName(conf.DisplayName)
+		}
+
+		for _, domain := range conf.Domains {
+			db.AddDomain(domain, "root")
+		}
+
+		for _, userId := range conf.Users {
+			err := db.SetUser(&User{
+				IdType: "email",
+				Id:     userId,
+			})
+			checkErr(err)
+		}
+
+		// TODO: re-enable
+		//conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
+
+		if conf.ForwardAuthPassthrough {
+			db.SetForwardAuthPassthrough(true)
+		}
+
+		if conf.Public {
+			db.SetPublic(true)
+		}
+
+		if conf.OAuth2Providers != nil {
+			for _, p := range conf.OAuth2Providers {
+				err := db.SetOAuth2Provider(p)
+				checkErr(err)
+			}
+		}
+
 	}
 
 	domains, err := db.GetDomains()
@@ -242,17 +269,14 @@ func NewServer(conf ServerConfig) *Server {
 		fmt.Fprintln(os.Stderr, err.Error())
 	}
 
-	for _, userId := range conf.Users {
-		err := db.SetUser(&User{
-			IdType: "email",
-			Id:     userId,
-		})
-		checkErr(err)
-	}
-
 	if len(domains) == 0 {
 		fmt.Fprintln(os.Stderr, "WARNING: No domains set")
 	}
+
+	prefix, err = db.GetPrefix()
+	checkErr(err)
+
+	proxy := NewProxy(&conf, prefix)
 
 	for _, d := range domains {
 		// TODO: was running this in goroutines, but not all the
@@ -261,24 +285,6 @@ func NewServer(conf ServerConfig) *Server {
 		err = proxy.AddDomain(d.Domain)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
-		}
-	}
-
-	// TODO: re-enable
-	//conf.AuthDomains = append(conf.AuthDomains, rootUrl.Host)
-
-	if conf.ForwardAuthPassthrough {
-		db.SetForwardAuthPassthrough(true)
-	}
-
-	if conf.Public {
-		db.SetPublic(true)
-	}
-
-	if conf.OAuth2Providers != nil {
-		for _, p := range conf.OAuth2Providers {
-			err := db.SetOAuth2Provider(p)
-			checkErr(err)
 		}
 	}
 
@@ -296,7 +302,7 @@ func NewServer(conf ServerConfig) *Server {
 		os.Exit(1)
 	}
 
-	jose, err := NewJOSE(db)
+	jose, err := NewJOSE(db, cluster)
 	checkErr(err)
 
 	tmpl, err := template.ParseFS(fs, "templates/*")
@@ -357,7 +363,7 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/.well-known/oauth-authorization-server", indieAuthHandler)
 	mux.Handle(indieAuthPrefix+"/", http.StripPrefix(indieAuthPrefix, indieAuthHandler))
 
-	domainHandler := NewDomainHandler(db, tmpl, proxy, jose)
+	domainHandler := NewDomainHandler(db, tmpl, cluster, proxy, jose)
 	mux.Handle("/domains", domainHandler)
 	mux.Handle("/add-domain", domainHandler)
 

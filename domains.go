@@ -18,7 +18,7 @@ func (h *DomainHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
-func NewDomainHandler(db Database, tmpl *template.Template, proxy Proxy, jose *JOSE) *DomainHandler {
+func NewDomainHandler(db Database, tmpl *template.Template, cluster *Cluster, proxy Proxy, jose *JOSE) *DomainHandler {
 
 	mux := http.NewServeMux()
 
@@ -120,6 +120,16 @@ func NewDomainHandler(db Database, tmpl *template.Template, proxy Proxy, jose *J
 		//        io.WriteString(w, "CNAME != host")
 		//        return
 		//}
+
+		primaryHost, err := cluster.PrimaryHost()
+		if err != nil {
+			// I *am* the primary
+		} else {
+			done := cluster.RedirectOrForward(primaryHost, w, r)
+			if done {
+				return
+			}
+		}
 
 		err = proxy.AddDomain(domain)
 		if err != nil {

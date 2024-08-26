@@ -35,7 +35,7 @@ type JOSE struct {
 	jwks jwk.Set
 }
 
-func NewJOSE(db Database) (*JOSE, error) {
+func NewJOSE(db Database, cluster *Cluster) (*JOSE, error) {
 
 	var identsType []*Identity
 	jwt.RegisterCustomField("identities", identsType)
@@ -49,7 +49,7 @@ func NewJOSE(db Database) (*JOSE, error) {
 		return nil, err
 	}
 
-	if jwksJson == "" {
+	if jwksJson == "" && cluster.IAmThePrimary() {
 		jwks, err := GenerateJWKS()
 		if err != nil {
 			return nil, err
