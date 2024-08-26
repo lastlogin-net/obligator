@@ -27,7 +27,7 @@ type AddIdentityOauth2Handler struct {
 
 var providerLogoMap map[string]template.HTML
 
-func buildProviderLogoMap(db DatabaseIface) {
+func buildProviderLogoMap(db Database) {
 	providerLogoMap = make(map[string]template.HTML)
 
 	providers, err := db.GetOAuth2Providers()
@@ -52,7 +52,7 @@ func buildProviderLogoMap(db DatabaseIface) {
 	}
 }
 
-func NewAddIdentityOauth2Handler(db *Database, oauth2MetaMan *OAuth2MetadataManager, jose *JOSE) *AddIdentityOauth2Handler {
+func NewAddIdentityOauth2Handler(db Database, oauth2MetaMan *OAuth2MetadataManager, jose *JOSE) *AddIdentityOauth2Handler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityOauth2Handler{

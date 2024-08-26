@@ -31,11 +31,11 @@ func NewJWT() jwt.Token {
 }
 
 type JOSE struct {
-	db   *Database
+	db   Database
 	jwks jwk.Set
 }
 
-func NewJOSE(db *Database) (*JOSE, error) {
+func NewJOSE(db Database) (*JOSE, error) {
 
 	var identsType []*Identity
 	jwt.RegisterCustomField("identities", identsType)
@@ -77,7 +77,7 @@ func NewJOSE(db *Database) (*JOSE, error) {
 func (j *JOSE) GetJWKS() (jwk.Set, error) {
 	return GetJWKS(j.db)
 }
-func GetJWKS(db DatabaseIface) (jwk.Set, error) {
+func GetJWKS(db Database) (jwk.Set, error) {
 
 	jwksJson, err := db.GetJwksJson()
 	if err != nil {
@@ -95,7 +95,7 @@ func GetJWKS(db DatabaseIface) (jwk.Set, error) {
 func (j *JOSE) GetPublicJwks() (jwk.Set, error) {
 	return getPublicJwks(j.db)
 }
-func getPublicJwks(db DatabaseIface) (jwk.Set, error) {
+func getPublicJwks(db Database) (jwk.Set, error) {
 
 	jwks, err := GetJWKS(db)
 	if err != nil {
@@ -113,7 +113,7 @@ func getPublicJwks(db DatabaseIface) (jwk.Set, error) {
 func (j *JOSE) Sign(jwt_ jwt.Token) (string, error) {
 	return SignJWT(j.db, jwt_)
 }
-func SignJWT(db DatabaseIface, jwt_ jwt.Token) (string, error) {
+func SignJWT(db Database, jwt_ jwt.Token) (string, error) {
 
 	jwks, err := GetJWKS(db)
 	if err != nil {
@@ -161,7 +161,7 @@ func GenerateJWKS() (jwk.Set, error) {
 	return keyset, nil
 }
 
-func ParseJWT(db DatabaseIface, jwtStr string) (jwt.Token, error) {
+func ParseJWT(db Database, jwtStr string) (jwt.Token, error) {
 
 	publicJwks, err := getPublicJwks(db)
 	if err != nil {

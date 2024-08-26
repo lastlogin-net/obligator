@@ -13,11 +13,11 @@ import (
 )
 
 type Api struct {
-	db            *Database
+	db            Database
 	oauth2MetaMan *OAuth2MetadataManager
 }
 
-func NewApi(db *Database, dir string, oauth2MetaMan *OAuth2MetadataManager) (*Api, error) {
+func NewApi(db Database, dir string, oauth2MetaMan *OAuth2MetadataManager) (*Api, error) {
 
 	mux := http.NewServeMux()
 

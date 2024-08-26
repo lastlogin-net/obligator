@@ -16,7 +16,7 @@ type AddIdentityGamlHandler struct {
 	mux *http.ServeMux
 }
 
-func NewAddIdentityGamlHandler(db DatabaseIface, cluster *Cluster, tmpl *template.Template, jose *JOSE) *AddIdentityGamlHandler {
+func NewAddIdentityGamlHandler(db Database, cluster *Cluster, tmpl *template.Template, jose *JOSE) *AddIdentityGamlHandler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityGamlHandler{

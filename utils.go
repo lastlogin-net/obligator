@@ -23,7 +23,7 @@ type commonData struct {
 	DisableHeaderButtons bool
 }
 
-func newCommonData(overrides *commonData, db DatabaseIface, r *http.Request) *commonData {
+func newCommonData(overrides *commonData, db Database, r *http.Request) *commonData {
 	d := &commonData{}
 
 	if overrides != nil {
@@ -138,7 +138,7 @@ func validUser(id string, users []*User) bool {
 	return false
 }
 
-func addIdentToCookie(domain string, db DatabaseIface, cookieValue string, newIdent *Identity, jose *JOSE) (*http.Cookie, error) {
+func addIdentToCookie(domain string, db Database, cookieValue string, newIdent *Identity, jose *JOSE) (*http.Cookie, error) {
 
 	idents := []*Identity{newIdent}
 
@@ -225,7 +225,7 @@ func addIdentToCookie(domain string, db DatabaseIface, cookieValue string, newId
 	return cookie, nil
 }
 
-func addLoginToCookie(domain string, db DatabaseIface, currentCookieValue, clientId string, newLogin *Login, jose *JOSE) (*http.Cookie, error) {
+func addLoginToCookie(domain string, db Database, currentCookieValue, clientId string, newLogin *Login, jose *JOSE) (*http.Cookie, error) {
 
 	issuedAt := time.Now().UTC()
 
@@ -320,7 +320,7 @@ func addLoginToCookie(domain string, db DatabaseIface, currentCookieValue, clien
 	return cookie, nil
 }
 
-func deleteLoginKeyCookie(domain string, db DatabaseIface, w http.ResponseWriter) error {
+func deleteLoginKeyCookie(domain string, db Database, w http.ResponseWriter) error {
 	cookieDomain, err := buildCookieDomain(domain)
 	if err != nil {
 		return err
@@ -389,7 +389,7 @@ func getJwtFromCookie(cookieKey string, w http.ResponseWriter, r *http.Request, 
 	return parsedAuthReq, nil
 }
 
-func setJwtCookie(db DatabaseIface, domain string, jot JWTToken, cookieKey string, maxAge time.Duration, w http.ResponseWriter, r *http.Request) {
+func setJwtCookie(db Database, domain string, jot JWTToken, cookieKey string, maxAge time.Duration, w http.ResponseWriter, r *http.Request) {
 
 	signedReqJwt, err := SignJWT(db, jot)
 	if err != nil {
@@ -453,7 +453,7 @@ func getRemoteIp(r *http.Request, behindProxy bool) (string, error) {
 	return remoteIp, nil
 }
 
-func getIdentities(db DatabaseIface, r *http.Request) ([]*Identity, error) {
+func getIdentities(db Database, r *http.Request) ([]*Identity, error) {
 
 	identities := []*Identity{}
 
@@ -492,7 +492,7 @@ func getIdentities(db DatabaseIface, r *http.Request) ([]*Identity, error) {
 	return identities, nil
 }
 
-func getReturnUriCookie(db DatabaseIface, r *http.Request) (string, error) {
+func getReturnUriCookie(db Database, r *http.Request) (string, error) {
 
 	prefix, err := db.GetPrefix()
 	if err != nil {
@@ -508,7 +508,7 @@ func getReturnUriCookie(db DatabaseIface, r *http.Request) (string, error) {
 
 	return cookie.Value, nil
 }
-func setReturnUriCookie(domain string, db DatabaseIface, uri string, w http.ResponseWriter) error {
+func setReturnUriCookie(domain string, db Database, uri string, w http.ResponseWriter) error {
 
 	cookieDomain, err := buildCookieDomain(domain)
 	if err != nil {
@@ -536,7 +536,7 @@ func setReturnUriCookie(domain string, db DatabaseIface, uri string, w http.Resp
 	return nil
 }
 
-func deleteReturnUriCookie(domain string, db DatabaseIface, w http.ResponseWriter) {
+func deleteReturnUriCookie(domain string, db Database, w http.ResponseWriter) {
 
 	prefix, err := db.GetPrefix()
 	if err != nil {

@@ -19,7 +19,7 @@ import (
 
 type AddIdentityEmailHandler struct {
 	mux           *http.ServeMux
-	db            *Database
+	db            Database
 	pendingLogins map[string]*PendingLogin
 	mut           *sync.Mutex
 }
@@ -34,7 +34,7 @@ func (h *AddIdentityEmailHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	h.mux.ServeHTTP(w, r)
 }
 
-func NewAddIdentityEmailHandler(db *Database, cluster *Cluster, tmpl *template.Template, behindProxy bool, geoDb *ip2location.DB, jose *JOSE) *AddIdentityEmailHandler {
+func NewAddIdentityEmailHandler(db Database, cluster *Cluster, tmpl *template.Template, behindProxy bool, geoDb *ip2location.DB, jose *JOSE) *AddIdentityEmailHandler {
 	mux := http.NewServeMux()
 	h := &AddIdentityEmailHandler{
 		mux:           mux,

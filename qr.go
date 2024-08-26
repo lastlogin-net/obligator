@@ -37,7 +37,7 @@ func (h *QrHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 const checkboxPrefix = "checkbox_"
 
-func NewQrHandler(db DatabaseIface, cluster *Cluster, tmpl *template.Template, jose *JOSE) *QrHandler {
+func NewQrHandler(db Database, cluster *Cluster, tmpl *template.Template, jose *JOSE) *QrHandler {
 
 	pendingShares := make(map[string]PendingShare)
 	mut := &sync.Mutex{}

@@ -18,7 +18,7 @@ func (h *DomainHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
-func NewDomainHandler(db *Database, tmpl *template.Template, proxy Proxy, jose *JOSE) *DomainHandler {
+func NewDomainHandler(db Database, tmpl *template.Template, proxy Proxy, jose *JOSE) *DomainHandler {
 
 	mux := http.NewServeMux()
 

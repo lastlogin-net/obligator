@@ -52,7 +52,7 @@ type OIDCRegistrationRequest struct {
 	RedirectUris []string `json:"redirect_uris"`
 }
 
-func NewOIDCHandler(db DatabaseIface, config ServerConfig, tmpl *template.Template, jose *JOSE) *OIDCHandler {
+func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, jose *JOSE) *OIDCHandler {
 	mux := http.NewServeMux()
 
 	h := &OIDCHandler{

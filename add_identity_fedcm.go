@@ -16,7 +16,7 @@ type AddIdentityFedCmHandler struct {
 	mux *http.ServeMux
 }
 
-func NewAddIdentityFedCmHandler(db DatabaseIface, tmpl *template.Template, jose *JOSE) *AddIdentityFedCmHandler {
+func NewAddIdentityFedCmHandler(db Database, tmpl *template.Template, jose *JOSE) *AddIdentityFedCmHandler {
 	mux := http.NewServeMux()
 
 	h := &AddIdentityFedCmHandler{

@@ -62,7 +62,7 @@ type IndieAuthFedCmResponse struct {
 	MetadataEndpoint string `json:"metadata_endpoint"`
 }
 
-func NewFedCmHandler(db *Database, loginEndpoint string, jose *JOSE) *FedCmHandler {
+func NewFedCmHandler(db Database, loginEndpoint string, jose *JOSE) *FedCmHandler {
 
 	mux := http.NewServeMux()
 

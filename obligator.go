@@ -36,7 +36,7 @@ type Server struct {
 	api    *Api
 	Config ServerConfig
 	Mux    *ObligatorMux
-	db     *Database
+	db     Database
 	jose   *JOSE
 	muxMap map[string]http.Handler
 }
@@ -200,16 +200,16 @@ func NewServer(conf ServerConfig) *Server {
 
 	var err error
 
-	var db *Database
+	var db Database
 	if conf.Database != nil {
-		db, err = NewDatabaseWithDb(conf.Database, conf.DbPrefix)
+		db, err = NewSqliteDatabaseWithDb(conf.Database, conf.DbPrefix)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
 	} else {
 		dbPath := filepath.Join(conf.DatabaseDir, conf.DbPrefix+"db.sqlite")
-		db, err = NewDatabase(dbPath, conf.DbPrefix)
+		db, err = NewSqliteDatabase(dbPath, conf.DbPrefix)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
@@ -460,7 +460,7 @@ func checkErrPassthrough(err error, passthrough bool) (*Validation, error) {
 	}
 }
 
-func validate(db DatabaseIface, r *http.Request, jose *JOSE) (*Validation, error) {
+func validate(db Database, r *http.Request, jose *JOSE) (*Validation, error) {
 
 	passthrough, err := db.GetForwardAuthPassthrough()
 	if err != nil {

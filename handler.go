@@ -13,7 +13,7 @@ type Handler struct {
 	mux *http.ServeMux
 }
 
-func NewHandler(db *Database, conf ServerConfig, tmpl *template.Template, jose *JOSE) *Handler {
+func NewHandler(db Database, conf ServerConfig, tmpl *template.Template, jose *JOSE) *Handler {
 
 	mux := http.NewServeMux()
 

@@ -10,14 +10,29 @@ import (
 	"github.com/mattn/go-sqlite3"
 )
 
-type DatabaseIface interface {
+type Database interface {
 	GetDisplayName() (string, error)
+	SetDisplayName(value string) error
 	GetConfig() (*DbConfig, error)
+	SetPublic(public bool) error
 	GetJwksJson() (string, error)
+	SetJwksJson(jwksJson string) error
 	GetForwardAuthPassthrough() (bool, error)
 	GetPrefix() (string, error)
+	SetPrefix(value string) error
 	GetOAuth2Providers() ([]*OAuth2Provider, error)
+	GetOAuth2ProviderByID(id string) (*OAuth2Provider, error)
+	SetOAuth2Provider(p *OAuth2Provider) error
 	GetSmtpConfig() (*SmtpConfig, error)
+	SetSmtpConfig(smtp *SmtpConfig) error
+	GetUsers() ([]*User, error)
+	SetUser(u *User) error
+	AddEmailValidationRequest(requesterId, email string) error
+	GetEmailValidationCounts(since time.Time) ([]*EmailValidationCount, error)
+	AddDomain(domain, ownerId string) error
+	GetDomain(domain string) (*Domain, error)
+	GetDomains() ([]*Domain, error)
+	SetForwardAuthPassthrough(value bool) error
 }
 
 type OAuth2Provider struct {
@@ -41,21 +56,21 @@ type DbConfig struct {
 	Public bool `json:"public"`
 }
 
-type Database struct {
+type SqliteDatabase struct {
 	db     *sqlx.DB
 	prefix string
 }
 
-func NewDatabase(path string, prefix string) (*Database, error) {
+func NewSqliteDatabase(path string, prefix string) (*SqliteDatabase, error) {
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewDatabaseWithDb(db, prefix)
+	return NewSqliteDatabaseWithDb(db, prefix)
 }
 
-func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
+func NewSqliteDatabaseWithDb(sqlDb *sql.DB, prefix string) (*SqliteDatabase, error) {
 
 	db := sqlx.NewDb(sqlDb, "sqlite3")
 
@@ -143,7 +158,7 @@ func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
 		return nil, err
 	}
 
-	s := &Database{
+	s := &SqliteDatabase{
 		db:     db,
 		prefix: prefix,
 	}
@@ -151,7 +166,7 @@ func NewDatabaseWithDb(sqlDb *sql.DB, prefix string) (*Database, error) {
 	return s, nil
 }
 
-func (s *Database) GetConfig() (*DbConfig, error) {
+func (s *SqliteDatabase) GetConfig() (*DbConfig, error) {
 	var c DbConfig
 
 	stmt := fmt.Sprintf("SELECT public FROM %sconfig", s.prefix)
@@ -163,7 +178,7 @@ func (s *Database) GetConfig() (*DbConfig, error) {
 	return &c, nil
 }
 
-func (d *Database) GetJwksJson() (string, error) {
+func (d *SqliteDatabase) GetJwksJson() (string, error) {
 	var jwksJson string
 
 	stmt := fmt.Sprintf(`
@@ -177,7 +192,7 @@ func (d *Database) GetJwksJson() (string, error) {
 	return jwksJson, nil
 }
 
-func (d *Database) SetJwksJson(jwksJson string) error {
+func (d *SqliteDatabase) SetJwksJson(jwksJson string) error {
 
 	stmt := fmt.Sprintf(`
         UPDATE %sconfig SET jwks_json=?;
@@ -190,7 +205,7 @@ func (d *Database) SetJwksJson(jwksJson string) error {
 	return nil
 }
 
-func (d *Database) GetSmtpConfig() (*SmtpConfig, error) {
+func (d *SqliteDatabase) GetSmtpConfig() (*SmtpConfig, error) {
 	var smtpJson string
 
 	stmt := fmt.Sprintf(`
@@ -211,7 +226,7 @@ func (d *Database) GetSmtpConfig() (*SmtpConfig, error) {
 	return c, nil
 }
 
-func (d *Database) SetSmtpConfig(smtp *SmtpConfig) error {
+func (d *SqliteDatabase) SetSmtpConfig(smtp *SmtpConfig) error {
 
 	smtpJson, err := json.Marshal(smtp)
 	if err != nil {
@@ -229,7 +244,7 @@ func (d *Database) SetSmtpConfig(smtp *SmtpConfig) error {
 	return nil
 }
 
-func (d *Database) GetDisplayName() (string, error) {
+func (d *SqliteDatabase) GetDisplayName() (string, error) {
 	var value string
 
 	stmt := fmt.Sprintf(`
@@ -242,7 +257,7 @@ func (d *Database) GetDisplayName() (string, error) {
 
 	return value, nil
 }
-func (s *Database) SetDisplayName(value string) error {
+func (s *SqliteDatabase) SetDisplayName(value string) error {
 	stmt := fmt.Sprintf(`
         UPDATE %sconfig SET display_name=?;
         `, s.prefix)
@@ -254,7 +269,7 @@ func (s *Database) SetDisplayName(value string) error {
 	return nil
 }
 
-func (s *Database) SetPublic(public bool) error {
+func (s *SqliteDatabase) SetPublic(public bool) error {
 	stmt := fmt.Sprintf(`
         UPDATE %sconfig SET public=?;
         `, s.prefix)
@@ -266,7 +281,7 @@ func (s *Database) SetPublic(public bool) error {
 	return nil
 }
 
-func (d *Database) GetForwardAuthPassthrough() (bool, error) {
+func (d *SqliteDatabase) GetForwardAuthPassthrough() (bool, error) {
 	var value bool
 
 	stmt := fmt.Sprintf(`
@@ -279,7 +294,7 @@ func (d *Database) GetForwardAuthPassthrough() (bool, error) {
 
 	return value, nil
 }
-func (s *Database) SetForwardAuthPassthrough(value bool) error {
+func (s *SqliteDatabase) SetForwardAuthPassthrough(value bool) error {
 	stmt := fmt.Sprintf(`
         UPDATE %sconfig SET forward_auth_passthrough=?;
         `, s.prefix)
@@ -291,7 +306,7 @@ func (s *Database) SetForwardAuthPassthrough(value bool) error {
 	return nil
 }
 
-func (d *Database) GetPrefix() (string, error) {
+func (d *SqliteDatabase) GetPrefix() (string, error) {
 	var value string
 
 	stmt := fmt.Sprintf(`
@@ -304,7 +319,7 @@ func (d *Database) GetPrefix() (string, error) {
 
 	return value, nil
 }
-func (s *Database) SetPrefix(value string) error {
+func (s *SqliteDatabase) SetPrefix(value string) error {
 	stmt := fmt.Sprintf(`
         UPDATE %sconfig SET prefix=?;
         `, s.prefix)
@@ -316,7 +331,7 @@ func (s *Database) SetPrefix(value string) error {
 	return nil
 }
 
-func (s *Database) AddEmailValidationRequest(requesterId, email string) error {
+func (s *SqliteDatabase) AddEmailValidationRequest(requesterId, email string) error {
 	stmt := fmt.Sprintf(`
         INSERT INTO %semail_validation_requests(hashed_requester_id,hashed_email) VALUES(?,?);
         `, s.prefix)
@@ -332,7 +347,7 @@ type EmailValidationCount struct {
 	Count             int
 }
 
-func (s *Database) GetEmailValidationCounts(since time.Time) ([]*EmailValidationCount, error) {
+func (s *SqliteDatabase) GetEmailValidationCounts(since time.Time) ([]*EmailValidationCount, error) {
 
 	timeFmt := since.Format(time.DateTime)
 	stmt := fmt.Sprintf(`
@@ -362,7 +377,7 @@ func (s *Database) GetEmailValidationCounts(since time.Time) ([]*EmailValidation
 	return counts, nil
 }
 
-func (s *Database) AddDomain(domain, ownerId string) error {
+func (s *SqliteDatabase) AddDomain(domain, ownerId string) error {
 	stmt := fmt.Sprintf(`
         INSERT INTO %sdomains(domain,hashed_owner_id) VALUES(?,?);
         `, s.prefix)
@@ -378,7 +393,7 @@ type Domain struct {
 	Domain        string
 }
 
-func (s *Database) GetDomain(domain string) (*Domain, error) {
+func (s *SqliteDatabase) GetDomain(domain string) (*Domain, error) {
 
 	var d Domain
 
@@ -391,7 +406,7 @@ func (s *Database) GetDomain(domain string) (*Domain, error) {
 	return &d, nil
 }
 
-func (s *Database) GetDomains() ([]*Domain, error) {
+func (s *SqliteDatabase) GetDomains() ([]*Domain, error) {
 
 	rows, err := s.db.Query(fmt.Sprintf("SELECT * FROM %sdomains", s.prefix))
 	if err != nil {
@@ -417,7 +432,7 @@ func (s *Database) GetDomains() ([]*Domain, error) {
 	return allDomains, nil
 }
 
-func (d *Database) GetUsers() ([]*User, error) {
+func (d *SqliteDatabase) GetUsers() ([]*User, error) {
 
 	stmt := fmt.Sprintf(`
         SELECT * FROM %susers;
@@ -433,7 +448,7 @@ func (d *Database) GetUsers() ([]*User, error) {
 	return users, nil
 }
 
-func (d *Database) SetUser(u *User) error {
+func (d *SqliteDatabase) SetUser(u *User) error {
 	stmt := fmt.Sprintf(`
         INSERT OR REPLACE INTO %susers(id_type,id) VALUES(?,?);
         `, d.prefix)
@@ -445,7 +460,7 @@ func (d *Database) SetUser(u *User) error {
 	return nil
 }
 
-func (d *Database) GetOAuth2Providers() ([]*OAuth2Provider, error) {
+func (d *SqliteDatabase) GetOAuth2Providers() ([]*OAuth2Provider, error) {
 
 	stmt := fmt.Sprintf(`
         SELECT * FROM %soauth2_providers;
@@ -461,7 +476,7 @@ func (d *Database) GetOAuth2Providers() ([]*OAuth2Provider, error) {
 	return values, nil
 }
 
-func (s *Database) GetOAuth2ProviderByID(id string) (*OAuth2Provider, error) {
+func (s *SqliteDatabase) GetOAuth2ProviderByID(id string) (*OAuth2Provider, error) {
 
 	var p OAuth2Provider
 
@@ -474,7 +489,7 @@ func (s *Database) GetOAuth2ProviderByID(id string) (*OAuth2Provider, error) {
 	return &p, nil
 }
 
-func (d *Database) SetOAuth2Provider(p *OAuth2Provider) error {
+func (d *SqliteDatabase) SetOAuth2Provider(p *OAuth2Provider) error {
 	stmt := fmt.Sprintf(`
         INSERT OR REPLACE INTO %soauth2_providers(id,name,uri,client_id,client_secret,authorization_uri,token_uri,scope,supports_openid_connect) VALUES(?,?,?,?,?,?,?,?,?);
         `, d.prefix)

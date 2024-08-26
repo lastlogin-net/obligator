@@ -11,13 +11,13 @@ import (
 )
 
 type OAuth2MetadataManager struct {
-	db             DatabaseIface
+	db             Database
 	oidcConfigs    map[string]*OAuth2ServerMetadata
 	jwksRefreshers map[string]*jwk.Cache
 	mut            *sync.Mutex
 }
 
-func NewOAuth2MetadataManager(db DatabaseIface) *OAuth2MetadataManager {
+func NewOAuth2MetadataManager(db Database) *OAuth2MetadataManager {
 	m := &OAuth2MetadataManager{
 		db:          db,
 		oidcConfigs: make(map[string]*OAuth2ServerMetadata),
