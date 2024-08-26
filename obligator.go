@@ -2,7 +2,6 @@ package obligator
 
 import (
 	"context"
-	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
@@ -46,7 +45,7 @@ type ServerConfig struct {
 	AuthDomains            []string
 	Prefix                 string
 	DbPrefix               string
-	Database               *sql.DB
+	Database               Database
 	DatabaseDir            string
 	ApiSocketDir           string
 	BehindProxy            bool
@@ -202,11 +201,7 @@ func NewServer(conf ServerConfig) *Server {
 
 	var db Database
 	if conf.Database != nil {
-		db, err = NewSqliteDatabaseWithDb(conf.Database, conf.DbPrefix)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-		}
+		db = conf.Database
 	} else {
 		dbPath := filepath.Join(conf.DatabaseDir, conf.DbPrefix+"db.sqlite")
 		db, err = NewSqliteDatabase(dbPath, conf.DbPrefix)
