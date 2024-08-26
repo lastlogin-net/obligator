@@ -3,6 +3,7 @@ package obligator
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -81,7 +82,7 @@ func NewSqliteDatabaseWithDb(sqlDb *sql.DB, prefix string) (*SqliteDatabase, err
                 display_name TEXT UNIQUE DEFAULT "obligator" NOT NULL,
                 forward_auth_passthrough BOOLEAN UNIQUE DEFAULT false NOT NULL,
                 prefix TEXT UNIQUE DEFAULT "obligator_" NOT NULL,
-                smtp_config_json TEXT UNIQUE DEFAULT "{}" NOT NULL
+                smtp_config_json TEXT UNIQUE DEFAULT NULL
         );
         `, prefix)
 	_, err := db.Exec(stmt)
@@ -206,7 +207,7 @@ func (d *SqliteDatabase) SetJwksJson(jwksJson string) error {
 }
 
 func (d *SqliteDatabase) GetSmtpConfig() (*SmtpConfig, error) {
-	var smtpJson string
+	var smtpJson *string
 
 	stmt := fmt.Sprintf(`
         SELECT smtp_config_json FROM %sconfig;
@@ -216,9 +217,13 @@ func (d *SqliteDatabase) GetSmtpConfig() (*SmtpConfig, error) {
 		return nil, err
 	}
 
-	c := &SmtpConfig{}
+	if smtpJson == nil {
+		return nil, errors.New("No SMTP config set")
+	}
 
-	err = json.Unmarshal([]byte(smtpJson), &c)
+	var c *SmtpConfig
+
+	err = json.Unmarshal([]byte(*smtpJson), &c)
 	if err != nil {
 		return nil, err
 	}
