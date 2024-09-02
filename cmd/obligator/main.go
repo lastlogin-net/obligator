@@ -36,13 +36,13 @@ func main() {
 	if configPath != "" {
 		configJson, err := os.ReadFile(configPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to read config\n")
+			fmt.Fprintf(os.Stderr, "Failed to read config '%s': %s\n", configPath, err.Error())
 			os.Exit(1)
 		}
 
 		err = json.Unmarshal(configJson, &config)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed parse JSON\n")
+			fmt.Fprintf(os.Stderr, "Failed parse JSON '%s': %s\n", configPath, err.Error())
 			os.Exit(1)
 		}
 	}
