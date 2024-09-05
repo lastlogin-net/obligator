@@ -1,14 +1,26 @@
 {{ template "header.html" . }}
 
 <p class='og-first-elem'>
-  <span class='og-auth-client-id'>{{$.ClientId}}</span> wants to log you in.
-  Do you wish to proceed?
+  <span class='og-auth-client-id'>{{$.ClientId}}</span> wants to log you in
+  using <a href='https://indieweb.org/IndieAuth'>IndieAuth</a>. To proceed,
+  select an identity below. It's advised to use a public identity, since
+  IndieAuth apps general assume your identity is public and may expose it to
+  other users.
 </p>
 
-<form action="/indieauth/confirm" method="POST">
-  <button class='og-formbutton' type="submit">
-    Confirm
-  </button>
-</form>
+<div class='og-button-list'>
+  {{range .Identities}}
+  <div>
+    <form action="/indieauth/confirm" method="POST">
+      <input type='hidden' name='identity_id' value='{{.Id}}' required>
+      <button class='og-formbutton' type="submit">
+        Log in as <strong>{{.Id}}</strong>
+      </button>
+    </form>
+  </div>
+  {{end}}
+</div>
+
+{{ template "add-identities.html" . }}
 
 {{ template "footer.html" . }}

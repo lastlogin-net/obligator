@@ -25,6 +25,21 @@ func NewHandler(db Database, conf ServerConfig, tmpl *template.Template, jose *J
 
 	fsHandler := http.FileServer(http.Dir("static"))
 
+	handleIndieAuthUser := func(w http.ResponseWriter, r *http.Request) {
+		uri := fmt.Sprintf("%s/.well-known/oauth-authorization-server", domainToUri(r.Host))
+		link := fmt.Sprintf("<%s>; rel=\"indieauth-metadata\"", uri)
+		w.Header().Set("Link", link)
+
+		tmplData := newCommonData(nil, db, r)
+
+		err = tmpl.ExecuteTemplate(w, "user.html", tmplData)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+	}
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 
 		domain, err := db.GetDomain(r.Host)
@@ -38,20 +53,11 @@ func NewHandler(db Database, conf ServerConfig, tmpl *template.Template, jose *J
 			return
 		}
 
-		uri := fmt.Sprintf("%s/.well-known/oauth-authorization-server", domainToUri(r.Host))
-		link := fmt.Sprintf("<%s>; rel=\"indieauth-metadata\"", uri)
-		w.Header().Set("Link", link)
-
-		tmplData := newCommonData(nil, db, r)
-
-		err = tmpl.ExecuteTemplate(w, "user.html", tmplData)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
+		handleIndieAuthUser(w, r)
 
 	})
+
+	mux.HandleFunc("/u/", handleIndieAuthUser)
 
 	mux.HandleFunc("/logo.png", func(w http.ResponseWriter, r *http.Request) {
 		if conf.LogoPng != nil {

@@ -44,6 +44,13 @@ func NewIndieAuthHandler(db Database, tmpl *template.Template, prefix string, jo
 			return
 		}
 
+		id := claimFromToken("id", parsedCodeJwt)
+		if domain != r.Host {
+			w.WriteHeader(400)
+			io.WriteString(w, "Invalid id")
+			return
+		}
+
 		pkceCodeChallenge, exists := parsedCodeJwt.Get("pkce_code_challenge")
 		if !exists {
 			w.WriteHeader(401)
@@ -70,7 +77,7 @@ func NewIndieAuthHandler(db Database, tmpl *template.Template, prefix string, jo
 		}
 
 		profile := IndieAuthProfile{
-			MeUri: domainToUri(r.Host),
+			MeUri: fmt.Sprintf("https://%s/u/%s", r.Host, id),
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -95,29 +102,29 @@ func NewIndieAuthHandler(db Database, tmpl *template.Template, prefix string, jo
 			return
 		}
 
-		domain, err := db.GetDomain(r.Host)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
+		//domain, err := db.GetDomain(r.Host)
+		//if err != nil {
+		//	w.WriteHeader(500)
+		//	io.WriteString(w, err.Error())
+		//	return
+		//}
 
-		idents, _ := getIdentities(db, r)
+		//idents, _ := getIdentities(db, r)
 
-		var matchIdent *Identity = nil
-		for _, ident := range idents {
-			if domain.HashedOwnerId == Hash(ident.Id) {
-				matchIdent = ident
-				break
-			}
-		}
+		//var matchIdent *Identity = nil
+		//for _, ident := range idents {
+		//	if domain.HashedOwnerId == Hash(ident.Id) {
+		//		matchIdent = ident
+		//		break
+		//	}
+		//}
 
-		if matchIdent == nil {
-			w.WriteHeader(401)
-			msg := fmt.Sprintf("You don't have permission to log in as %s", r.Host)
-			io.WriteString(w, msg)
-			return
-		}
+		//if matchIdent == nil {
+		//	w.WriteHeader(401)
+		//	msg := fmt.Sprintf("You don't have permission to log in as %s", r.Host)
+		//	io.WriteString(w, msg)
+		//	return
+		//}
 
 		maxAge := 8 * time.Minute
 		issuedAt := time.Now().UTC()
@@ -140,14 +147,38 @@ func NewIndieAuthHandler(db Database, tmpl *template.Template, prefix string, jo
 
 		setJwtCookie(db, r.Host, authRequestJwt, cookiePrefix+"auth_request", maxAge, w, r)
 
+		providers, err := db.GetOAuth2Providers()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		canEmail := true
+		if _, err := db.GetSmtpConfig(); err != nil {
+			canEmail = false
+		}
+
+		returnUri := fmt.Sprintf("%s%s?%s", prefix, r.URL.Path, r.URL.RawQuery)
+		setReturnUriCookie(r.Host, db, returnUri, w)
+
 		data := struct {
 			*commonData
-			ClientId string
+			ClientId        string
+			CanEmail        bool
+			DisableQrLogin  bool
+			OAuth2Providers []*OAuth2Provider
+			LogoMap         map[string]template.HTML
 		}{
-			commonData: newCommonData(&commonData{
-				Identities: idents,
-			}, db, r),
-			ClientId: ar.ClientId,
+			//commonData: newCommonData(&commonData{
+			//	Identities: idents,
+			//}, db, r),
+			commonData:      newCommonData(nil, db, r),
+			ClientId:        ar.ClientId,
+			CanEmail:        canEmail,
+			DisableQrLogin:  true,
+			OAuth2Providers: providers,
+			LogoMap:         providerLogoMap,
 		}
 
 		err = tmpl.ExecuteTemplate(w, "indieauth.html", data)
@@ -161,6 +192,32 @@ func NewIndieAuthHandler(db Database, tmpl *template.Template, prefix string, jo
 	})
 
 	mux.HandleFunc("/confirm", func(w http.ResponseWriter, r *http.Request) {
+
+		r.ParseForm()
+
+		id := r.Form.Get("identity_id")
+		if id == "" {
+			w.WriteHeader(400)
+			io.WriteString(w, "Missing identity_id param")
+			return
+		}
+
+		idents, _ := getIdentities(db, r)
+
+		var matchIdent *Identity = nil
+		for _, ident := range idents {
+			if id == ident.Id {
+				matchIdent = ident
+				break
+			}
+		}
+
+		if matchIdent == nil {
+			w.WriteHeader(401)
+			msg := fmt.Sprintf("You don't have permission to log in as %s", id)
+			io.WriteString(w, msg)
+			return
+		}
 
 		clearCookie(r.Host, cookiePrefix+"auth_request", w)
 
@@ -177,6 +234,7 @@ func NewIndieAuthHandler(db Database, tmpl *template.Template, prefix string, jo
 			Expiration(issuedAt.Add(16*time.Second)).
 			//Subject(idToken.Email()).
 			Claim("domain", r.Host).
+			Claim("id", id).
 			Claim("pkce_code_challenge", claimFromToken("pkce_code_challenge", parsedAuthReq)).
 			Build()
 		if err != nil {
