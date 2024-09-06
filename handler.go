@@ -174,8 +174,8 @@ func NewHandler(db Database, conf ServerConfig, tmpl *template.Template, jose *J
 			DisableQrLogin  bool
 		}{
 			commonData: newCommonData(&commonData{
-				ReturnUri:            returnUri,
-				DisableHeaderButtons: true,
+				ReturnUri: returnUri,
+				//DisableHeaderButtons: true,
 			}, db, r),
 			CanEmail:        canEmail,
 			OAuth2Providers: providers,

@@ -218,45 +218,6 @@ func NewFedCmHandler(db Database, loginEndpoint string, jose *JOSE) *FedCmHandle
 		accountId := r.Form.Get("account_id")
 		pkceCodeChallenge := r.Form.Get("nonce")
 
-		issuedAt := time.Now().UTC()
-		codeJwt, err := NewJWTBuilder().
-			IssuedAt(issuedAt).
-			// TODO: make shorter
-			//Expiration(issuedAt.Add(16*time.Second)).
-			Expiration(issuedAt.Add(5*time.Minute)).
-			//Subject(idToken.Email()).
-			Claim("domain", r.Host).
-			Claim("pkce_code_challenge", pkceCodeChallenge).
-			Build()
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		signedCode, err := SignJWT(db, codeJwt)
-		if err != nil {
-			w.WriteHeader(400)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		payload := IndieAuthFedCmResponse{
-			Code:             string(signedCode),
-			MetadataEndpoint: fmt.Sprintf("https://%s/.well-known/oauth-authorization-server", r.Host),
-		}
-
-		payloadJson, err := json.Marshal(payload)
-		if err != nil {
-			w.WriteHeader(500)
-			io.WriteString(w, err.Error())
-			return
-		}
-
-		res := FedCmIdAssertionSuccessResponse{
-			Token: string(payloadJson),
-		}
-
 		//uri := domainToUri(r.Host)
 
 		// TODO: Multiple idents might map to the same email. might
@@ -315,19 +276,59 @@ func NewFedCmHandler(db Database, loginEndpoint string, jose *JOSE) *FedCmHandle
 			return
 		}
 
-		domain, err := db.GetDomain(r.Host)
+		// TODO: re-enable domain login
+		//domain, err := db.GetDomain(r.Host)
+		//if err != nil {
+		//	w.WriteHeader(500)
+		//	io.WriteString(w, err.Error())
+		//	return
+		//}
+
+		//if domain.HashedOwnerId != Hash(foundIdent.Id) {
+		//	w.WriteHeader(403)
+		//	io.WriteString(w, "You don't own this domain")
+		//	return
+		//}
+
+		issuedAt := time.Now().UTC()
+		codeJwt, err := NewJWTBuilder().
+			IssuedAt(issuedAt).
+			// TODO: make shorter
+			//Expiration(issuedAt.Add(16*time.Second)).
+			Expiration(issuedAt.Add(5*time.Minute)).
+			//Subject(idToken.Email()).
+			Claim("domain", r.Host).
+			Claim("id", foundIdent.Id).
+			Claim("pkce_code_challenge", pkceCodeChallenge).
+			Build()
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
 			return
 		}
 
-		if domain.HashedOwnerId != Hash(foundIdent.Id) {
-			w.WriteHeader(403)
-			io.WriteString(w, "You don't own this domain")
+		signedCode, err := SignJWT(db, codeJwt)
+		if err != nil {
+			w.WriteHeader(400)
+			io.WriteString(w, err.Error())
 			return
 		}
 
+		payload := IndieAuthFedCmResponse{
+			Code:             string(signedCode),
+			MetadataEndpoint: fmt.Sprintf("https://%s/.well-known/oauth-authorization-server", r.Host),
+		}
+
+		payloadJson, err := json.Marshal(payload)
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
+		res := FedCmIdAssertionSuccessResponse{
+			Token: string(payloadJson),
+		}
 		err = json.NewEncoder(w).Encode(res)
 		if err != nil {
 			w.WriteHeader(500)

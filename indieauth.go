@@ -102,6 +102,7 @@ func NewIndieAuthHandler(db Database, tmpl *template.Template, prefix string, jo
 			return
 		}
 
+		// TODO: re-enable domain login
 		//domain, err := db.GetDomain(r.Host)
 		//if err != nil {
 		//	w.WriteHeader(500)
