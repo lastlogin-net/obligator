@@ -66,8 +66,6 @@ func NewAddIdentityOauth2Handler(db Database, oauth2MetaMan *OAuth2MetadataManag
 	prefix, err := db.GetPrefix()
 	checkErr(err)
 
-	loginKeyName := prefix + "login_key"
-
 	mux.HandleFunc("/login-oauth2", func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
@@ -333,7 +331,7 @@ func NewAddIdentityOauth2Handler(db Database, oauth2MetaMan *OAuth2MetadataManag
 		deleteReturnUriCookie(r.Host, db, w)
 
 		cookieValue := ""
-		loginKeyCookie, err := r.Cookie(loginKeyName)
+		loginKeyCookie, err := getLoginCookie(db, r)
 		if err == nil {
 			cookieValue = loginKeyCookie.Value
 		}
@@ -354,8 +352,12 @@ func NewAddIdentityOauth2Handler(db Database, oauth2MetaMan *OAuth2MetadataManag
 			return
 		}
 
-		w.Header().Add("Set-Login", "logged-in")
-		http.SetCookie(w, cookie)
+		err = setLoginCookie(w, cookie)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
 
 		redirUrl := fmt.Sprintf("%s", returnUri)
 

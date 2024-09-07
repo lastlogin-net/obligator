@@ -23,11 +23,6 @@ func NewAddIdentityFedCmHandler(db Database, tmpl *template.Template, jose *JOSE
 		mux: mux,
 	}
 
-	prefix, err := db.GetPrefix()
-	checkErr(err)
-
-	loginKeyName := prefix + "login_key"
-
 	mux.HandleFunc("/login-fedcm", func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
@@ -127,7 +122,7 @@ func NewAddIdentityFedCmHandler(db Database, tmpl *template.Template, jose *JOSE
 		}
 
 		cookieValue := ""
-		loginKeyCookie, err := r.Cookie(loginKeyName)
+		loginKeyCookie, err := getLoginCookie(db, r)
 		if err == nil {
 			cookieValue = loginKeyCookie.Value
 		}

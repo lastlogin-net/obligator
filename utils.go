@@ -138,6 +138,38 @@ func validUser(id string, users []*User) bool {
 	return false
 }
 
+func getLoginCookie(db Database, r *http.Request) (*http.Cookie, error) {
+
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		return nil, err
+	}
+
+	loginKeyName := prefix + "login_key"
+
+	loginKeyCookie, err := r.Cookie(loginKeyName)
+	if err != nil {
+		return nil, err
+	}
+
+	// This cookie unlocks the main one. This is necessary for FedCM
+	crossSiteDetectorCookieName := "obligator_not_cross_site"
+	_, err = r.Cookie(crossSiteDetectorCookieName)
+	if err != nil {
+		return nil, err
+	}
+
+	return loginKeyCookie, nil
+}
+
+func setLoginCookie(w http.ResponseWriter, cookie *http.Cookie) error {
+
+	w.Header().Add("Set-Login", "logged-in")
+	http.SetCookie(w, cookie)
+
+	return nil
+}
+
 func addIdentToCookie(domain string, db Database, cookieValue string, newIdent *Identity, jose *JOSE) (*http.Cookie, error) {
 
 	idents := []*Identity{newIdent}
@@ -203,12 +235,6 @@ func addIdentToCookie(domain string, db Database, cookieValue string, newIdent *
 
 	loginKeyName := prefix + "login_key"
 
-	sameSiteMode := http.SameSiteLaxMode
-
-	if os.Getenv("FEDCM_ENABLED") == "true" {
-		sameSiteMode = http.SameSiteNoneMode
-	}
-
 	cookie := &http.Cookie{
 		Domain:   cookieDomain,
 		Name:     loginKeyName,
@@ -217,9 +243,7 @@ func addIdentToCookie(domain string, db Database, cookieValue string, newIdent *
 		HttpOnly: true,
 		MaxAge:   86400 * 365,
 		Path:     "/",
-		SameSite: sameSiteMode,
-		//SameSite: http.SameSiteLaxMode,
-		//SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteNoneMode,
 	}
 
 	return cookie, nil
@@ -236,7 +260,7 @@ func addLoginToCookie(db Database, r *http.Request, clientId string, newLogin *L
 
 	loginKeyName := prefix + "login_key"
 
-	loginKeyCookie, err := r.Cookie(loginKeyName)
+	loginKeyCookie, err := getLoginCookie(db, r)
 	if err != nil {
 		return nil, errors.New("Only logged-in users can access this endpoint")
 	}
@@ -462,9 +486,9 @@ func getRemoteIp(r *http.Request, behindProxy bool) (string, error) {
 	return remoteIp, nil
 }
 
-func getIdentities(db Database, r *http.Request) ([]*Identity, error) {
-
-	identities := []*Identity{}
+// This function doesn't check against cross site requests as compared to
+// the normal version
+func getIdentitiesFedCm(db Database, r *http.Request) ([]*Identity, error) {
 
 	prefix, err := db.GetPrefix()
 	if err != nil {
@@ -475,8 +499,25 @@ func getIdentities(db Database, r *http.Request) ([]*Identity, error) {
 
 	loginKeyCookie, err := r.Cookie(loginKeyName)
 	if err != nil {
-		return identities, err
+		return nil, err
 	}
+
+	return getIdentitiesCommon(db, r, loginKeyCookie)
+}
+
+func getIdentities(db Database, r *http.Request) ([]*Identity, error) {
+
+	loginKeyCookie, err := getLoginCookie(db, r)
+	if err != nil {
+		return []*Identity{}, err
+	}
+
+	return getIdentitiesCommon(db, r, loginKeyCookie)
+}
+
+func getIdentitiesCommon(db Database, r *http.Request, loginKeyCookie *http.Cookie) ([]*Identity, error) {
+
+	identities := []*Identity{}
 
 	jwtStr := loginKeyCookie.Value
 
@@ -503,14 +544,7 @@ func getIdentities(db Database, r *http.Request) ([]*Identity, error) {
 
 func getLogins(db Database, r *http.Request) (map[string][]*Login, error) {
 
-	prefix, err := db.GetPrefix()
-	if err != nil {
-		return nil, err
-	}
-
-	loginKeyName := prefix + "login_key"
-
-	loginKeyCookie, err := r.Cookie(loginKeyName)
+	loginKeyCookie, err := getLoginCookie(db, r)
 	if err != nil {
 		return nil, err
 	}

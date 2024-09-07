@@ -31,8 +31,6 @@ func NewAddIdentityGamlHandler(db Database, cluster *Cluster, tmpl *template.Tem
 	prefix, err := db.GetPrefix()
 	checkErr(err)
 
-	loginKeyName := prefix + "login_key"
-
 	mux.HandleFunc("/login-gaml", func(w http.ResponseWriter, r *http.Request) {
 
 		templateData := struct {
@@ -193,7 +191,7 @@ func NewAddIdentityGamlHandler(db Database, cluster *Cluster, tmpl *template.Tem
 		}
 
 		cookieValue := ""
-		loginKeyCookie, err := r.Cookie(loginKeyName)
+		loginKeyCookie, err := getLoginCookie(db, r)
 		if err == nil {
 			cookieValue = loginKeyCookie.Value
 		}

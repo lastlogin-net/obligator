@@ -65,8 +65,6 @@ func NewAddIdentityEmailHandler(db Database, cluster *Cluster, tmpl *template.Te
 	prefix, err := db.GetPrefix()
 	checkErr(err)
 
-	loginKeyName := prefix + "login_key"
-
 	// Periodically clean up expired shares
 	go func() {
 		for {
@@ -410,7 +408,7 @@ func NewAddIdentityEmailHandler(db Database, cluster *Cluster, tmpl *template.Te
 		email := pendingLogin.Email
 
 		cookieValue := ""
-		loginKeyCookie, err := r.Cookie(loginKeyName)
+		loginKeyCookie, err := getLoginCookie(db, r)
 		if err == nil {
 			cookieValue = loginKeyCookie.Value
 		}
@@ -431,8 +429,12 @@ func NewAddIdentityEmailHandler(db Database, cluster *Cluster, tmpl *template.Te
 			return
 		}
 
-		w.Header().Add("Set-Login", "logged-in")
-		http.SetCookie(w, cookie)
+		err = setLoginCookie(w, cookie)
+		if err != nil {
+			w.WriteHeader(500)
+			fmt.Fprintf(os.Stderr, err.Error())
+			return
+		}
 
 		returnUri, err := getReturnUriCookie(db, r)
 		if err != nil {

@@ -164,6 +164,25 @@ func (s *ObligatorMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cookieDomain, err := buildCookieDomain(r.Host)
+	if err != nil {
+		w.WriteHeader(500)
+		io.WriteString(w, err.Error())
+		return
+	}
+
+	crossSiteDetectorCookie := &http.Cookie{
+		Domain:   cookieDomain,
+		Name:     "obligator_not_cross_site",
+		Value:    "true",
+		Secure:   true,
+		HttpOnly: true,
+		MaxAge:   86400 * 365,
+		Path:     "/",
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(w, crossSiteDetectorCookie)
+
 	fmt.Println(fmt.Sprintf("%s\t%s\t%s\t%s\t%s", timestamp, remoteIp, r.Method, r.Host, r.URL.Path))
 	s.mux.ServeHTTP(w, r)
 }
@@ -468,14 +487,7 @@ func validate(db Database, r *http.Request, jose *JOSE) (*Validation, error) {
 		return nil, err
 	}
 
-	prefix, err := db.GetPrefix()
-	if err != nil {
-		return nil, err
-	}
-
-	loginKeyName := prefix + "login_key"
-
-	loginKeyCookie, err := r.Cookie(loginKeyName)
+	loginKeyCookie, err := getLoginCookie(db, r)
 	if err != nil {
 		return checkErrPassthrough(err, passthrough)
 	}

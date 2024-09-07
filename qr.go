@@ -50,10 +50,7 @@ func NewQrHandler(db Database, cluster *Cluster, tmpl *template.Template, jose *
 
 	const ShareTimeout = 2 * time.Minute
 
-	prefix, err := db.GetPrefix()
-	checkErr(err)
-
-	loginKeyName := prefix + "login_key"
+	var err error
 
 	// Periodically clean up expired shares
 	go func() {
@@ -272,7 +269,7 @@ func NewQrHandler(db Database, cluster *Cluster, tmpl *template.Template, jose *
 		}
 
 		cookie := &http.Cookie{}
-		loginKeyCookie, err := r.Cookie(loginKeyName)
+		loginKeyCookie, err := getLoginCookie(db, r)
 		if err == nil {
 			cookie = loginKeyCookie
 		}
