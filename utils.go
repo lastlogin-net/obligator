@@ -492,6 +492,44 @@ func getIdentities(db Database, r *http.Request) ([]*Identity, error) {
 	return identities, nil
 }
 
+func getLogins(db Database, r *http.Request) (map[string][]*Login, error) {
+
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		return nil, err
+	}
+
+	loginKeyName := prefix + "login_key"
+
+	loginKeyCookie, err := r.Cookie(loginKeyName)
+	if err != nil {
+		return nil, err
+	}
+
+	jwtStr := loginKeyCookie.Value
+
+	if jwtStr == "" {
+		return nil, errors.New("Blank jwt")
+	}
+
+	parsed, err := ParseJWT(db, jwtStr)
+	if err != nil {
+		return nil, errors.New("Invalid jwt")
+	}
+
+	tokLoginsInterface, exists := parsed.Get("logins")
+	if !exists {
+		return nil, errors.New("No logins")
+	}
+
+	logins, ok := tokLoginsInterface.(map[string][]*Login)
+	if !ok {
+		return nil, errors.New("getLogins: Failed to assert type")
+	}
+
+	return logins, nil
+}
+
 func getReturnUriCookie(db Database, r *http.Request) (string, error) {
 
 	prefix, err := db.GetPrefix()

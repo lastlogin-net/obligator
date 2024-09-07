@@ -216,46 +216,20 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			return
 		}
 
-		identities := []*Identity{}
-		logins := make(map[string][]*Login)
-
-		var hashedLoginKey string
-
-		loginKeyCookie, err := r.Cookie(loginKeyName)
-		if err == nil && loginKeyCookie.Value != "" {
-			hashedLoginKey = Hash(loginKeyCookie.Value)
-
-			parsed, err := jose.Parse(loginKeyCookie.Value)
-			if err != nil {
-				// Only add identities from current cookie if it's valid
-			} else {
-				tokIdentsInterface, exists := parsed.Get("identities")
-				if exists {
-					if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
-						identities = tokIdents
-					}
-				}
-
-				tokLoginsInterface, exists := parsed.Get("logins")
-				if exists {
-					if tokLogins, ok := tokLoginsInterface.(map[string][]*Login); ok {
-						logins = tokLogins
-					}
-				}
-			}
-
-		}
-
-		previousLogins, ok := logins[ar.ClientId]
-		if !ok {
-			previousLogins = []*Login{}
-		}
-
-		sort.Slice(previousLogins, func(i, j int) bool {
-			return previousLogins[i].Timestamp > previousLogins[j].Timestamp
-		})
-
+		previousLogins := []*Login{}
 		remainingIdents := []*Identity{}
+
+		identities, _ := getIdentities(db, r)
+
+		logins, err := getLogins(db, r)
+		if err == nil {
+			previousLogins = logins[ar.ClientId]
+
+			sort.Slice(previousLogins, func(i, j int) bool {
+				return previousLogins[i].Timestamp > previousLogins[j].Timestamp
+			})
+		}
+
 		for _, ident := range identities {
 			found := false
 			for _, login := range previousLogins {
@@ -275,7 +249,7 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(maxAge)).
 			// TODO: should we be checking login_key_hash?
-			Claim("login_key_hash", hashedLoginKey).
+			//Claim("login_key_hash", hashedLoginKey).
 			Claim("client_id", ar.ClientId).
 			Claim("redirect_uri", ar.RedirectUri).
 			Claim("state", ar.State).

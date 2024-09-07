@@ -151,33 +151,7 @@ func NewQrHandler(db Database, cluster *Cluster, tmpl *template.Template, jose *
 			return
 		}
 
-		identities := []*Identity{}
-		logins := make(map[string][]*Login)
-
-		loginKeyCookie, err := r.Cookie(loginKeyName)
-		if err == nil && loginKeyCookie.Value != "" {
-			parsed, err := ParseJWT(db, loginKeyCookie.Value)
-			if err != nil {
-				w.WriteHeader(401)
-				io.WriteString(w, err.Error())
-				return
-			} else {
-				tokIdentsInterface, exists := parsed.Get("identities")
-				if exists {
-					if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
-						identities = tokIdents
-					}
-				}
-
-				tokLoginsInterface, exists := parsed.Get("logins")
-				if exists {
-					if tokLogins, ok := tokLoginsInterface.(map[string][]*Login); ok {
-						logins = tokLogins
-					}
-				}
-			}
-
-		}
+		identities, _ := getIdentities(db, r)
 
 		share := PendingShare{
 			Identities: []*Identity{},
@@ -196,9 +170,10 @@ func NewQrHandler(db Database, cluster *Cluster, tmpl *template.Template, jose *
 			}
 		}
 
+		logins, loginsErr := getLogins(db, r)
 		copyLogins := r.Form.Get("checkbox_share_logins") == "on"
 
-		if copyLogins {
+		if loginsErr == nil && copyLogins {
 			for _, ident := range share.Identities {
 				for clientId, clientLogins := range logins {
 					for _, clientLogin := range clientLogins {
