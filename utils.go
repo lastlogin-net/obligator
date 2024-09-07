@@ -225,7 +225,21 @@ func addIdentToCookie(domain string, db Database, cookieValue string, newIdent *
 	return cookie, nil
 }
 
-func addLoginToCookie(domain string, db Database, currentCookieValue, clientId string, newLogin *Login, jose *JOSE) (*http.Cookie, error) {
+func addLoginToCookie(db Database, r *http.Request, clientId string, newLogin *Login) (*http.Cookie, error) {
+
+	domain := r.Host
+
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		return nil, err
+	}
+
+	loginKeyName := prefix + "login_key"
+
+	loginKeyCookie, err := r.Cookie(loginKeyName)
+	if err != nil {
+		return nil, errors.New("Only logged-in users can access this endpoint")
+	}
 
 	issuedAt := time.Now().UTC()
 
@@ -235,8 +249,10 @@ func addLoginToCookie(domain string, db Database, currentCookieValue, clientId s
 
 	keyJwt := NewJWT()
 
+	currentCookieValue := loginKeyCookie.Value
+
 	if currentCookieValue != "" {
-		parsed, err := jose.Parse(currentCookieValue)
+		parsed, err := ParseJWT(db, currentCookieValue)
 		if err != nil {
 			// Only add identities from current cookie if it's valid
 		} else {
@@ -267,7 +283,7 @@ func addLoginToCookie(domain string, db Database, currentCookieValue, clientId s
 		logins[clientId] = []*Login{newLogin}
 	}
 
-	err := keyJwt.Set("iat", issuedAt)
+	err = keyJwt.Set("iat", issuedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +302,7 @@ func addLoginToCookie(domain string, db Database, currentCookieValue, clientId s
 		return nil, err
 	}
 
-	signed, err := jose.Sign(keyJwt)
+	signed, err := SignJWT(db, keyJwt)
 	if err != nil {
 		return nil, err
 	}
@@ -297,13 +313,6 @@ func addLoginToCookie(domain string, db Database, currentCookieValue, clientId s
 	if err != nil {
 		return nil, err
 	}
-
-	prefix, err := db.GetPrefix()
-	if err != nil {
-		return nil, err
-	}
-
-	loginKeyName := prefix + "login_key"
 
 	cookie := &http.Cookie{
 		Domain:   cookieDomain,

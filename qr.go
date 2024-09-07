@@ -288,7 +288,7 @@ func NewQrHandler(db Database, cluster *Cluster, tmpl *template.Template, jose *
 
 		for clientId, clientLogins := range share.Logins {
 			for _, login := range clientLogins {
-				cookie, err = addLoginToCookie(r.Host, db, cookie.Value, clientId, login, jose)
+				cookie, err = addLoginToCookie(db, r, clientId, login)
 				if err != nil {
 					w.WriteHeader(500)
 					fmt.Fprintf(os.Stderr, err.Error())

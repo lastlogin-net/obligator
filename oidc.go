@@ -62,8 +62,6 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 	prefix, err := db.GetPrefix()
 	checkErr(err)
 
-	loginKeyName := prefix + "login_key"
-
 	// draft-ietf-oauth-security-topics-24 2.6
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 
@@ -329,20 +327,6 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			return
 		}
 
-		loginKeyCookie, err := r.Cookie(loginKeyName)
-		if err != nil {
-			w.WriteHeader(401)
-			io.WriteString(w, "Only logged-in users can access this endpoint")
-			return
-		}
-
-		parsedLoginKey, err := jose.Parse(loginKeyCookie.Value)
-		if err != nil {
-			w.WriteHeader(401)
-			io.WriteString(w, err.Error())
-			return
-		}
-
 		clearCookie(r.Host, prefix+"auth_request", w)
 
 		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", w, r, jose)
@@ -354,16 +338,13 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 
 		identId := r.Form.Get("identity_id")
 
+		idents, _ := getIdentities(db, r)
+
 		var identity *Identity
-		tokIdentsInterface, exists := parsedLoginKey.Get("identities")
-		if exists {
-			if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
-				for _, ident := range tokIdents {
-					if ident.Id == identId {
-						identity = ident
-						break
-					}
-				}
+		for _, ident := range idents {
+			if ident.Id == identId {
+				identity = ident
+				break
 			}
 		}
 
@@ -383,7 +364,7 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 
 		uri := domainToUri(r.Host)
 
-		newLoginCookie, err := addLoginToCookie(r.Host, db, loginKeyCookie.Value, clientId, newLogin, jose)
+		newLoginCookie, err := addLoginToCookie(db, r, clientId, newLogin)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
