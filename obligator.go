@@ -386,16 +386,14 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/domains", domainHandler)
 	mux.Handle("/add-domain", domainHandler)
 
-	if os.Getenv("FEDCM_ENABLED") == "true" {
-		fedCmLoginEndpoint := "/login-fedcm-auto"
-		fedCmHandler := NewFedCmHandler(db, fedCmLoginEndpoint, jose)
-		mux.Handle("/.well-known/web-identity", fedCmHandler)
-		mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
+	fedCmLoginEndpoint := "/login-fedcm-auto"
+	fedCmHandler := NewFedCmHandler(db, fedCmLoginEndpoint, jose)
+	mux.Handle("/.well-known/web-identity", fedCmHandler)
+	mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
 
-		addIdentityFedCmHandler := NewAddIdentityFedCmHandler(db, tmpl, jose)
-		mux.Handle("/login-fedcm", addIdentityFedCmHandler)
-		mux.Handle("/complete-login-fedcm", addIdentityFedCmHandler)
-	}
+	addIdentityFedCmHandler := NewAddIdentityFedCmHandler(db, tmpl, jose)
+	mux.Handle("/login-fedcm", addIdentityFedCmHandler)
+	mux.Handle("/complete-login-fedcm", addIdentityFedCmHandler)
 
 	s := &Server{
 		Config: conf,
