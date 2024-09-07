@@ -202,22 +202,7 @@ func NewAddIdentityEmailHandler(db Database, cluster *Cluster, tmpl *template.Te
 		}
 		http.SetCookie(w, cookie)
 
-		// TODO: this is duplicated. make a function
-		identities := []*Identity{}
-		loginKeyCookie, err := r.Cookie(loginKeyName)
-		if err == nil && loginKeyCookie.Value != "" {
-			parsed, err := ParseJWT(db, loginKeyCookie.Value)
-			if err != nil {
-				// Only add identities from current cookie if it's valid
-			} else {
-				tokIdentsInterface, exists := parsed.Get("identities")
-				if exists {
-					if tokIdents, ok := tokIdentsInterface.([]*Identity); ok {
-						identities = tokIdents
-					}
-				}
-			}
-		}
+		identities, _ := getIdentities(db, r)
 
 		since := time.Now().UTC().Add(-RateLimitTime)
 		counts, err := db.GetEmailValidationCounts(since)
