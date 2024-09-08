@@ -44,4 +44,4 @@ else
     cd ..
 fi
 
-rm build/$filename
+#rm build/$filename
