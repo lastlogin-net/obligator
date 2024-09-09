@@ -87,7 +87,6 @@ You can also download static executables for various platforms from the
 [releases][2] page.
 
 
-<!--
 # Using the API
 
 Currently the API is only offered through unix sockets. This reduces the
@@ -100,11 +99,10 @@ There's not any documentation, and the API is in flux, so refer to the
 Here's an example assuming you ran the docker command above:
 
 ```
-curl --unix obligator_docker/obligator_api.sock dummy-domain/oauth2-providers
+curl --unix-socket obligator_docker/obligator_api.sock dummy-domain/oauth2-providers
 ```
 
 See [here][4] for more info on using curl over unix sockets.
--->
 
 
 # Support

@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	//"net"
+	"net"
 	"net/http"
 	"net/mail"
-	//"os"
-	//"path/filepath"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -24,6 +24,10 @@ func NewApi(db Database, dir string, oauth2MetaMan *OAuth2MetadataManager) (*Api
 	a := &Api{
 		db,
 		oauth2MetaMan,
+	}
+
+	if dir == "" {
+		return a, nil
 	}
 
 	mux.HandleFunc("/oauth2-providers", func(w http.ResponseWriter, r *http.Request) {
@@ -106,22 +110,27 @@ func NewApi(db Database, dir string, oauth2MetaMan *OAuth2MetadataManager) (*Api
 		}
 	})
 
-	//server := http.Server{
-	//	Handler: mux,
-	//}
+	server := http.Server{
+		Handler: mux,
+	}
 
-	//sockPath := filepath.Join(dir, storage.GetPrefix()+"api.sock")
+	prefix, err := db.GetPrefix()
+	if err != nil {
+		return nil, err
+	}
 
-	//os.Remove(sockPath)
+	sockPath := filepath.Join(dir, prefix+"api.sock")
 
-	//listener, err := net.Listen("unix", sockPath)
-	//if err != nil {
-	//	return nil, err
-	//}
+	os.Remove(sockPath)
 
-	//go func() {
-	//	server.Serve(listener)
-	//}()
+	listener, err := net.Listen("unix", sockPath)
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		server.Serve(listener)
+	}()
 
 	return a, nil
 }

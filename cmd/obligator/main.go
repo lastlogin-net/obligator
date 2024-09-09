@@ -15,7 +15,7 @@ func main() {
 	port := flag.Int("port", 1616, "Port")
 	prefix := flag.String("prefix", "obligator_", "Prefix for files and cookies")
 	dbDir := flag.String("database-dir", "./", "Database directory")
-	apiSocketDir := flag.String("api-socket-dir", "./", "API socket directory")
+	apiSocketDir := flag.String("api-socket-dir", "", "API socket directory")
 	behindProxy := flag.Bool("behind-proxy", false, "Whether we are behind a reverse proxy")
 	displayName := flag.String("display-name", "obligator", "Display name")
 	geoDbPath := flag.String("geo-db-path", "", "IP2Location Geo DB file")
