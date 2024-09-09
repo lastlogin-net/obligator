@@ -13,8 +13,16 @@ type IndieAuthHandler struct {
 	mux *http.ServeMux
 }
 
+type IndieAuthResponse struct {
+	MeUri   string            `json:"me"`
+	Profile *IndieAuthProfile `json:"profile"`
+}
+
 type IndieAuthProfile struct {
-	MeUri string `json:"me"`
+	Name  string `json:"name"`
+	Url   string `json:"url"`
+	Photo string `json:"photo"`
+	Email string `json:"me"`
 }
 
 func NewIndieAuthHandler(db Database, tmpl *template.Template, prefix string, jose *JOSE) *IndieAuthHandler {
@@ -76,13 +84,19 @@ func NewIndieAuthHandler(db Database, tmpl *template.Template, prefix string, jo
 			}
 		}
 
-		profile := IndieAuthProfile{
-			MeUri: fmt.Sprintf("https://%s/u/%s", r.Host, id),
+		url := fmt.Sprintf("https://%s/u/%s", r.Host, id)
+
+		response := IndieAuthResponse{
+			MeUri: url,
+			Profile: &IndieAuthProfile{
+				Url:   url,
+				Email: id,
+			},
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 
-		err = json.NewEncoder(w).Encode(profile)
+		err = json.NewEncoder(w).Encode(response)
 		if err != nil {
 			w.WriteHeader(500)
 			io.WriteString(w, err.Error())
