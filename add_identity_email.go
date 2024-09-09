@@ -1,12 +1,14 @@
 package obligator
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
 	"net/http"
 	"net/smtp"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -466,6 +468,20 @@ func NewAddIdentityEmailHandler(db Database, cluster *Cluster, tmpl *template.Te
 
 func (h *AddIdentityEmailHandler) StartEmailValidation(email, rootUri, magicLink string, identities []*Identity) error {
 
+	sendEmail := email
+
+	wildcardParts := strings.Split(email, "*")
+	if len(wildcardParts) > 2 {
+		return errors.New("Wildcard emails can only have 1 '*'")
+	} else if len(wildcardParts) == 2 {
+		code, err := genRandomKey()
+		if err != nil {
+			return err
+		}
+
+		sendEmail = wildcardParts[0] + code + wildcardParts[1]
+	}
+
 	for _, ident := range identities {
 		err := h.db.AddEmailValidationRequest(ident.Id, email)
 		if err != nil {
@@ -487,7 +503,7 @@ func (h *AddIdentityEmailHandler) StartEmailValidation(email, rootUri, magicLink
 
 	fromText := fmt.Sprintf("%s email validator", smtpConfig.SenderName)
 	fromEmail := smtpConfig.Sender
-	emailBody := fmt.Sprintf(bodyTemplate, fromText, fromEmail, email, smtpConfig.SenderName, email, magicLink)
+	emailBody := fmt.Sprintf(bodyTemplate, fromText, fromEmail, sendEmail, smtpConfig.SenderName, email, magicLink)
 
 	emailAuth := smtp.Auth(nil)
 	if smtpConfig.Username != "" && smtpConfig.Password != "" {
@@ -495,7 +511,7 @@ func (h *AddIdentityEmailHandler) StartEmailValidation(email, rootUri, magicLink
 	}
 	srv := fmt.Sprintf("%s:%d", smtpConfig.Server, smtpConfig.Port)
 	msg := []byte(emailBody)
-	err = smtp.SendMail(srv, emailAuth, fromEmail, []string{email}, msg)
+	err = smtp.SendMail(srv, emailAuth, fromEmail, []string{sendEmail}, msg)
 	if err != nil {
 		return err
 	}

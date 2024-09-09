@@ -15,6 +15,8 @@ import (
 	"github.com/ip2location/ip2location-go/v9"
 )
 
+const IdentityTypeEmail = "email"
+
 type Identity struct {
 	IdType        string `json:"id_type"`
 	Id            string `json:"id"`

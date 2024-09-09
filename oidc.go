@@ -41,7 +41,9 @@ type OAuth2AuthRequest struct {
 }
 
 type OIDCHandler struct {
-	mux *http.ServeMux
+	mux  *http.ServeMux
+	db   Database
+	tmpl *template.Template
 }
 
 type OIDCRegistrationResponse struct {
@@ -56,7 +58,9 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 	mux := http.NewServeMux()
 
 	h := &OIDCHandler{
-		mux: mux,
+		mux:  mux,
+		db:   db,
+		tmpl: tmpl,
 	}
 
 	prefix, err := db.GetPrefix()
@@ -327,8 +331,6 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			return
 		}
 
-		clearCookie(r.Host, prefix+"auth_request", w)
-
 		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", w, r, jose)
 		if err != nil {
 			w.WriteHeader(401)
@@ -354,10 +356,15 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			return
 		}
 
+		emailWildcard, done := h.handleWildcardEmail(w, r, identity)
+		if done {
+			return
+		}
+
 		clientId := claimFromToken("client_id", parsedAuthReq)
 
 		newLogin := &Login{
-			IdType:       "email",
+			IdType:       IdentityTypeEmail,
 			Id:           identity.Id,
 			ProviderName: identity.ProviderName,
 		}
@@ -389,8 +396,18 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 		issuedAt := time.Now().UTC()
 		expiresAt := issuedAt.Add(24 * time.Hour)
 
+		expandedId := identity.Id
+
+		if emailWildcard != "" {
+			wildcardParts := strings.Split(identity.Id, "*")
+			expandedId = wildcardParts[0] + emailWildcard + wildcardParts[1]
+		}
+
+		fmt.Println("here", emailWildcard)
+		clearCookie(r.Host, prefix+"auth_request", w)
+
 		idTokenBuilder := NewOIDCTokenBuilder().
-			Subject(identId).
+			Subject(expandedId).
 			Audience([]string{clientId}).
 			Issuer(uri).
 			IssuedAt(issuedAt).
@@ -398,7 +415,7 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			Claim("nonce", claimFromToken("nonce", parsedAuthReq))
 
 		if emailRequested {
-			idTokenBuilder.Email(identity.Email).
+			idTokenBuilder.Email(expandedId).
 				EmailVerified(identity.EmailVerified)
 		}
 
@@ -549,6 +566,39 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 	})
 
 	return h
+}
+
+func (h *OIDCHandler) handleWildcardEmail(w http.ResponseWriter, r *http.Request, identity *Identity) (string, bool) {
+
+	emailWildcard := r.Form.Get("email-wildcard")
+
+	if identity.IdType == IdentityTypeEmail && emailWildcard == "" {
+		wildcardParts := strings.Split(identity.Id, "*")
+		if len(wildcardParts) == 2 {
+			data := struct {
+				*commonData
+				Id     string
+				Prefix string
+				Suffix string
+			}{
+				Id:         identity.Id,
+				commonData: newCommonData(nil, h.db, r),
+				Prefix:     wildcardParts[0],
+				Suffix:     wildcardParts[1],
+			}
+
+			err := h.tmpl.ExecuteTemplate(w, "wildcard-email.html", data)
+			if err != nil {
+				w.WriteHeader(500)
+				io.WriteString(w, err.Error())
+				return emailWildcard, true
+			}
+
+			return emailWildcard, true
+		}
+	}
+
+	return emailWildcard, false
 }
 
 func ParseAuthRequest(w http.ResponseWriter, r *http.Request) (*OAuth2AuthRequest, error) {
