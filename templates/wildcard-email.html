@@ -1,0 +1,13 @@
+{{ template "header.html" . }}
+
+    <form class='' action="/approve" method="POST">
+      <input type='hidden' name='identity_id' value='{{.Id}}' required>
+      {{.Prefix}}
+      <input type='text' name='email-wildcard' />
+      {{.Suffix}}
+      <div>
+        <button class='button' type="submit">Login</button>
+      </div>
+    </form>
+
+{{ template "footer.html" . }}
