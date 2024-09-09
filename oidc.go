@@ -403,7 +403,6 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			expandedId = wildcardParts[0] + emailWildcard + wildcardParts[1]
 		}
 
-		fmt.Println("here", emailWildcard)
 		clearCookie(r.Host, prefix+"auth_request", w)
 
 		idTokenBuilder := NewOIDCTokenBuilder().
