@@ -22,7 +22,7 @@ type IndieAuthProfile struct {
 	Name  string `json:"name"`
 	Url   string `json:"url"`
 	Photo string `json:"photo"`
-	Email string `json:"me"`
+	Email string `json:"email"`
 }
 
 func NewIndieAuthHandler(db Database, tmpl *template.Template, prefix string, jose *JOSE) *IndieAuthHandler {
