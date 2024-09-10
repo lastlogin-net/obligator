@@ -14,8 +14,9 @@ type IndieAuthHandler struct {
 }
 
 type IndieAuthResponse struct {
-	MeUri   string            `json:"me"`
-	Profile *IndieAuthProfile `json:"profile"`
+	MeUri       string            `json:"me"`
+	Profile     *IndieAuthProfile `json:"profile"`
+	AccessToken string            `json:"access_token"`
 }
 
 type IndieAuthProfile struct {
@@ -87,7 +88,8 @@ func NewIndieAuthHandler(db Database, tmpl *template.Template, prefix string, jo
 		url := fmt.Sprintf("https://%s/u/%s", r.Host, id)
 
 		response := IndieAuthResponse{
-			MeUri: url,
+			AccessToken: "fake-access-token",
+			MeUri:       url,
 			Profile: &IndieAuthProfile{
 				Url:   url,
 				Email: id,
