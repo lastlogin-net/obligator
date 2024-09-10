@@ -37,7 +37,7 @@ CGO_ENABLED=1 GOOS=$os GOARCH=$arch go build \
 if [[ "$os" != "windows" ]]
 then
     $strip_command build/$filename
-    tar czf build/$filename.tar.gz -C build $filename
+    #tar czf build/$filename.tar.gz -C build $filename
 else
     cd build
     zip $filename.zip $filename
