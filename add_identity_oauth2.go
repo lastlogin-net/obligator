@@ -359,7 +359,10 @@ func NewAddIdentityOauth2Handler(db Database, oauth2MetaMan *OAuth2MetadataManag
 			return
 		}
 
-		redirUrl := fmt.Sprintf("%s", returnUri)
+		redirUrl := returnUri
+		if returnUri == "/approve" {
+			redirUrl = fmt.Sprintf("%s?identity_id=%s", returnUri, email)
+		}
 
 		clearCookie(r.Host, prefix+"upstream_oauth2_request", w)
 

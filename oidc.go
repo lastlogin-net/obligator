@@ -289,6 +289,18 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 
 		returnUri := fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery)
 
+		providerId := r.Form.Get("provider")
+
+		if providerId != "" {
+
+			returnUri := "/approve"
+			setReturnUriCookie(r.Host, db, returnUri, w)
+
+			uri := fmt.Sprintf("/login-oauth2?oauth2_provider_id=%s", providerId)
+			http.Redirect(w, r, uri, 303)
+			return
+		}
+
 		data := struct {
 			*commonData
 			ClientId            string
@@ -324,12 +336,6 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 
 	mux.HandleFunc("/approve", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
-
-		if r.Method != http.MethodPost {
-			w.WriteHeader(405)
-			io.WriteString(w, "Invalid method")
-			return
-		}
 
 		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", w, r, jose)
 		if err != nil {
