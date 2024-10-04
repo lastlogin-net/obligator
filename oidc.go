@@ -245,6 +245,13 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			}
 		}
 
+		providerId := r.Form.Get("provider")
+
+		flowType := "normal"
+		if providerId != "" {
+			flowType = "shortcut"
+		}
+
 		maxAge := 8 * time.Minute
 		issuedAt := time.Now().UTC()
 		authRequestJwt, err := NewJWTBuilder().
@@ -259,6 +266,7 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			Claim("nonce", r.Form.Get("nonce")).
 			Claim("pkce_code_challenge", r.Form.Get("code_challenge")).
 			Claim("response_type", ar.ResponseType).
+			Claim("flow_type", flowType).
 			Build()
 		if err != nil {
 			w.WriteHeader(500)
@@ -288,8 +296,6 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 		}
 
 		returnUri := fmt.Sprintf("%s?%s", r.URL.Path, r.URL.RawQuery)
-
-		providerId := r.Form.Get("provider")
 
 		if providerId != "" {
 
@@ -424,7 +430,14 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 				EmailVerified(identity.EmailVerified)
 		}
 
-		if profileRequested && identity.Name != "" {
+		// Don't include name for shortcut flow, because user doesn't
+		// have a chance to consent.
+		includeName := true
+		if claimFromToken("flow_type", parsedAuthReq) == "shortcut" {
+			includeName = false
+		}
+
+		if profileRequested && includeName && identity.Name != "" {
 			idTokenBuilder.Name(identity.Name)
 		}
 
