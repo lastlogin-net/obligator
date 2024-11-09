@@ -4,10 +4,10 @@
 
   <style>
     .first-l {
-      stroke: #000;
+      stroke: currentColor;
     }
     .second-l {
-      stroke: #888;
+      stroke: currentColor;
     }
   </style>
 
