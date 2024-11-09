@@ -68,6 +68,9 @@ func main() {
 		if config.Smtp != nil {
 			conf.Smtp = config.Smtp
 		}
+		if config.Users != nil {
+			conf.Users = config.Users
+		}
 	}
 
 	server := obligator.NewServer(conf)
