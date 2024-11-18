@@ -128,6 +128,18 @@ func NewObligatorMux(behindProxy bool) *ObligatorMux {
 
 func (s *ObligatorMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
+	// TODO: implement generic redirects so LastLogin stuff isn't hard
+	// coded
+	if r.Host == "lastlogin.io" {
+		query := ""
+		if r.URL.RawQuery != "" {
+			query = "?" + r.URL.RawQuery
+		}
+		redirUri := fmt.Sprintf("https://lastlogin.net%s%s", r.URL.Path, query)
+		http.Redirect(w, r, redirUri, 308)
+		return
+	}
+
 	// TODO: mutex?
 	mux, exists := s.server.muxMap[r.Host]
 	if exists {
