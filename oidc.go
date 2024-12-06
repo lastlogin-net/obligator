@@ -448,19 +448,18 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			return
 		}
 
-		signedIdToken, err := jose.Sign(idToken)
+		signedAndEncryptedIdToken, err := jose.SignAndEncrypt(idToken)
 		if err != nil {
 			w.WriteHeader(500)
 			fmt.Fprintf(os.Stderr, err.Error())
 			return
 		}
 
-		// TODO: should maybe be encrypting this
 		codeJwt, err := NewJWTBuilder().
 			IssuedAt(issuedAt).
 			Expiration(issuedAt.Add(16*time.Second)).
 			Subject(idToken.Email()).
-			Claim("id_token", string(signedIdToken)).
+			Claim("id_token", signedAndEncryptedIdToken).
 			Claim("pkce_code_challenge", claimFromToken("pkce_code_challenge", parsedAuthReq)).
 			Build()
 		if err != nil {
@@ -509,17 +508,25 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			return
 		}
 
-		signedIdTokenIface, exists := parsedCodeJwt.Get("id_token")
+		signedAndEncryptedIdTokenIface, exists := parsedCodeJwt.Get("id_token")
 		if !exists {
 			w.WriteHeader(401)
 			io.WriteString(w, "Invalid id_token in code")
 			return
 		}
 
-		signedIdToken, ok := signedIdTokenIface.(string)
+		signedAndEncryptedIdToken, ok := signedAndEncryptedIdTokenIface.(string)
 		if !ok {
 			w.WriteHeader(401)
 			io.WriteString(w, "Invalid id_token in code")
+			return
+		}
+
+		signedIdToken, err := jose.Decrypt(signedAndEncryptedIdToken)
+		if err != nil {
+			fmt.Println(err.Error())
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
 			return
 		}
 
@@ -574,7 +581,7 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 		tokenRes := OAuth2TokenResponse{
 			AccessToken: string(signedAccessToken),
 			ExpiresIn:   3600,
-			IdToken:     string(signedIdToken),
+			IdToken:     signedIdToken,
 			TokenType:   "bearer",
 		}
 

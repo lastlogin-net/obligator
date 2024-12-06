@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/lestrrat-go/jwx/v2/jwa"
+	"github.com/lestrrat-go/jwx/v2/jwe"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/lestrrat-go/jwx/v2/jwt/openid"
@@ -110,9 +111,71 @@ func getPublicJwks(db Database) (jwk.Set, error) {
 	return publicJwks, nil
 }
 
+func (j *JOSE) SignAndEncrypt(jwt_ jwt.Token) (string, error) {
+	return SignAndEncryptJWT(j.db, jwt_)
+}
+
 func (j *JOSE) Sign(jwt_ jwt.Token) (string, error) {
 	return SignJWT(j.db, jwt_)
 }
+
+func (j *JOSE) Decrypt(encryptedJwt string) (string, error) {
+	return DecryptJWT(j.db, encryptedJwt)
+}
+
+func DecryptJWT(db Database, encryptedJwt string) (string, error) {
+	jwks, err := GetJWKS(db)
+	if err != nil {
+		return "", err
+	}
+
+	privKey, exists := jwks.Key(0)
+	if !exists {
+		return "", errors.New("JOSE.sign(): No keys available for signing")
+	}
+
+	encryptedJwtBytes := []byte(encryptedJwt)
+	decryptedJwt, err := jwe.Decrypt(encryptedJwtBytes, jwe.WithKey(jwa.RSA_OAEP_256, privKey))
+	if err != nil {
+		return "", err
+	}
+
+	return string(decryptedJwt), nil
+}
+
+func SignAndEncryptJWT(db Database, jwt_ jwt.Token) (string, error) {
+
+	jwks, err := GetJWKS(db)
+	if err != nil {
+		return "", err
+	}
+
+	privKey, exists := jwks.Key(0)
+	if !exists {
+		return "", errors.New("JOSE.sign(): No keys available for signing")
+	}
+
+	publicJwks, err := jwk.PublicSetOf(jwks)
+	if err != nil {
+		return "", err
+	}
+
+	pubKey, exists := publicJwks.Key(0)
+	if !exists {
+		return "", errors.New("JOSE.sign(): no pubkey")
+	}
+
+	encryptedJwt, err := NewJWTSerializer().
+		Sign(jwt.WithKey(jwa.RS256, privKey)).
+		Encrypt(jwt.WithKey(jwa.RSA_OAEP_256, pubKey)).
+		Serialize(jwt_)
+	if err != nil {
+		return "", err
+	}
+
+	return string(encryptedJwt), nil
+}
+
 func SignJWT(db Database, jwt_ jwt.Token) (string, error) {
 
 	jwks, err := GetJWKS(db)
