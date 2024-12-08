@@ -71,6 +71,7 @@ func main() {
 		if config.Users != nil {
 			conf.Users = config.Users
 		}
+		conf.Public = config.Public
 	}
 
 	server := obligator.NewServer(conf)
