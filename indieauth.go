@@ -17,6 +17,7 @@ type IndieAuthResponse struct {
 	MeUri       string            `json:"me"`
 	Profile     *IndieAuthProfile `json:"profile"`
 	AccessToken string            `json:"access_token"`
+	TokenType   string            `json:"token_type"`
 }
 
 type IndieAuthProfile struct {
@@ -94,6 +95,7 @@ func NewIndieAuthHandler(db Database, tmpl *template.Template, prefix string, jo
 				Url:   url,
 				Email: id,
 			},
+			TokenType: "bearer",
 		}
 
 		w.Header().Set("Content-Type", "application/json")
