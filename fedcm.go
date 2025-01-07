@@ -62,6 +62,11 @@ type IndieAuthFedCmResponse struct {
 	MetadataEndpoint string `json:"metadata_endpoint"`
 }
 
+type IndieAuthFedCMParams struct {
+	CodeChallenge       string `json:"code_challenge"`
+	CodeChallengeMethod string `json:"code_challenge_method"`
+}
+
 func NewFedCmHandler(db Database, loginEndpoint string, jose *JOSE) *FedCmHandler {
 
 	mux := http.NewServeMux()
@@ -216,7 +221,21 @@ func NewFedCmHandler(db Database, loginEndpoint string, jose *JOSE) *FedCmHandle
 		idents, _ := getIdentitiesFedCm(db, r)
 
 		accountId := r.Form.Get("account_id")
+
+		paramsParam := r.Form.Get("params")
+
 		pkceCodeChallenge := r.Form.Get("nonce")
+		if paramsParam != "" {
+			var params IndieAuthFedCMParams
+			err = json.Unmarshal([]byte(paramsParam), &params)
+			if err != nil {
+				w.WriteHeader(400)
+				io.WriteString(w, err.Error())
+				return
+			}
+
+			pkceCodeChallenge = params.CodeChallenge
+		}
 
 		//uri := domainToUri(r.Host)
 
