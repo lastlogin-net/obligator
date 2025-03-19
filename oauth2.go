@@ -80,7 +80,7 @@ func (m *OAuth2MetadataManager) Update() error {
 			var err error
 			m.oidcConfigs[oidcProvider.ID], err = GetOidcConfiguration(oidcProvider.URI)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err.Error())
+				fmt.Fprintln(os.Stderr, "Failed to get OIDC config for "+oidcProvider.URI)
 				os.Exit(1)
 			}
 
