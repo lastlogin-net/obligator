@@ -1,4 +1,4 @@
-module github.com/lastlogin-io/obligator
+module github.com/lastlogin-net/obligator
 
 go 1.20
 
