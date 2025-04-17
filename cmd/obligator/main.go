@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lastlogin-io/obligator"
+	"github.com/lastlogin-net/obligator"
 )
 
 func main() {
