@@ -80,7 +80,7 @@ obligator:
 mkdir obligator_docker/
 cp obligator_storage.json obligator_docker/
 
-docker run --user $(id -u):$(id -g) --rm -it -v $PWD/obligator_docker:/data -v $PWD/obligator_docker:/api -p 1616:1616 anderspitman/obligator:latest -storage-dir /data -api-socket-dir /api -root-uri example.com -port 1616
+docker run --user $(id -u):$(id -g) --rm -it -v $PWD/obligator_docker:/data -v $PWD/obligator_docker:/api -p 1616:1616 anderspitman/obligator:latest -database-dir /data -api-socket-dir /api -domain example.com -port 1616
 ```
 
 You can also download static executables for various platforms from the

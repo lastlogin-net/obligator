@@ -44,4 +44,4 @@ EXPOSE 1616
 
 ENTRYPOINT ["/obligator/obligator"]
 
-CMD ["-storage-dir", "/data", "-behind-proxy", "true"]
+CMD ["-database-dir", "/data", "-behind-proxy", "true"]
