@@ -164,7 +164,8 @@ func (s *ObligatorMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: see if we can re-enable script-src none. Removed it for FedCM support
+	// TODO: see if we can re-enable script-src none. Several templates rely on
+	// inline scripts, so this would need to be checked carefully first.
 	//w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'; script-src 'none'")
 	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -400,14 +401,7 @@ func NewServer(conf ServerConfig) *Server {
 	mux.Handle("/domains", domainHandler)
 	mux.Handle("/add-domain", domainHandler)
 
-	fedCmLoginEndpoint := "/login-fedcm-auto"
-	fedCmHandler := NewFedCmHandler(db, fedCmLoginEndpoint, jose)
-	mux.Handle("/.well-known/web-identity", fedCmHandler)
-	mux.Handle("/fedcm/", http.StripPrefix("/fedcm", fedCmHandler))
-
-	addIdentityFedCmHandler := NewAddIdentityFedCmHandler(db, tmpl, jose)
-	mux.Handle("/login-fedcm", addIdentityFedCmHandler)
-	mux.Handle("/complete-login-fedcm", addIdentityFedCmHandler)
+	// FedCM is disabled pending security hardening.
 
 	s := &Server{
 		Config: conf,

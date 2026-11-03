@@ -38,8 +38,8 @@ type Database interface {
 
 type OAuth2Provider struct {
 	ID               string `json:"id" db:"id"`
-	Name             string `json:"name" db"name"`
-	URI              string `json:"uri" db "uri"`
+	Name             string `json:"name" db:"name"`
+	URI              string `json:"uri" db:"uri"`
 	ClientID         string `json:"client_id" db:"client_id"`
 	ClientSecret     string `json:"client_secret" db:"client_secret"`
 	AuthorizationURI string `json:"authorization_uri,omitempty" db:"authorization_uri"`

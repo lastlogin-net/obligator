@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{.DisplayName}}</title>
+</head>
+
+<body>
+  <p>Completing login...</p>
+
+  <form id='og-shortcut-approve-form' action="/approve" method="POST">
+    <input type='hidden' name='identity_id' value='{{.IdentityId}}' required>
+    <input type='hidden' name='csrf_token' value='{{.CsrfToken}}' required>
+    <noscript>
+      <p>JavaScript is disabled. Continue to complete your login:</p>
+      <button class='button' type="submit">Continue</button>
+    </noscript>
+  </form>
+
+  <script>
+    document.getElementById('og-shortcut-approve-form').submit();
+  </script>
+</body>
+
+</html>

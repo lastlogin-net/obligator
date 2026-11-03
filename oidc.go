@@ -1,6 +1,7 @@
 package obligator
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -252,6 +253,13 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			flowType = "shortcut"
 		}
 
+		csrfToken, err := genRandomKey()
+		if err != nil {
+			w.WriteHeader(500)
+			io.WriteString(w, err.Error())
+			return
+		}
+
 		maxAge := 8 * time.Minute
 		issuedAt := time.Now().UTC()
 		authRequestJwt, err := NewJWTBuilder().
@@ -267,6 +275,7 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			Claim("pkce_code_challenge", r.Form.Get("code_challenge")).
 			Claim("response_type", ar.ResponseType).
 			Claim("flow_type", flowType).
+			Claim("csrf_token", csrfToken).
 			Build()
 		if err != nil {
 			w.WriteHeader(500)
@@ -317,6 +326,7 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			URL                 string
 			CanEmail            bool
 			DisableQrLogin      bool
+			CsrfToken           string
 		}{
 			commonData: newCommonData(&commonData{
 				ReturnUri: returnUri,
@@ -328,6 +338,7 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			LogoMap:             providerLogoMap,
 			CanEmail:            canEmail,
 			DisableQrLogin:      config.DisableQrLogin,
+			CsrfToken:           csrfToken,
 		}
 
 		setReturnUriCookie(r.Host, db, returnUri, w)
@@ -341,7 +352,18 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 	})
 
 	mux.HandleFunc("/approve", func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			io.WriteString(w, "Method not allowed")
+			return
+		}
+
+		if err := r.ParseForm(); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, err.Error())
+			return
+		}
 
 		parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", w, r, jose)
 		if err != nil {
@@ -350,7 +372,15 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			return
 		}
 
-		identId := r.Form.Get("identity_id")
+		csrfToken := claimFromToken("csrf_token", parsedAuthReq)
+		formCsrfToken := r.PostForm.Get("csrf_token")
+		if csrfToken == "" || formCsrfToken == "" || subtle.ConstantTimeCompare([]byte(csrfToken), []byte(formCsrfToken)) != 1 {
+			w.WriteHeader(403)
+			io.WriteString(w, "Invalid CSRF token")
+			return
+		}
+
+		identId := r.PostForm.Get("identity_id")
 
 		idents, _ := getIdentities(db, r)
 
@@ -368,7 +398,7 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 			return
 		}
 
-		emailWildcard, done := h.handleWildcardEmail(w, r, identity)
+		emailWildcard, done := h.handleWildcardEmail(w, r, identity, csrfToken)
 		if done {
 			return
 		}
@@ -593,7 +623,7 @@ func NewOIDCHandler(db Database, config ServerConfig, tmpl *template.Template, j
 	return h
 }
 
-func (h *OIDCHandler) handleWildcardEmail(w http.ResponseWriter, r *http.Request, identity *Identity) (string, bool) {
+func (h *OIDCHandler) handleWildcardEmail(w http.ResponseWriter, r *http.Request, identity *Identity, csrfToken string) (string, bool) {
 
 	emailWildcard := r.Form.Get("email-wildcard")
 
@@ -602,14 +632,16 @@ func (h *OIDCHandler) handleWildcardEmail(w http.ResponseWriter, r *http.Request
 		if len(wildcardParts) == 2 {
 			data := struct {
 				*commonData
-				Id     string
-				Prefix string
-				Suffix string
+				Id        string
+				Prefix    string
+				Suffix    string
+				CsrfToken string
 			}{
 				Id:         identity.Id,
 				commonData: newCommonData(nil, h.db, r),
 				Prefix:     wildcardParts[0],
 				Suffix:     wildcardParts[1],
+				CsrfToken:  csrfToken,
 			}
 
 			err := h.tmpl.ExecuteTemplate(w, "wildcard-email.html", data)

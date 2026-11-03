@@ -121,7 +121,7 @@ func NewHandler(db Database, conf ServerConfig, tmpl *template.Template, jose *J
 		}
 	})
 
-	loginFunc := func(w http.ResponseWriter, r *http.Request, fedCm bool) {
+	loginFunc := func(w http.ResponseWriter, r *http.Request) {
 
 		r.ParseForm()
 
@@ -141,10 +141,6 @@ func NewHandler(db Database, conf ServerConfig, tmpl *template.Template, jose *J
 
 		if returnUri == "" {
 			returnUri = "/login"
-
-			if fedCm {
-				returnUri = "/login-fedcm-auto"
-			}
 		} else {
 			parsedUrl, err := url.Parse(returnUri)
 			if err != nil {
@@ -170,7 +166,6 @@ func NewHandler(db Database, conf ServerConfig, tmpl *template.Template, jose *J
 			CanEmail        bool
 			OAuth2Providers []*OAuth2Provider
 			LogoMap         map[string]template.HTML
-			FedCm           bool
 			DisableQrLogin  bool
 		}{
 			commonData: newCommonData(&commonData{
@@ -180,7 +175,6 @@ func NewHandler(db Database, conf ServerConfig, tmpl *template.Template, jose *J
 			CanEmail:        canEmail,
 			OAuth2Providers: providers,
 			LogoMap:         providerLogoMap,
-			FedCm:           fedCm,
 			DisableQrLogin:  conf.DisableQrLogin,
 		}
 
@@ -192,11 +186,8 @@ func NewHandler(db Database, conf ServerConfig, tmpl *template.Template, jose *J
 		}
 	}
 
-	mux.HandleFunc("/login-fedcm-auto", func(w http.ResponseWriter, r *http.Request) {
-		loginFunc(w, r, true)
-	})
 	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
-		loginFunc(w, r, false)
+		loginFunc(w, r)
 	})
 
 	mux.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {

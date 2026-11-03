@@ -22,7 +22,8 @@ import (
 )
 
 type AddIdentityOauth2Handler struct {
-	mux *http.ServeMux
+	mux  *http.ServeMux
+	tmpl *template.Template
 }
 
 var providerLogoMap map[string]template.HTML
@@ -55,13 +56,17 @@ func buildProviderLogoMap(db Database) {
 func NewAddIdentityOauth2Handler(db Database, oauth2MetaMan *OAuth2MetadataManager, jose *JOSE) *AddIdentityOauth2Handler {
 	mux := http.NewServeMux()
 
-	h := &AddIdentityOauth2Handler{
-		mux: mux,
-	}
-
 	httpClient := &http.Client{}
 
 	buildProviderLogoMap(db)
+
+	tmpl, err := template.ParseFS(fs, "templates/shortcut-approve.html")
+	checkErr(err)
+
+	h := &AddIdentityOauth2Handler{
+		mux:  mux,
+		tmpl: tmpl,
+	}
 
 	prefix, err := db.GetPrefix()
 	checkErr(err)
@@ -359,14 +364,41 @@ func NewAddIdentityOauth2Handler(db Database, oauth2MetaMan *OAuth2MetadataManag
 			return
 		}
 
-		redirUrl := returnUri
-		if returnUri == "/approve" {
-			redirUrl = fmt.Sprintf("%s?identity_id=%s", returnUri, email)
-		}
-
 		clearCookie(r.Host, prefix+"upstream_oauth2_request", w)
 
-		http.Redirect(w, r, redirUrl, http.StatusSeeOther)
+		if returnUri == "/approve" {
+			parsedAuthReq, err := getJwtFromCookie(prefix+"auth_request", w, r, jose)
+			if err != nil {
+				w.WriteHeader(401)
+				io.WriteString(w, err.Error())
+				return
+			}
+
+			csrfToken := claimFromToken("csrf_token", parsedAuthReq)
+			if csrfToken == "" {
+				w.WriteHeader(403)
+				io.WriteString(w, "Missing CSRF token")
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			err = h.tmpl.ExecuteTemplate(w, "shortcut-approve.html", struct {
+				*commonData
+				IdentityId string
+				CsrfToken  string
+			}{
+				commonData: newCommonData(nil, db, r),
+				IdentityId: email,
+				CsrfToken:  csrfToken,
+			})
+			if err != nil {
+				w.WriteHeader(500)
+				io.WriteString(w, err.Error())
+			}
+			return
+		}
+
+		http.Redirect(w, r, returnUri, http.StatusSeeOther)
 	})
 
 	return h
