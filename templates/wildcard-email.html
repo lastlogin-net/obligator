@@ -2,6 +2,7 @@
 
     <form class='' action="/approve" method="POST">
       <input type='hidden' name='identity_id' value='{{.Id}}' required>
+      <input type='hidden' name='csrf_token' value='{{.CsrfToken}}' required>
       {{.Prefix}}
       <input type='text' name='email-wildcard' />
       {{.Suffix}}

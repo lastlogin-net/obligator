@@ -19,6 +19,7 @@
       <div>
         <form action="/approve" method="POST">
           <input type='hidden' name='identity_id' value='{{.Id}}' required>
+          <input type='hidden' name='csrf_token' value='{{$.CsrfToken}}' required>
           <button class='og-formbutton' type="submit">
             <div>
               Log in as <strong>{{.Id}}</strong> ({{.ProviderName}})
@@ -44,6 +45,7 @@
       <div>
         <form action="/approve" method="POST">
           <input type='hidden' name='identity_id' value='{{.Id}}' required>
+          <input type='hidden' name='csrf_token' value='{{$.CsrfToken}}' required>
           <button class='og-formbutton' type="submit">
             Log in as <strong>{{.Id}}</strong> ({{.ProviderName}})
           </button>
